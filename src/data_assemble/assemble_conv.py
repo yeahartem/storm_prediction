@@ -171,7 +171,7 @@ def get_pixel_stations(
     Returns:
         dict: {station_name: (pixel coords)}
     """
-
+    # if .tif:
     file_paths = [
         path_to_tifs[:-5] + "/" + fn
         for fn in os.listdir(path_to_tifs[:-5])
@@ -189,43 +189,38 @@ def get_pixel_stations(
 
 
 def make_blocks(
-    feature_names_list: list,
-    path_to_tifs_list: str,
+    path_to_files: str,
+    filter_dict: dict,
+    rectangle_coords: dict,
+    target_res: dict,
     half_side_size: int = 4,
-    cmip: np.ndarray = None,
     verbose: bool = False,
-    dset_num: int = 0,
 ) -> OrderedDict:
-    """slices blocks from .tif data
+    """slices blocks from data
 
     Args:
-        feature_names (list): list of feature names in .tif files' names, [[`folder_i_features`] for i folder num]
-        path_to_tifs (str): path to .tif files [path_to_tifs_i for i in folder num]
-        half_side_size (int, optional): square block half size. Defaults to 4.
-        verbose (bool, optional): if to print progress. Defaults to False.
-        dset_num (int, optional): number of .tif file to pick from `path_to_tifs` if several present. Defaults to 0.
+        path_to_files - path to all files: ['../data/elev/*.tif', '../data/stash/WindProject/cmip_stash/*.nc'],
+        filter_dict - things which should be included into the titles of files: {"years": ['2006', '2026'], "bands": ['max', 'Wind_']}
+        rectangle_coords - border coordinates of the chosen territory: {'lat_min': 41.12, 'lat_max': 81.49,'lon_min': 19.38, 'lon_max': 169.40},
+        target_res - {'lon_res': 0.25, 'lat_res': 0.25},
+        half_side_size (int, optional) - square block half size. Defaults to 4.
 
     Returns:
         dict: {`block center pixel`: surrounding 3d tensor}
     """
-    print("Reading from .tifs")
-    nps = {}
-    for feature_names, path_to_tifs in zip(feature_names_list, path_to_tifs_list):
-        nps = {**nps, **dp.get_nps(feature_names, path_to_tifs, verbose, dset_num=0)}
-    print(".tifs has been read")
+    bands = {}
+    for path_of_file in path_to_files:
+        if path_of_file.endswith('.tif'):
+            bands = {**bands, **dp.get_nps(['elevation'], path_of_file, verbose, dset_num=0)}
 
-    slices_dict = {k: {} for k in nps.keys()}  # key = center of block
-    if cmip is not None:
-        slices_dict["wind"] = {}
-        for i in range(half_side_size, cmip.shape[1] - half_side_size):
-            for j in range(half_side_size, cmip.shape[2] - half_side_size):
-                slices_dict["wind"][(i, j)] = cmip[
-                    :,
-                    i - half_side_size : i + half_side_size,
-                    j - half_side_size : j + half_side_size,
-                ]
-    for k in tqdm(nps.keys()):
-        np_ = nps[k]
+        elif path_of_file.endswith('.nc'):
+            path_of_file = path_of_file[:-4]
+            bands = {**bands, **dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict)}
+
+    slices_dict = {k: {} for k in bands.keys()}  # key = center of block
+
+    for k in tqdm(bands.keys()):
+        np_ = bands[k]
         for i in range(half_side_size, np_.shape[1] - half_side_size):
             for j in range(half_side_size, np_.shape[2] - half_side_size):
                 slices_dict[k][(i, j)] = np_[
@@ -235,3 +230,52 @@ def make_blocks(
                 ]
     slices_dict = OrderedDict(sorted(slices_dict.items()))
     return slices_dict
+
+
+# def make_blocks_old(
+#     feature_names_list: list,
+#     path_to_tifs_list: str,
+#     half_side_size: int = 4,
+#     cmip: np.ndarray = None,
+#     verbose: bool = False,
+#     dset_num: int = 0,
+# ) -> OrderedDict:
+#     """slices blocks from .tif data
+
+#     Args:
+#         feature_names (list): list of feature names in .tif files' names, [[`folder_i_features`] for i folder num]
+#         path_to_tifs (str): path to .tif files [path_to_tifs_i for i in folder num]
+#         half_side_size (int, optional): square block half size. Defaults to 4.
+#         verbose (bool, optional): if to print progress. Defaults to False.
+#         dset_num (int, optional): number of .tif file to pick from `path_to_tifs` if several present. Defaults to 0.
+
+#     Returns:
+#         dict: {`block center pixel`: surrounding 3d tensor}
+#     """
+#     print("Reading from .tifs")
+#     nps = {}
+#     for feature_names, path_to_tifs in zip(feature_names_list, path_to_tifs_list):
+#         nps = {**nps, **dp.get_nps(feature_names, path_to_tifs, verbose, dset_num=0)}
+#     print(".tifs has been read")
+
+#     slices_dict = {k: {} for k in nps.keys()}  # key = center of block
+#     if cmip is not None:
+#         slices_dict["wind"] = {}
+#         for i in range(half_side_size, cmip.shape[1] - half_side_size):
+#             for j in range(half_side_size, cmip.shape[2] - half_side_size):
+#                 slices_dict["wind"][(i, j)] = cmip[
+#                     :,
+#                     i - half_side_size : i + half_side_size,
+#                     j - half_side_size : j + half_side_size,
+#                 ]
+#     for k in tqdm(nps.keys()):
+#         np_ = nps[k]
+#         for i in range(half_side_size, np_.shape[1] - half_side_size):
+#             for j in range(half_side_size, np_.shape[2] - half_side_size):
+#                 slices_dict[k][(i, j)] = np_[
+#                     :,
+#                     i - half_side_size : i + half_side_size,
+#                     j - half_side_size : j + half_side_size,
+#                 ]
+#     slices_dict = OrderedDict(sorted(slices_dict.items()))
+#     return slices_dict
