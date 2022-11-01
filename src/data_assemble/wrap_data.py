@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 from torchvision import transforms
 from torch.utils.data import TensorDataset, DataLoader
 import torch
+from tqdm import tqdm
 
 import geopandas as gpd
 from shapely.geometry import Point, Polygon, box, LineString
@@ -133,7 +134,7 @@ def train_val_test_split(
     return st_split_dict
 
 
-def extract_splitted_data(path_to_dump: str, st_split_dict: dict) -> tuple:
+def extract_splitted_data(path_to_dump: str, st_split_dict: dict, return_xarray: bool = False) -> tuple:
     """extracts X, y, splitted into train, val, test
 
     Args:
@@ -151,19 +152,21 @@ def extract_splitted_data(path_to_dump: str, st_split_dict: dict) -> tuple:
         for st in sts:
             st_dir = os.path.join(path_to_dump, st)
             with open(os.path.join(st_dir, "objects.npy"), "rb") as f:
-                # X_ = pickle.load(f)
-                X_ = np.load(f)
+                X_ = pickle.load(f)
+                # X_ = np.load(f)
 
             X_split.append(X_)
             try:
                 with open(os.path.join(st_dir, "target.npy"), "rb") as f:
-                    # y_ = pickle.load(f)
-                    y_ = np.load(f)
+                    y_ = pickle.load(f)
+                    # y_ = np.load(f)
                 y_split.append(y_)
             except FileNotFoundError:
                 y_split.append([])
-
-        X[split_part] = np.concatenate(X_split)
+        if return_xarray:
+            X[split_part] = X_split
+        else:
+            X[split_part] = np.concatenate(X_split)
         y[split_part] = np.concatenate(y_split)
     return X, y
 
@@ -331,15 +334,15 @@ def ewma_vectorized_2d(data, alpha, axis=None, offset=None, dtype=None, order='C
     return out
 
 
-def map_to_pandas(grid, x_axis, y_axis, start_date, day_interval=1):
+def map_to_pandas(grid, x_axis, y_axis, t_axis, start_date, day_interval=1):
     df = pd.DataFrame(np.zeros((len(list(range(grid.shape[0]))[::day_interval])*grid[0,3:-3,3:-3].shape[0]*grid[0,3:-3,3:-3].shape[1],4)))
     df.rename(columns={0:'date', 1:'lon', 2:'lat', 3:'value'}, inplace=True)
     k=0
-    for t in list(range(grid.shape[0]))[::day_interval]:
+    for t in tqdm(list(range(grid.shape[0]))[::day_interval]):
         for i in range(3,grid[t,:,:].shape[0]-3):
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],0]=str(start_date + pd.DateOffset(1) * t)
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],1]=x_axis[3:-3]
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],2]=y_axis[i] 
+            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],0]=t_axis[t] #str(start_date + pd.DateOffset(1) * t)
+            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],1]=x_axis[:]
+            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],2]=y_axis[i-3] 
             df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],3]=grid[t,i,3:-3]
             k+=grid[t,3:-3,3:-3].shape[1]
     df=df.reset_index()
@@ -360,12 +363,22 @@ def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=No
     geodf = gpd.GeoDataFrame(df_year, crs = 4326, geometry=geometry)
     
     
-    polygon = box(23, 40, 45, 50)
+    polygon = box(-180, 23, 180, 90)
 
     
     world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
     world = gpd.clip(world, polygon)
     
+    if part_world_to_plot == 'Florida':
+        Fl_polygon = box(-92, 22, -75, 34)
+        world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+        world = gpd.clip(world, Fl_polygon)
+        basemap = world
+    if part_world_to_plot == 'KK_Belg_Rost':
+        Fl_polygon = box(23, 40, 46, 53)
+        world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+        world = gpd.clip(world, Fl_polygon)
+        basemap = world
     if part_world_to_plot == 'KK':
         KK_polygon = box(23, 40, 45, 50)
         world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))

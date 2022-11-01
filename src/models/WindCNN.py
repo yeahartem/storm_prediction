@@ -38,10 +38,11 @@ class WindNet(nn.Module):
             self.maxpool, 
             self.flatten, 
             self.fc, 
-            nn.Softmax(), 
+            nn.LogSoftmax(), 
         ).double()
 
     def forward(self, X) -> torch.Tensor:
+        # print(self.flatten(self.maxpool(self.conv2(self.conv1(X)))).shape)
         output = self.net(X)
         return output
 
@@ -80,7 +81,8 @@ class WindNetPL(pl.LightningModule):
     def loss(
         self, y_hat, y
     ):  # POS WEIGHT CLASS !!! https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
-        return self.loss_f(torch.log(y_hat), y)
+        # return self.loss_f(torch.log(y_hat), y)
+        return self.loss_f(y_hat, y)
 
     def training_step(self, batch, batch_idx):
         objs, target = batch
@@ -105,7 +107,10 @@ class WindNetPL(pl.LightningModule):
             }
         )
         return output
-
+    # def training_epoch_end(self, training_step_outputs):
+    #     auroc = self.AUROC.compute()
+    #     print("AUROC = ", auroc)
+            
     def training_step_end(self, outputs):
         # update and log
         predictions = outputs["preds"]
@@ -129,7 +134,8 @@ class WindNetPL(pl.LightningModule):
             else torch.tensor(0.0, dtype=target.dtype, device=target.device)
         )
 
-        auroc = self.AUROC(predictions, target)
+        auroc = self.AUROC.compute()
+        self.AUROC.update(predictions, target)
 
         self.logger.experiment.add_scalars(
             "clf_metrics_train",
@@ -185,7 +191,9 @@ class WindNetPL(pl.LightningModule):
             else torch.tensor(0.0, dtype=target.dtype, device=target.device)
         )
 
-        auroc = self.AUROC(predictions, target)
+        
+        self.AUROC.update(predictions, target)
+        auroc = self.AUROC.compute()
 
         self.logger.experiment.add_scalars(
             "clf_metrics_val",
@@ -241,7 +249,8 @@ class WindNetPL(pl.LightningModule):
             if ((tp + 0.5 * (fp + fn))) > 0
             else torch.tensor(0.0, dtype=target.dtype, device=target.device)
         )
-        auroc = self.AUROC(predictions, target)
+        self.AUROC.update(predictions, target)
+        auroc = self.AUROC.compute()
         self.log("test_acc_step", acc, prog_bar=True)
         self.log("test_recall_step", rec, prog_bar=True)
         self.log("test_AUROC_step", auroc, prog_bar=True)

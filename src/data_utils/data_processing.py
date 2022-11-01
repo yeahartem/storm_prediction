@@ -51,13 +51,13 @@ def open_dataxarray(path_to_data: str, contains: list = ['2006', 'max']) -> xarr
     '''
     Converts .nc files to xarrays. 29 of February are excluded as in the .nc files.
     '''
-    # path_to_data = os.path.join('..', 'data', 'stash', 'WindProject', 'cmip_stash') 
+    # path_to_data = os.path.join('..', 'data', 'stash', 'WindProject', 'cmip_stash')
     ncs = np.array(sorted(os.listdir(path_to_data)))
     ncs_filtered = [nc for nc in ncs if np.prod([cond in nc for cond in contains])]
 
-    f1 = xarray.load_dataset(os.path.join(path_to_data, ncs_filtered[0]), decode_times=False)  
+    f1 = xarray.load_dataset(os.path.join(path_to_data, ncs_filtered[0]), decode_times=False)
     # Exclude 29 of February from date_range()
-    first_time = pd.date_range(start=pd.to_datetime(ncs_filtered[0][-20:-12]), periods=f1.sizes['time'])  
+    first_time = pd.date_range(start=pd.to_datetime(ncs_filtered[0][-20:-12]), periods=f1.sizes['time'])
     t0 = np.apply_along_axis(check_leap_year, axis=0, arr=first_time)
     years_unique = np.unique(first_time[t0].year)
     second_time = pd.date_range(start=pd.to_datetime(ncs_filtered[0][-20:-12]), periods=f1.sizes['time'] + len(years_unique))
@@ -149,12 +149,14 @@ def get_closest_pixel(dataset: gdal.Dataset, coord: np.ndarray):   # change gdal
   Returns:
       tuple: x, y indices among the dataset
   """
-  coords_dict = get_coords_res(dataset)
-  raster_xsize = dataset.RasterXSize
-  raster_ysize = dataset.RasterYSize
-  x_0, y_0, x_res, y_res = coords_dict['x'], coords_dict['y'], coords_dict['x_res'], coords_dict['y_res']
-  x_coords = np.array(range(raster_xsize)) * x_res + x_0    # x_coords = dataset.lat or lon
-  y_coords = np.array(range(raster_ysize)) * y_res + y_0    # y_coords = lon or lat    DO NOT CHANGE BELOW
+#   coords_dict = get_coords_res(dataset)
+#   raster_xsize = dataset.RasterXSize
+#   raster_ysize = dataset.RasterYSize
+#   x_0, y_0, x_res, y_res = coords_dict['x'], coords_dict['y'], coords_dict['x_res'], coords_dict['y_res']
+#   x_coords = np.array(range(raster_xsize)) * x_res + x_0    # x_coords = dataset.lat or lon
+#   y_coords = np.array(range(raster_ysize)) * y_res + y_0    # y_coords = lon or lat    DO NOT CHANGE BELOW
+  x_coords = dataset.lon
+  y_coords = dataset.lat[::-1]
   R = 6371
   closest = 21212121
   I = 0
