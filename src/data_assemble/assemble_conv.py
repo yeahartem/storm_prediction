@@ -1,14 +1,13 @@
 import grp
 from typing import Dict
-from osgeo import gdal
+
 from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from collections import OrderedDict
 import os
 from src.data_utils import data_processing as dp
-from src.data_utils.data_processing import make_model_dataset
-from imblearn.ensemble import EasyEnsembleClassifier
+
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_curve
@@ -65,16 +64,15 @@ def assemble_numpy_ds(
                             [X_i[X_i_idx] for idx in range(X_i[-1].shape[0])]
                         ).squeeze()  # repeating elevation
 
-                inters = y_i.index.intersection(X_i[0].time.data) # !!!!!!!!!! Accidentally may be elevation        
-
-                X_i[0] = X_i[0].loc[inters]     
-
-                # X_i = np.stack(X_i, axis=1)
                 X_i = xarray.concat(X_i, "channels").transpose('time', 'channels', 'lat', 'lon')
 
+                inters = y_i.index.intersection(X_i.time.data) # !!!!!!!!!! Accidentally may be elevation        
+
+                X_i = X_i.loc[inters]     
+                
                 X[k] = X_i
 
-                y[k] = y_i.loc[inters].values#[:wind_len]
+                y[k] = y_i.loc[inters]#.values#[:wind_len]
     else:
         some_key = list(blocks.keys())[0]
         for curr_pix in blocks[some_key].keys():
@@ -214,6 +212,7 @@ def make_blocks(
     target_res: dict,
     half_side_size: int = 4,
     verbose: bool = False,
+    time_limits: dict = {'t_start': np.datetime64('2005-01-01'), 't_end': np.datetime64('2020-01-01')},
 ) -> OrderedDict:
     """slices blocks from data
 
@@ -234,7 +233,7 @@ def make_blocks(
 
         elif path_of_file.endswith('.nc'):
             path_of_file = path_of_file[:-4]
-            bands = {**bands, **dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict)}
+            bands = {**bands, **dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict, time_limits)}
 
     slices_dict = {k: {} for k in bands.keys()}  # key = center of block
 

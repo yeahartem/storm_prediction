@@ -43,15 +43,16 @@ class WindNet(nn.Module):
 
     def forward(self, X) -> torch.Tensor:
         # print(self.flatten(self.maxpool(self.conv2(self.conv1(X)))).shape)
+        # print(self.flatten(self.conv1(X)).shape)
         output = self.net(X)
         return output
 
 
 class WindNetPL(pl.LightningModule):
-    ## Initialize. Define latent dim, learning rate, and Adam betas
+    
     def __init__(self, args):
         super().__init__()
-        # self.save_hyperparameters()
+        
         self.args = args
         self.net = WindNet(self.args)
 
@@ -73,14 +74,14 @@ class WindNetPL(pl.LightningModule):
 
         self.loss_f = nn.NLLLoss(
             weight=torch.tensor([1.0, self.args["pos_weight"]], dtype=torch.float64)
-        )  # nn.BCELoss(weight=torch.tensor([1.0, self.args["pos_weight"]]))
+        )  
 
     def forward(self, X):
         return self.net(X)
 
     def loss(
         self, y_hat, y
-    ):  # POS WEIGHT CLASS !!! https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
+    ):  
         # return self.loss_f(torch.log(y_hat), y)
         return self.loss_f(y_hat, y)
 
@@ -102,7 +103,7 @@ class WindNetPL(pl.LightningModule):
                 "loss": loss,
                 "progress_bar": tqdm_dict,
                 "log": tqdm_dict,
-                "preds": predictions,
+                "preds": torch.exp(predictions),
                 "target": target,
             }
         )
@@ -111,31 +112,38 @@ class WindNetPL(pl.LightningModule):
     #     auroc = self.AUROC.compute()
     #     print("AUROC = ", auroc)
             
-    def training_step_end(self, outputs):
+    # def training_step_end(self, outputs):
+    def training_epoch_end(self, outputs):
         # update and log
-        predictions = outputs["preds"]
-        target = outputs["target"]
+        # predictions = outputs["preds"]
+        # target = outputs["target"]
+        predictions = torch.cat([o['preds'] for o in outputs])
+        target = torch.cat([o["target"] for o in outputs])
         conf_m = self.conf_matrix(predictions, target)
+        # self.conf_matrix.update(predictions, target)
+        # conf_m = self.conf_matrix.compute()
         tp, fp, fn, tn = conf_m[0, 0], conf_m[0, 1], conf_m[1, 0], conf_m[1, 1]
         acc = (tp + tn) / (conf_m.sum())
         rec = (
             tp / (tp + fp)
             if (tp + fp) > 0
-            else torch.tensor(0.0, dtype=target.dtype, device=target.device)
+            else torch.tensor(0.0, dtype=predictions.dtype, device=target.device)
         )
         prec = (
             tp / (tp + fn)
             if (tp + fn) > 0
-            else torch.tensor(0.0, dtype=target.dtype, device=target.device)
+            else torch.tensor(0.0, dtype=predictions.dtype, device=target.device)
         )
         f1 = (
             tp / (tp + 0.5 * (fp + fn))
             if ((tp + 0.5 * (fp + fn))) > 0
-            else torch.tensor(0.0, dtype=target.dtype, device=target.device)
+            else torch.tensor(0.0, dtype=predictions.dtype, device=target.device)
         )
 
-        auroc = self.AUROC.compute()
-        self.AUROC.update(predictions, target)
+        
+        # self.AUROC.update(predictions, target)
+        # auroc = self.AUROC.compute()
+        auroc = self.AUROC(predictions, target)
 
         self.logger.experiment.add_scalars(
             "clf_metrics_train",
@@ -162,38 +170,44 @@ class WindNetPL(pl.LightningModule):
                 "loss": loss,
                 "progress_bar": tqdm_dict,
                 "log": tqdm_dict,
-                "preds": predictions,
+                "preds": torch.exp(predictions),
                 "target": target,
             }
         )
         return output
 
-    def validation_step_end(self, outputs):
+    # def validation_step_end(self, outputs):
+    def validation_epoch_end(self, outputs):
         # update and log
-        predictions = outputs["preds"]
-        target = outputs["target"]
+        # predictions = outputs["preds"]
+        # target = outputs["target"]
+        predictions = torch.cat([o['preds'] for o in outputs])
+        target = torch.cat([o["target"] for o in outputs])
         conf_m = self.conf_matrix(predictions, target)
+        # self.conf_matrix.update(predictions, target)
+        # conf_m = self.conf_matrix.compute()
         tp, fp, fn, tn = conf_m[0, 0], conf_m[0, 1], conf_m[1, 0], conf_m[1, 1]
         acc = (tp + fp) / (conf_m.sum())
         rec = (
             tp / (tp + fp)
             if (tp + fp) > 0
-            else torch.tensor(0.0, dtype=target.dtype, device=target.device)
+            else torch.tensor(0.0, dtype=predictions.dtype, device=target.device)
         )
         prec = (
             tp / (tp + fn)
             if (tp + fn) > 0
-            else torch.tensor(0.0, dtype=target.dtype, device=target.device)
+            else torch.tensor(0.0, dtype=predictions.dtype, device=target.device)
         )
         f1 = (
             tp / (tp + 0.5 * (fp + fn))
             if ((tp + 0.5 * (fp + fn))) > 0
-            else torch.tensor(0.0, dtype=target.dtype, device=target.device)
+            else torch.tensor(0.0, dtype=predictions.dtype, device=target.device)
         )
 
         
-        self.AUROC.update(predictions, target)
-        auroc = self.AUROC.compute()
+        # self.AUROC.update(predictions, target)
+        # auroc = self.AUROC.compute()
+        auroc = self.AUROC(predictions, target)
 
         self.logger.experiment.add_scalars(
             "clf_metrics_val",
@@ -221,7 +235,7 @@ class WindNetPL(pl.LightningModule):
                 "loss": loss,
                 "progress_bar": tqdm_dict,
                 "log": tqdm_dict,
-                "preds": predictions,
+                "preds": torch.exp(predictions),
                 "target": target,
             }
         )
@@ -231,7 +245,9 @@ class WindNetPL(pl.LightningModule):
         # update and log
         predictions = outputs["preds"]
         target = outputs["target"]
-        conf_m = self.conf_matrix(predictions, target)
+        # conf_m = self.conf_matrix(predictions, target)
+        self.conf_matrix.update(predictions, target)
+        conf_m = self.conf_matrix.compute()
         tp, fp, fn, tn = conf_m[0, 0], conf_m[0, 1], conf_m[1, 0], conf_m[1, 1]
         acc = (tp + fp) / (conf_m.sum())
         rec = (

@@ -43,14 +43,32 @@ class WindDataModule(pl.LightningDataModule):
         self.dl_dict = {"batch_size": self.batch_size}
 
         if downsample:
-            class_sample_count = [
-                len(self.y_train) - sum(self.y_train),
-                sum(self.y_train),
-            ]
-            weights = 1 / torch.Tensor(class_sample_count)
-            self.sampler = torch.utils.data.sampler.WeightedRandomSampler(
-                weights, self.batch_size
-            )
+            # class_sample_count = [
+            #     len(self.y_train) - sum(self.y_train),
+            #     sum(self.y_train),
+            # ]
+            # weights = 1 / torch.Tensor(class_sample_count)
+            # self.sampler = torch.utils.data.sampler.WeightedRandomSampler(
+            #     weights, num_samples=len(self.y_train)
+            # )
+            def make_weights_for_balanced_classes(images, nclasses):
+                n_images = len(images)
+                count_per_class = [0] * nclasses
+                for _, image_class in images:
+                    count_per_class[image_class] += 1
+                weight_per_class = [0.] * nclasses
+                for i in range(nclasses):
+                    weight_per_class[i] = float(n_images) / float(count_per_class[i])
+                weights = [0] * n_images
+                for idx, (image, image_class) in enumerate(images):
+                    weights[idx] = weight_per_class[image_class]
+                return weights
+            weights = make_weights_for_balanced_classes(self.X_train, 2)                                                                
+            weights = torch.tensor(weights, dtype=self.X_train.dtype, device=self.X_train.device)                                       
+            self.sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))                     
+                                                                                            
+            # train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle = True,                              
+            #                                                             sampler = sampler, num_workers=args.workers, pin_memory=True)
         else:
             self.sampler = None
 

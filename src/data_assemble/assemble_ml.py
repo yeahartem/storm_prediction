@@ -1,11 +1,10 @@
-import gdal 
+
 from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import os
 from src.data_utils import data_processing as dp
-from src.data_utils.data_processing import make_model_dataset
-from imblearn.ensemble import EasyEnsembleClassifier
+
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_curve
