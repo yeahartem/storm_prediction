@@ -43,14 +43,6 @@ class WindDataModule(pl.LightningDataModule):
         self.dl_dict = {"batch_size": self.batch_size}
 
         if downsample:
-            # class_sample_count = [
-            #     len(self.y_train) - sum(self.y_train),
-            #     sum(self.y_train),
-            # ]
-            # weights = 1 / torch.Tensor(class_sample_count)
-            # self.sampler = torch.utils.data.sampler.WeightedRandomSampler(
-            #     weights, num_samples=len(self.y_train)
-            # )
             def make_weights_for_balanced_classes(images, nclasses):
                 n_images = len(images)
                 count_per_class = [0] * nclasses
@@ -67,8 +59,6 @@ class WindDataModule(pl.LightningDataModule):
             weights = torch.tensor(weights, dtype=self.X_train.dtype, device=self.X_train.device)                                       
             self.sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))                     
                                                                                             
-            # train_loader = torch.utils.data.DataLoader(dataset_train, batch_size=args.batch_size, shuffle = True,                              
-            #                                                             sampler = sampler, num_workers=args.workers, pin_memory=True)
         else:
             self.sampler = None
 
@@ -76,18 +66,6 @@ class WindDataModule(pl.LightningDataModule):
         if type(self.y_train) == torch.Tensor and len(self.y_train.shape) == 2:
             pass
         else:
-            # self.y_train = torch.tensor(
-            #     [[0, 1] if v else [1, 0] for v in self.y_train],
-            #     dtype=torch.long,
-            # )
-            # self.y_val = torch.tensor(
-            #     [[0, 1] if v else [1, 0] for v in self.y_val],
-            #     dtype=torch.long,
-            # )
-            # self.y_test = torch.tensor(
-            #     [[0, 1] if v else [1, 0] for v in self.y_test],
-            #     dtype=torch.long,
-            # )
             self.y_train = torch.tensor(self.y_train, dtype=torch.long)
             self.y_val = torch.tensor(self.y_val, dtype=torch.long)
             self.y_test = torch.tensor(self.y_test, dtype=torch.long)
@@ -171,13 +149,11 @@ def extract_splitted_data(path_to_dump: str, st_split_dict: dict, return_xarray:
             st_dir = os.path.join(path_to_dump, st)
             with open(os.path.join(st_dir, "objects.npy"), "rb") as f:
                 X_ = pickle.load(f)
-                # X_ = np.load(f)
 
             X_split.append(X_)
             try:
                 with open(os.path.join(st_dir, "target.npy"), "rb") as f:
                     y_ = pickle.load(f)
-                    # y_ = np.load(f)
                 y_split.append(y_)
             except FileNotFoundError:
                 y_split.append([])
@@ -368,10 +344,7 @@ def map_to_pandas(grid, x_axis, y_axis, t_axis, start_date, day_interval=1):
 
 
 def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=None, text=None, show=True, vmin=None, vmax=None):
-    # lons = df_year.lon.unique()
-    # dx = (lons[1] - lons[0]) / 2
-    # lats = df_year.lat.unique()
-    # dy = (lats[1] - lats[0]) / 2
+    
     dx, dy = .25, .25
     geometry = [Polygon([(x-dx, y-dy),
                          (x+dx, y-dy),

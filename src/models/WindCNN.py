@@ -179,13 +179,11 @@ class WindNetPL(pl.LightningModule):
     # def validation_step_end(self, outputs):
     def validation_epoch_end(self, outputs):
         # update and log
-        # predictions = outputs["preds"]
-        # target = outputs["target"]
+        
         predictions = torch.cat([o['preds'] for o in outputs])
         target = torch.cat([o["target"] for o in outputs])
         conf_m = self.conf_matrix(predictions, target)
-        # self.conf_matrix.update(predictions, target)
-        # conf_m = self.conf_matrix.compute()
+        
         tp, fp, fn, tn = conf_m[0, 0], conf_m[0, 1], conf_m[1, 0], conf_m[1, 1]
         acc = (tp + fp) / (conf_m.sum())
         rec = (
@@ -205,8 +203,6 @@ class WindNetPL(pl.LightningModule):
         )
 
         
-        # self.AUROC.update(predictions, target)
-        # auroc = self.AUROC.compute()
         auroc = self.AUROC(predictions, target)
 
         self.logger.experiment.add_scalars(
@@ -245,7 +241,6 @@ class WindNetPL(pl.LightningModule):
         # update and log
         predictions = outputs["preds"]
         target = outputs["target"]
-        # conf_m = self.conf_matrix(predictions, target)
         self.conf_matrix.update(predictions, target)
         conf_m = self.conf_matrix.compute()
         tp, fp, fn, tn = conf_m[0, 0], conf_m[0, 1], conf_m[1, 0], conf_m[1, 1]
