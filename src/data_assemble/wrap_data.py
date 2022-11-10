@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 from torchvision import transforms
 from torch.utils.data import TensorDataset, DataLoader
 import torch
+from tqdm import tqdm
 
 import geopandas as gpd
 from shapely.geometry import Point, Polygon, box, LineString
@@ -42,14 +43,22 @@ class WindDataModule(pl.LightningDataModule):
         self.dl_dict = {"batch_size": self.batch_size}
 
         if downsample:
-            class_sample_count = [
-                len(self.y_train) - sum(self.y_train),
-                sum(self.y_train),
-            ]
-            weights = 1 / torch.Tensor(class_sample_count)
-            self.sampler = torch.utils.data.sampler.WeightedRandomSampler(
-                weights, self.batch_size
-            )
+            def make_weights_for_balanced_classes(images, nclasses):
+                n_images = len(images)
+                count_per_class = [0] * nclasses
+                for _, image_class in images:
+                    count_per_class[image_class] += 1
+                weight_per_class = [0.] * nclasses
+                for i in range(nclasses):
+                    weight_per_class[i] = float(n_images) / float(count_per_class[i])
+                weights = [0] * n_images
+                for idx, (image, image_class) in enumerate(images):
+                    weights[idx] = weight_per_class[image_class]
+                return weights
+            weights = make_weights_for_balanced_classes(self.X_train, 2)                                                                
+            weights = torch.tensor(weights, dtype=self.X_train.dtype, device=self.X_train.device)                                       
+            self.sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))                     
+                                                                                            
         else:
             self.sampler = None
 
@@ -57,18 +66,6 @@ class WindDataModule(pl.LightningDataModule):
         if type(self.y_train) == torch.Tensor and len(self.y_train.shape) == 2:
             pass
         else:
-            # self.y_train = torch.tensor(
-            #     [[0, 1] if v else [1, 0] for v in self.y_train],
-            #     dtype=torch.long,
-            # )
-            # self.y_val = torch.tensor(
-            #     [[0, 1] if v else [1, 0] for v in self.y_val],
-            #     dtype=torch.long,
-            # )
-            # self.y_test = torch.tensor(
-            #     [[0, 1] if v else [1, 0] for v in self.y_test],
-            #     dtype=torch.long,
-            # )
             self.y_train = torch.tensor(self.y_train, dtype=torch.long)
             self.y_val = torch.tensor(self.y_val, dtype=torch.long)
             self.y_test = torch.tensor(self.y_test, dtype=torch.long)
@@ -133,7 +130,7 @@ def train_val_test_split(
     return st_split_dict
 
 
-def extract_splitted_data(path_to_dump: str, st_split_dict: dict) -> tuple:
+def extract_splitted_data(path_to_dump: str, st_split_dict: dict, return_xarray: bool = False) -> tuple:
     """extracts X, y, splitted into train, val, test
 
     Args:
@@ -151,19 +148,19 @@ def extract_splitted_data(path_to_dump: str, st_split_dict: dict) -> tuple:
         for st in sts:
             st_dir = os.path.join(path_to_dump, st)
             with open(os.path.join(st_dir, "objects.npy"), "rb") as f:
-                # X_ = pickle.load(f)
-                X_ = np.load(f)
+                X_ = pickle.load(f)
 
             X_split.append(X_)
             try:
                 with open(os.path.join(st_dir, "target.npy"), "rb") as f:
-                    # y_ = pickle.load(f)
-                    y_ = np.load(f)
+                    y_ = pickle.load(f)
                 y_split.append(y_)
             except FileNotFoundError:
                 y_split.append([])
-
-        X[split_part] = np.concatenate(X_split)
+        if return_xarray:
+            X[split_part] = X_split
+        else:
+            X[split_part] = np.concatenate(X_split)
         y[split_part] = np.concatenate(y_split)
     return X, y
 
@@ -331,15 +328,15 @@ def ewma_vectorized_2d(data, alpha, axis=None, offset=None, dtype=None, order='C
     return out
 
 
-def map_to_pandas(grid, x_axis, y_axis, start_date, day_interval=1):
+def map_to_pandas(grid, x_axis, y_axis, t_axis, start_date, day_interval=1):
     df = pd.DataFrame(np.zeros((len(list(range(grid.shape[0]))[::day_interval])*grid[0,3:-3,3:-3].shape[0]*grid[0,3:-3,3:-3].shape[1],4)))
     df.rename(columns={0:'date', 1:'lon', 2:'lat', 3:'value'}, inplace=True)
     k=0
-    for t in list(range(grid.shape[0]))[::day_interval]:
+    for t in tqdm(list(range(grid.shape[0]))[::day_interval]):
         for i in range(3,grid[t,:,:].shape[0]-3):
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],0]=str(start_date + pd.DateOffset(1) * t)
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],1]=x_axis[3:-3]
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],2]=y_axis[i] 
+            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],0]=t_axis[t] #str(start_date + pd.DateOffset(1) * t)
+            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],1]=x_axis[:]
+            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],2]=y_axis[i-3] 
             df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],3]=grid[t,i,3:-3]
             k+=grid[t,3:-3,3:-3].shape[1]
     df=df.reset_index()
@@ -347,10 +344,7 @@ def map_to_pandas(grid, x_axis, y_axis, start_date, day_interval=1):
 
 
 def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=None, text=None, show=True, vmin=None, vmax=None):
-    # lons = df_year.lon.unique()
-    # dx = (lons[1] - lons[0]) / 2
-    # lats = df_year.lat.unique()
-    # dy = (lats[1] - lats[0]) / 2
+    
     dx, dy = .25, .25
     geometry = [Polygon([(x-dx, y-dy),
                          (x+dx, y-dy),
@@ -360,12 +354,22 @@ def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=No
     geodf = gpd.GeoDataFrame(df_year, crs = 4326, geometry=geometry)
     
     
-    polygon = box(23, 40, 45, 50)
+    polygon = box(-180, 23, 180, 90)
 
     
     world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
     world = gpd.clip(world, polygon)
     
+    if part_world_to_plot == 'Florida':
+        Fl_polygon = box(-92, 22, -75, 34)
+        world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+        world = gpd.clip(world, Fl_polygon)
+        basemap = world
+    if part_world_to_plot == 'KK_Belg_Rost':
+        Fl_polygon = box(23, 40, 46, 53)
+        world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
+        world = gpd.clip(world, Fl_polygon)
+        basemap = world
     if part_world_to_plot == 'KK':
         KK_polygon = box(23, 40, 45, 50)
         world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))

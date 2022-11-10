@@ -1,19 +1,19 @@
 import grp
 from typing import Dict
-from osgeo import gdal
+
 from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from collections import OrderedDict
 import os
 from src.data_utils import data_processing as dp
-from src.data_utils.data_processing import make_model_dataset
-from imblearn.ensemble import EasyEnsembleClassifier
+
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_curve
 import random
 import pandas as pd
+import xarray
 
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import GridSearchCV
@@ -23,8 +23,6 @@ import warnings
 import pickle
 
 warnings.filterwarnings("ignore")
-
-# def wrap_torch_datset(X, y, device):
 
 
 def assemble_numpy_ds(
@@ -45,7 +43,7 @@ def assemble_numpy_ds(
     """
     X = {}
     y = {}
-    wind_len = blocks["wind"][list(blocks["wind"].keys())[0]].shape[0]
+    
     if include_target:
         for k in tqdm(target.keys()):
             X_i = []
@@ -53,21 +51,25 @@ def assemble_numpy_ds(
                 curr_pix = stations_pixs[k.casefold()]
                 if curr_pix in blocks[fn].keys():
                     X_i.append(blocks[fn][curr_pix])
-
             if len(X_i) > 0:
                 y_i = target[k]
+
                 
-                X_i = [x[:wind_len, :, :] for x in X_i]
                 for X_i_idx in range(len(X_i)):
                     if X_i[X_i_idx].shape[0] == 1:
                         X_i[X_i_idx] = np.array(
                             [X_i[X_i_idx] for idx in range(X_i[-1].shape[0])]
                         ).squeeze()  # repeating elevation
-                X_i = np.stack(X_i, axis=1)
+
+                X_i = xarray.concat(X_i, "channels").transpose('time', 'channels', 'lat', 'lon')
+
+                inters = y_i.index.intersection(X_i.time.data) # !!!!!!!!!! Accidentally may be elevation        
+
+                X_i = X_i.loc[inters]     
                 
                 X[k] = X_i
 
-                y[k] = y_i[:wind_len]
+                y[k] = y_i.loc[inters]
     else:
         some_key = list(blocks.keys())[0]
         for curr_pix in blocks[some_key].keys():
@@ -77,18 +79,15 @@ def assemble_numpy_ds(
                 X_i.append(blocks[fn][curr_pix])
                 
             if len(X_i) > 0:
-
-                
-                X_i = [x[:wind_len, :, :] for x in X_i]
                 for X_i_idx in range(len(X_i)):
                     if X_i[X_i_idx].shape[0] == 1:
                         X_i[X_i_idx] = np.array(
                             [X_i[X_i_idx] for idx in range(X_i[-1].shape[0])]
                         ).squeeze()  # repeating elevation
-                X_i = np.stack(X_i, axis=1)
+                
+                X_i = xarray.concat(X_i, "channels").transpose('time', 'channels', 'lat', 'lon')
                 
                 X[curr_pix] = X_i
-
 
     if include_target:
         return (X, y)
@@ -100,6 +99,7 @@ def get_y(
     df: pd.DataFrame,
     start: str,
     end: str,
+    station_name_list: list,
     speed_th: float = 20.0,
     station_name: str = None,
 ) -> dict:
@@ -120,6 +120,10 @@ def get_y(
     df_start_end = df.loc[
         (df["Дата"] >= pd.to_datetime(start)) & (df["Дата"] <= pd.to_datetime(end))
     ]
+    
+    df_start_end.set_index('Дата', inplace=True)
+    df_start_end = df_start_end.loc[df_start_end["Название метеостанции"].isin(station_name_list)]
+    
     df_start_end = df_start_end[
         ["Название метеостанции", "Максимальная скорость", "Средняя скорость ветра"]
     ]
@@ -139,7 +143,7 @@ def get_y(
             station_name in grpb.groups.keys()
         ), "No such station found. Available: " + "; ".join(list(grpb.groups.keys()))
 
-        y = {station_name: grpb.get_group(station_name).y.values}
+        y = {station_name: grpb.get_group(station_name).y} # Should be Applied groupby as below
     else:
         grpb = df_start_end.groupby(df_start_end["Название метеостанции"])
         ks = grpb.groups.keys()
@@ -147,7 +151,7 @@ def get_y(
         y = {
             k: df_start_end.groupby(df_start_end["Название метеостанции"])
             .get_group(k)
-            .y.values
+            .y.groupby(df_start_end.groupby(df_start_end["Название метеостанции"]).get_group(k).y.index).max() #Group 8 days in 1
             for k in ks
         }
 
@@ -155,77 +159,75 @@ def get_y(
 
 
 def get_pixel_stations(
-    path_to_tifs: list,
-    feature_names: list,
+    path_to_files: str,
+    filter_dict: dict,
     station_names: list,
     station_list: pd.DataFrame,
+    rectangle_coords: dict,
+    target_res: dict
 ) -> dict:
     """maps stations to the pixels in .tifs
 
     Args:
         path_to_tifs (list): path to tif files to get sample dataset - for shape
-        feature_names (list): feature names - to get sample dataset
+        feature_names (list): feature names - to get sample dataset    = {"year": ['2006'], "band": ['max']}
         station_names (list): list of station names
         station_list (pd.DataFrame): pandas table with information about stations
 
     Returns:
         dict: {station_name: (pixel coords)}
     """
+    if path_to_files.endswith('.tif'): 
+        raise NotImplementedError('.tif files are not implemented yet, it will be done later. Please use .nc files.')
 
-    file_paths = [
-        path_to_tifs[:-5] + "/" + fn
-        for fn in os.listdir(path_to_tifs[:-5])
-        if (fn[-4:] == ".tif") and feature_names[0] in fn
-    ]
-    dataset = gdal.Open(file_paths[0], gdal.GA_ReadOnly)
+    elif path_to_files.endswith('.nc'):
+        file_paths = path_to_files[:-4]
+        dataset = dp.get_xarrays(file_paths, rectangle_coords, target_res, filter_dict)
+    
     stations_pixs = {}
     for station_name in station_names:
 
         pix = dp.closest_pixel_for_station(
-            station_name=station_name, dataset=dataset, station_list=station_list
+            station_name=station_name, dataset=dataset[filter_dict['bands'][0]], station_list=station_list
         )
         stations_pixs[station_name.casefold()] = pix
     return stations_pixs
 
 
 def make_blocks(
-    feature_names_list: list,
-    path_to_tifs_list: str,
+    path_to_files: str,
+    filter_dict: dict,
+    rectangle_coords: dict,
+    target_res: dict,
     half_side_size: int = 4,
-    cmip: np.ndarray = None,
     verbose: bool = False,
-    dset_num: int = 0,
+    time_limits: dict = {'t_start': np.datetime64('2005-01-01'), 't_end': np.datetime64('2020-01-01')},
 ) -> OrderedDict:
-    """slices blocks from .tif data
+    """slices blocks from data
 
     Args:
-        feature_names (list): list of feature names in .tif files' names, [[`folder_i_features`] for i folder num]
-        path_to_tifs (str): path to .tif files [path_to_tifs_i for i in folder num]
-        half_side_size (int, optional): square block half size. Defaults to 4.
-        verbose (bool, optional): if to print progress. Defaults to False.
-        dset_num (int, optional): number of .tif file to pick from `path_to_tifs` if several present. Defaults to 0.
+        path_to_files - path to all files: ['../data/elev/*.tif', '../data/stash/WindProject/cmip_stash/*.nc'],
+        filter_dict - things which should be included into the titles of files: {"years": ['2006', '2026'], "bands": ['max', 'Wind_']}
+        rectangle_coords - border coordinates of the chosen territory: {'lat_min': 41.12, 'lat_max': 81.49,'lon_min': 19.38, 'lon_max': 169.40},
+        target_res - {'lon_res': 0.25, 'lat_res': 0.25},
+        half_side_size (int, optional) - square block half size. Defaults to 4.
 
     Returns:
         dict: {`block center pixel`: surrounding 3d tensor}
     """
-    print("Reading from .tifs")
-    nps = {}
-    for feature_names, path_to_tifs in zip(feature_names_list, path_to_tifs_list):
-        nps = {**nps, **dp.get_nps(feature_names, path_to_tifs, verbose, dset_num=0)}
-    print(".tifs has been read")
+    bands = {}
+    for path_of_file in path_to_files:
+        if path_of_file.endswith('.tif'):
+            bands = {**bands, **dp.get_nps(['elevation'], path_of_file, verbose, dset_num=0)}
 
-    slices_dict = {k: {} for k in nps.keys()}  # key = center of block
-    if cmip is not None:
-        slices_dict["wind"] = {}
-        for i in range(half_side_size, cmip.shape[1] - half_side_size):
-            for j in range(half_side_size, cmip.shape[2] - half_side_size):
-                slices_dict["wind"][(i, j)] = cmip[
-                    :,
-                    i - half_side_size : i + half_side_size,
-                    j - half_side_size : j + half_side_size,
-                ]
-    for k in tqdm(nps.keys()):
-        np_ = nps[k]
+        elif path_of_file.endswith('.nc'):
+            path_of_file = path_of_file[:-4]
+            bands = {**bands, **dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict, time_limits)}
+
+    slices_dict = {k: {} for k in bands.keys()}  # key = center of block
+
+    for k in tqdm(bands.keys()):
+        np_ = bands[k]
         for i in range(half_side_size, np_.shape[1] - half_side_size):
             for j in range(half_side_size, np_.shape[2] - half_side_size):
                 slices_dict[k][(i, j)] = np_[
@@ -235,3 +237,5 @@ def make_blocks(
                 ]
     slices_dict = OrderedDict(sorted(slices_dict.items()))
     return slices_dict
+
+

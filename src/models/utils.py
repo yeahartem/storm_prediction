@@ -1,17 +1,15 @@
-from osgeo import gdal
+
 from matplotlib import pyplot as plt
 import numpy as np
-from tqdm import tqdm
-import os
-from src.data_utils import data_processing as dp
-from src.data_utils.data_processing import make_model_dataset
-from imblearn.ensemble import EasyEnsembleClassifier
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
+
+
+
+
+
+
 from sklearn.metrics import roc_curve
 import random
-from sklearn.model_selection import GridSearchCV
-from sklearn.preprocessing import normalize
+
 from sklearn.metrics import roc_curve, auc, roc_auc_score, confusion_matrix
 import warnings
 import pickle
@@ -24,8 +22,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.metrics import f1_score
-import xgboost as xgb
-from sklearn.preprocessing import OneHotEncoder
+
 
 def metrics(model, X_test, y_test, plot_roc=False):
   # y_pred = model.predict(X_test)
