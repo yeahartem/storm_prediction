@@ -1,6 +1,6 @@
 import numpy as np
 import sys
-sys.path.append('/home/s.lukashevich/Wind/')
+sys.path.append('..')
 import os
 import torch
 import time
@@ -59,7 +59,7 @@ def infer(path_to_config="infer_conf.json"):
 
     X_init, y_init = extract_splitted_data(path_to_training_data, st_split_dict)
 
-
+    # Save X_init, y_init, X to pickle. Then download them here and delete everything above
     logger = TensorBoardLogger(save_dir='../logs/wind', name='windnet')
 
     dm = WindDataModule(X=X_init, y=y_init, batch_size=batch_size, downsample=False)
@@ -132,7 +132,7 @@ def infer(path_to_config="infer_conf.json"):
 if __name__ == "__main__":
     # assert len(sys.argv) > 1, "Provide path to config file"
     if len(sys.argv) == 1:
-        sys.argv.append('/home/s.lukashevich/Wind/pipeline/infer_conf.json')
+        sys.argv.append('../pipeline/infer_conf.json')
     path_to_config = sys.argv[1]
     t1 = time.time()
     infer(path_to_config=path_to_config)
