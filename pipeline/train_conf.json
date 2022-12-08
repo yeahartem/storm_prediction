@@ -1,10 +1,11 @@
 {
-    "path_to_files": "/home/s.lukashevich/Wind/data/CMIP/*.nc",
-    "path_to_save": "/home/s.lukashevich/Wind/data/nn_train",
+    "path_to_files": "/workspace/data/cmip_stash/*.nc",
+    "path_to_save_train": "/workspace/data/nn_train",
+    "path_to_save_test": "/workspace/data/nn_test",
     "half_side_size": 3,
-    "if_generate_dataset": 0,
-    "path_to_weather_stations": "/home/s.lukashevich/Wind/data/weather_stations/data_meteo_full.csv",
-    "path_to_weather_stations_list": "/home/s.lukashevich/Wind/data/weather_stations/weatherstation_list.csv",
+    "if_generate_dataset": 1,
+    "path_to_weather_stations": "/workspace/data/weather_stations/data_meteo_full.csv",
+    "path_to_weather_stations_list": "/workspace/data/weather_stations/weatherstation_list.csv",
     "station_names": [
         "Богородицкое-Фенино",
         "Готня",
@@ -45,15 +46,18 @@
         ]
     },
     "time_limits": {
-        "t_start": "2022-11-05",
-        "t_end": "2022-11-14"
+        "t_start": "2006-01-01",
+        "t_end": "2020-12-31"
+    },
+    "start_of_test": {
+        "t_split": "2016-01-01"
     },
     "nn_init_data": {
-        "nn_config_path": "/home/s.lukashevich/Wind/conf/conv_config.json",
+        "nn_config_path": "/workspace/conf/conv_config.json",
         "batch_size": 1024,
         "speed_th": 20
     },
     "nn_training_data": {
-        "max_epoch": 5
+        "max_epoch": 50
     }
 }
