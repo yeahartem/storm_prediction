@@ -1,6 +1,6 @@
 import numpy as np
 import sys
-sys.path.append('../')
+sys.path.append('/home/s.lukashevich/Wind/')
 import os
 import torch
 import time
@@ -41,7 +41,7 @@ def infer(path_to_config="infer_conf.json"):
     
 
     print("Preparing blocks")
-    blocks = make_blocks(path_to_files, filter_dict, rectangle_coords, target_res, half_side_size=half_side_size, time_limits=time_limits)
+    blocks = make_blocks([path_to_files], filter_dict, rectangle_coords, target_res, half_side_size=half_side_size, time_limits=time_limits)
     print("Preparing blocks - done")
 
     print("Assembling dataset for inference")
@@ -82,25 +82,16 @@ def infer(path_to_config="infer_conf.json"):
     time_axis = curr_X.time.data
     lat_axis = np.sort(np.unique(np.array(lat_axis)))
     lon_axis = np.sort(np.unique(np.array(lon_axis)))
-#     inference_xarray = xr.DataArray.from_dict({"coords": 
-#                                                     {
-#                                                     "lon":  {"dims": "lon", "data": lon_axis},
-#                                                     "lat":  {"dims": "lat", "data": lat_axis}, 
-#                                                     "time": {"dims": "time", "data": time_axis}
-#                                                     },
+    inference_xarray = xr.DataArray.from_dict({"coords": 
+                                                    {
+                                                    "lon":  {"dims": "lon", "data": lon_axis},
+                                                    "lat":  {"dims": "lat", "data": lat_axis}, 
+                                                    "time": {"dims": "time", "data": time_axis}
+                                                    },
 
-#                                             "data": np.ones((len(lon_axis), len(lat_axis), len(time_axis))),
-#                                             "attrs": curr_X.attrs})
-    inference_xarray = xr.DataArray(
-                                    data=np.ones((len(lon_axis), len(lat_axis), len(time_axis))),
-                                    dims=["lon", "lat", "time"],
-                                    coords=dict(
-                                                lon=(["lon"], lon_axis),
-                                                lat=(["lat"], lat_axis),
-                                                time=(["time"], time_axis)
-                                                ),
-                                    attrs=curr_X.attrs
-                                    )
+                                            "data": np.ones((len(lon_axis), len(lat_axis), len(time_axis))),
+                                            "attrs": curr_X.attrs})
+
 
     for pix_idx, curr_X in tqdm(X.items()):
         curr_lat  = curr_X.lat[half_side_size-1].data
@@ -141,7 +132,7 @@ def infer(path_to_config="infer_conf.json"):
 if __name__ == "__main__":
     # assert len(sys.argv) > 1, "Provide path to config file"
     if len(sys.argv) == 1:
-        sys.argv.append('infer_conf.json')
+        sys.argv.append('/home/s.lukashevich/Wind/pipeline/infer_conf.json')
     path_to_config = sys.argv[1]
     t1 = time.time()
     infer(path_to_config=path_to_config)
