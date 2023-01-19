@@ -1,10 +1,10 @@
 {
-    "path_to_files": ["../../../data/cmip_stash/elevation/elevation.nc", "../../../data/cmip_stash/*.nc"],
-    "path_to_save": "data/nn_train",
+    "path_to_files": "/home/s.lukashevich/Wind/data/CMIP/*.nc",
+    "path_to_save": "/home/s.lukashevich/Wind/data/nn_train",
     "half_side_size": 3,
-    "if_generate_dataset": 1,
-    "path_to_weather_stations": "../../../data/weather_stations/data_meteo_full.csv",
-    "path_to_weather_stations_list": "../../../data/weather_stations/weatherstation_list.csv",
+    "if_generate_dataset": 0,
+    "path_to_weather_stations": "/home/s.lukashevich/Wind/data/weather_stations/data_meteo_full.csv",
+    "path_to_weather_stations_list": "/home/s.lukashevich/Wind/data/weather_stations/weatherstation_list.csv",
     "station_names": [
         "Богородицкое-Фенино",
         "Готня",
@@ -39,15 +39,17 @@
         ],
         "bands": [
             "Wind_",
-            "elevation"
+            "pr_",
+            "tasmax",
+            "tasmin"
         ]
     },
     "time_limits": {
-        "t_start": "2006-11-05",
-        "t_end": "2016-11-14"
+        "t_start": "2022-11-05",
+        "t_end": "2022-11-14"
     },
     "nn_init_data": {
-        "nn_config_path": "../conf/conv_config.json",
+        "nn_config_path": "/home/s.lukashevich/Wind/conf/conv_config.json",
         "batch_size": 1024,
         "speed_th": 20
     },
