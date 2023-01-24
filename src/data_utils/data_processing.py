@@ -151,8 +151,7 @@ def interp_timewise(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: 
 
 def res_incr(X_elev, Y_elev, X_cmip, Y_cmip,
              elev_data, etalon_data, etalon,
-             func_list=[np.mean, np.max, np.min, np.std],
-             name_list=['mean', 'max', 'min', 'std']):
+             func_list=[np.mean, np.max, np.min, np.std]):
     data = []
     for func in func_list:
         x=0 
@@ -175,8 +174,8 @@ def res_incr(X_elev, Y_elev, X_cmip, Y_cmip,
                 i_start = 0
         etalon.data = etalon_data
         data.append(etalon)   
-        # print(etalon)
-    # xarray_refined = xarray.DataArray(data, dims=["agregation", "lat", "lon"], coords=[name_list, etalon.lat.data, etalon.lon.data])
+    
+    name_list = ['elev_' + f.__name__ for f in func_list]
     xarray_refined = xarray.concat(data, pd.Index(name_list, name='agregation'))
     
     return xarray_refined
