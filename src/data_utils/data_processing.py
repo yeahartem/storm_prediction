@@ -17,7 +17,11 @@ import xarray
 # from geopy.distance import geodesic
 from math import sin, cos, sqrt, atan2, radians
 
-def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict, contains: dict = {"years": ['2006'], "bands": ['max']}, time_limits: dict = {'t_start': np.datetime64('2005-01-01'), 't_end': np.datetime64('2020-01-01')}) -> dict:
+def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
+                contains: dict = {"years": ['2006'], "bands": ['max', 'elevation']},
+                time_limits: dict = {'t_start': np.datetime64('2005-01-01'), 't_end': np.datetime64('2020-01-01')},
+                cmip_xarray: xarray.DataArray = None) -> dict:
+
     '''
     Returns reduced to rectangle_coords xarrays.
 
@@ -37,16 +41,34 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict, con
 
     xarrays = {}
     for band in contains["bands"]:
-        band_year = []
-        for year in contains["years"]:
-            f1_xarray = open_dataxarray(path_to_data, [year, band])
-            f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max) 
-            f1_xarray_refined = interp_timewise_xarray(f1_xarray, lon_res=lon_res, lat_res=lat_res, interp_method = 'linear', plot_example = False)
-            band_year.append(f1_xarray_refined)
-        band_year = xarray.concat(band_year, dim="time") # stack xarrays on time axis
-        
-        band_year = band_year.sel(time=slice(t_start, t_end))
-        xarrays[band] = band_year
+        if band == 'elevation':
+            f1_xarray = open_dataxarray(path_to_data, [contains["years"][0], band])
+            f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
+            f1_xarray_refined = res_incr(X_elev=f1_xarray.lon.data, Y_elev=f1_xarray.lat.data, 
+                                         X_cmip=cmip_xarray.lon.data, Y_cmip=cmip_xarray.lat.data,
+                                         elev_data=f1_xarray.data,
+                                         etalon_data=np.zeros(cmip_xarray[0,:,:].data.shape),
+                                         etalon = cmip_xarray[0,:,:].copy())
+            for num, agr in enumerate(f1_xarray_refined.agregation.data):
+                etalon = cmip_xarray[0,:,:].copy()
+                etalon.data = f1_xarray_refined.data[num]
+                xarrays[agr] = etalon
+        else:
+            band_year = []
+            for year in contains["years"]:
+                print(band, year)
+                f1_xarray = open_dataxarray(path_to_data, [year, band])
+                f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
+                f1_xarray_refined = interp_timewise_xarray(f1_xarray, lon_res=lon_res,
+                                                              lat_res=lat_res, interp_method = 'linear',
+                                                              plot_example = False)
+                band_year.append(f1_xarray_refined)
+            band_year = xarray.concat(band_year, dim="time") # stack xarrays on time axis
+
+
+            band_year = band_year.sel(time=slice(t_start, t_end))
+            xarrays[band] = band_year
+
     return xarrays
 
 
@@ -70,6 +92,7 @@ def open_dataxarray(path_to_data: str, contains: list = ['2006', 'max']) -> xarr
     f1_xarray = f1.to_array()
     # assert bool(np.prod([str(y) + '-02-29' in f1_xarray.time.loc[t0].data.astype('datetime64[D]').astype('str') for y in years_unique])), "no 29 feb on leap years"
     return f1_xarray
+
 
 
 def reduce_to_area(data_arr: xarray.DataArray, lat_min: float = 41.12, lat_max: float = 81.49, lon_min: float = 19.38, lon_max: float = 169.40) -> xarray.DataArray:
@@ -110,6 +133,38 @@ def interp_timewise(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: 
             plt.show()
     output = np.stack(znews)
     return (output, xnew, ynew)
+
+
+def res_incr(X_elev, Y_elev, X_cmip, Y_cmip,
+             elev_data, etalon_data, etalon,
+             func_list=[np.mean, np.max, np.min, np.std]):
+    data = []
+    for func in func_list:
+        x=0 
+        y=0
+        k_start = 0
+        i_start = 0
+        for k in range(len(Y_elev)):
+            if y<len(Y_cmip) and Y_elev[k] > Y_cmip[y]:
+                k_end = k
+                for i in range(len(X_elev)):
+                    if x<len(X_cmip) and X_elev[i] > X_cmip[x] and i>0:
+                        i_end = i
+                        val = func(elev_data[k_start:k_end, i_start:i_end])
+                        etalon_data[y,x] = val
+                        x += 1
+                        i_start = i
+                x=0
+                y+=1
+                k_start = k
+                i_start = 0
+        etalon.data = etalon_data
+        data.append(etalon)   
+    
+    name_list = ['elev_' + f.__name__ for f in func_list]
+    xarray_refined = xarray.concat(data, pd.Index(name_list, name='agregation'))
+    
+    return xarray_refined
 
 
 def interp_timewise_xarray(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: float = 0.25, interp_method: str = 'linear', plot_example: bool =False) -> xarray.DataArray:

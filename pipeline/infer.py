@@ -82,15 +82,17 @@ def infer(path_to_config="infer_conf.json"):
     time_axis = curr_X.time.data
     lat_axis = np.sort(np.unique(np.array(lat_axis)))
     lon_axis = np.sort(np.unique(np.array(lon_axis)))
-    inference_xarray = xr.DataArray.from_dict({"coords": 
-                                                    {
-                                                    "lon":  {"dims": "lon", "data": lon_axis},
-                                                    "lat":  {"dims": "lat", "data": lat_axis}, 
-                                                    "time": {"dims": "time", "data": time_axis}
-                                                    },
 
-                                            "data": np.ones((len(lon_axis), len(lat_axis), len(time_axis))),
-                                            "attrs": curr_X.attrs})
+    inference_xarray = xr.DataArray(
+                                    data=np.ones((len(lon_axis), len(lat_axis), len(time_axis))),
+                                    dims=["lon", "lat", "time"],
+                                    coords=dict(
+                                                lon=(["lon"], lon_axis),
+                                                lat=(["lat"], lat_axis),
+                                                time=(["time"], time_axis)
+                                                ),
+                                    attrs=curr_X.attrs
+                                    )
 
 
     for pix_idx, curr_X in tqdm(X.items()):
