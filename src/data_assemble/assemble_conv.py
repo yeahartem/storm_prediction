@@ -23,8 +23,7 @@ import warnings
 import pickle
 
 warnings.filterwarnings("ignore")
-    
-    
+
 def assemble_numpy_ds(
     blocks: OrderedDict, target: dict, stations_pixs: dict, include_target: bool = True
 ) -> tuple:
@@ -53,7 +52,8 @@ def assemble_numpy_ds(
                     X_i.append(blocks[fn][curr_pix])
             if len(X_i) > 0:
                 y_i = target[k]
-                X_i.sort(key=lambda x: x.shape[0])
+
+                
                 for X_i_idx in range(len(X_i)):
                     if len(X_i[X_i_idx].shape) == 2:
                         X_i[X_i_idx] = xarray.concat([X_i[X_i_idx] for _ in range(X_i[-1].shape[0])], 'time')  # repeating elevation
@@ -64,7 +64,7 @@ def assemble_numpy_ds(
                 inters = y_i.index.intersection(X_i.time.data) # !!!!!!!!!! Accidentally may be elevation        
 
                 X_i = X_i.loc[inters]     
-
+                
                 X[k] = X_i
 
                 y[k] = y_i.loc[inters]
@@ -73,15 +73,16 @@ def assemble_numpy_ds(
         for curr_pix in blocks[some_key].keys():
             X_i = []
             for fn in blocks.keys():
-
+                
                 X_i.append(blocks[fn][curr_pix])
                 
             if len(X_i) > 0:
-                X_i.sort(key=lambda x: x.shape[0])
                 for X_i_idx in range(len(X_i)):
-                    if len(X_i[X_i_idx].shape) == 2:
-                        X_i[X_i_idx] = xarray.concat([X_i[X_i_idx] for _ in range(X_i[-1].shape[0])], 'time')  # repeating elevation
-                        X_i[X_i_idx] = X_i[X_i_idx].assign_coords({'time': X_i[-1].time})       
+                    if X_i[X_i_idx].shape[0] == 1:
+                        X_i[X_i_idx] = np.array(
+                            [X_i[X_i_idx] for idx in range(X_i[-1].shape[0])]
+                        ).squeeze()  # repeating elevation
+                
                 X_i = xarray.concat(X_i, "channels").transpose('time', 'channels', 'lat', 'lon')
                 
                 X[curr_pix] = X_i
@@ -179,23 +180,23 @@ def get_pixel_stations(
 
     elif path_to_files.endswith('.nc'):
         file_paths = path_to_files[:-4]
+
         bnds = list(filter(lambda x: x!='elevation', filter_dict['bands']))
         filtered_dict = {"years": filter_dict["years"], "bands": bnds}
         dataset = dp.get_xarrays(file_paths, rectangle_coords, target_res, filtered_dict)
+
     
     stations_pixs = {}
     for station_name in station_names:
 
         pix = dp.closest_pixel_for_station(
-            station_name=station_name, dataset=dataset[bnds[0]], station_list=station_list
+            station_name=station_name, dataset=dataset[filter_dict['bands'][0]], station_list=station_list
         )
         stations_pixs[station_name.casefold()] = pix
     return stations_pixs
 
-
-
 def make_blocks(
-    path_to_files: list,
+    path_to_files: str,
     filter_dict: dict,
     rectangle_coords: dict,
     target_res: dict,
@@ -219,28 +220,18 @@ def make_blocks(
     for path_of_file in path_to_files:
         if 'elevation' not in path_of_file:
             path_of_file = path_of_file[:-4]
-            if 'elevation' in filter_dict["bands"]:
-                filter_dict["bands"].remove('elevation')
-                bands = {**bands, **dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict, time_limits)} 
-                cmip_xarray = dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict, time_limits)['Wind_']
-                filter_dict["bands"].append('elevation')
-            else: 
-                bands = {**bands, **dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict, time_limits)} 
-                cmip_xarray = dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict, time_limits)['Wind_']
-     
-    for path_of_file in path_to_files:        
-        if 'elevation' in path_of_file:
-            bands = {**bands, **dp.get_xarrays(path_of_file, rectangle_coords, 
-                                               target_res, {"years": [filter_dict["years"][0]], "bands": ['elevation']},
-                                               time_limits, cmip_xarray=cmip_xarray)}
+            bands = {**bands, **dp.get_xarrays(path_of_file, rectangle_coords, target_res, filter_dict, time_limits)}
 
     slices_dict = {k: {} for k in bands.keys()}  # key = center of block
+    
     for k in tqdm(bands.keys()):
         np_ = bands[k]
         for i in range(half_side_size, len(np_.lat.data) - half_side_size):
             for j in range(half_side_size, len(np_.lon.data) - half_side_size):
                 slices_dict[k][(i, j)] = np_.sel(lat=slice(np_.lat.data[i - half_side_size], np_.lat.data[i + half_side_size]),
                                                  lon=slice(np_.lon.data[j - half_side_size], np_.lon.data[j + half_side_size]))
+
     slices_dict = OrderedDict(sorted(slices_dict.items()))
     return slices_dict
-    
+
+

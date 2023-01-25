@@ -1,6 +1,6 @@
 {
-    "path_to_files": ["../../../data/cmip_stash/elevation/elevation.nc", "../../../data/cmip_stash/*.nc"],
-    "path_to_save": "data/nn_inference",
+    "path_to_files": "/home/s.lukashevich/Wind/data/CMIP/*.nc",
+    "path_to_save": "/home/s.lukashevich/Wind/data/nn_inference",
     "inf_file_name": "output.json",
     "half_side_size": 3,
     "rectangle_coords": {
@@ -20,7 +20,9 @@
         ],
         "bands": [
             "Wind_",
-            "elevation"
+            "pr_",
+            "tasmax",
+            "tasmin"
         ]
     },
     "time_limits": {
@@ -28,8 +30,8 @@
         "t_end": "2022-11-14"
     },
     "nn_init_data": {
-        "nn_config_path": "../conf/conv_config.json",
-        "path_to_training_data": "data/nn_train",
-        "chk_path": "lightning_logs/version_5"
+        "nn_config_path": "/home/s.lukashevich/Wind/conf/conv_config.json",
+        "path_to_training_data": "/home/s.lukashevich/Wind/data/nn_train",
+        "chk_path": "/home/s.lukashevich/Wind/notebooks/lightning_logs/version_12"
     }
 }
