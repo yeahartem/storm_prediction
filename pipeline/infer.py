@@ -59,7 +59,7 @@ def infer(path_to_config="infer_conf.json"):
 
     X_init, y_init = extract_splitted_data(path_to_training_data, st_split_dict)
 
-
+    # Save X_init, y_init, X to pickle. Then download them here and delete everything above
     logger = TensorBoardLogger(save_dir='../logs/wind', name='windnet')
 
     dm = WindDataModule(X=X_init, y=y_init, batch_size=batch_size, downsample=False)
