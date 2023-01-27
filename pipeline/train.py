@@ -1,6 +1,6 @@
 import numpy as np
 import sys
-sys.path.append('/workspace/')
+sys.path.append('../')
 import os
 import torch
 import time
@@ -50,17 +50,21 @@ def infer(path_to_config="infer_conf.json"):
     speed_th = conf["nn_init_data"]["speed_th"]
     max_epoch = conf["nn_training_data"]["max_epoch"]
     
+    for path in path_to_files:
+        if 'elevation' not in path_to_files:
+            path_to_cmip = path
+    
     if if_generate_dataset:
         print("Preparing target")
         df = pd.read_csv(path_to_weather_stations)
         print("data_meteo_full.csv is read")
         target = get_y(df, start, end, station_names, speed_th=speed_th)
         weatherstation_list = pd.read_csv(path_to_weatherstation_list)
-        stations_pixs = get_pixel_stations(path_to_files, filter_dict, station_names, weatherstation_list, rectangle_coords, target_res)
+        stations_pixs = get_pixel_stations(path_to_cmip, filter_dict, station_names, weatherstation_list, rectangle_coords, target_res)
         print("Preparing target - done")
 
         print("Preparing blocks")
-        blocks = make_blocks([path_to_files], filter_dict, rectangle_coords, target_res, half_side_size=half_side_size, time_limits=time_limits)
+        blocks = make_blocks(path_to_files, filter_dict, rectangle_coords, target_res, half_side_size=half_side_size, time_limits=time_limits)
         print("Preparing blocks - done")
 
         print("Assembling dataset for training")
@@ -164,7 +168,7 @@ def infer(path_to_config="infer_conf.json"):
 if __name__ == "__main__":
     # assert len(sys.argv) > 1, "Provide path to config file"
     if len(sys.argv) == 1:
-        sys.argv.append('/workspace/pipeline/train_conf.json')
+        sys.argv.append('train_conf.json')
     path_to_config = sys.argv[1]
     t1 = time.time()
     infer(path_to_config=path_to_config)
