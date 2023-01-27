@@ -13,6 +13,7 @@ from geopy.distance import great_circle
 from sklearn import preprocessing
 from scipy import interpolate
 import xarray
+import copy
 
 # from geopy.distance import geodesic
 from math import sin, cos, sqrt, atan2, radians
@@ -174,7 +175,7 @@ def res_incr(X_elev, Y_elev, X_cmip, Y_cmip,
                 k_start = k
                 i_start = 0
         etalon.data = etalon_data
-        data.append(etalon)   
+        data.append(copy.deepcopy(etalon))
     
     name_list = ['elev_' + f.__name__ for f in func_list]
     xarray_refined = xarray.concat(data, pd.Index(name_list, name='agregation'))

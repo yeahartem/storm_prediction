@@ -5,7 +5,7 @@
     ],
     "path_to_save": "data/nn_train/",
     "half_side_size": 3,
-    "if_generate_dataset": 0,
+    "if_generate_dataset": 1,
     "path_to_weather_stations": "data/weather_stations/data_meteo_full.csv",
     "path_to_weather_stations_list": "data/weather_stations/weatherstation_list.csv",
     "station_names": [
@@ -37,8 +37,7 @@
     },
     "filter_dict": {
         "years": [
-            "2006",
-            "2016"
+            "2006"
         ],
         "bands": [
             "Wind_",
