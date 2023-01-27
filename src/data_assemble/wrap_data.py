@@ -114,7 +114,7 @@ def train_val_test_split(
         dict: [description]
     """
     stations = os.listdir(path_to_data)
-    random.shuffle(stations)
+    random.Random(112).shuffle(stations)
     partition = {"train_share": train, "val_share": val, "test_share": test}
     train_len = int(len(stations) * partition["train_share"])
     val_len = int(len(stations) * partition["val_share"])

@@ -1,7 +1,9 @@
 import numpy as np
 import sys
 sys.path.append('../')
+
 import os
+sys.path.append(os.path.realpath('.'))
 import torch
 import time
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -31,7 +33,7 @@ def infer(path_to_config="infer_conf.json"):
     half_side_size = conf["half_side_size"]
     rectangle_coords = conf["rectangle_coords"]
     if_generate_dataset = conf["if_generate_dataset"]
-    # presave_dataset = conf["presave_dataset"]
+    
     target_res = conf["target_res"]
     filter_dict = conf["filter_dict"]
     time_limits = conf["time_limits"]
@@ -41,11 +43,11 @@ def infer(path_to_config="infer_conf.json"):
     split_date = pd.to_datetime(start_of_test['t_split'])
     path_to_weather_stations = conf["path_to_weather_stations"]
     path_to_weatherstation_list = conf["path_to_weather_stations_list"]
-    # time_limits = {'t_start': np.datetime64(time_limits['t_start']), 't_end': np.datetime64(time_limits['t_end'])}
+    
     station_names = conf["station_names"]
     nn_config_path = conf["nn_init_data"]["nn_config_path"]
-    path_to_save_train = conf["path_to_save_train"]
-    path_to_save_test = conf["path_to_save_test"]
+    path_to_save_train = conf["path_to_save"] + "train"
+    path_to_save_test = conf["path_to_save"] + "test"
     batch_size = conf["nn_init_data"]["batch_size"] 
     speed_th = conf["nn_init_data"]["speed_th"]
     max_epoch = conf["nn_training_data"]["max_epoch"]
@@ -157,7 +159,7 @@ def infer(path_to_config="infer_conf.json"):
     # X, y = extract_splitted_data("/workspace/data/nn_test_2016", st_split_dict)
     dm = WindDataModule(X=X_test, y=y_test, batch_size=batch_size, downsample=False)
     print("Testing NN")
-    with open('../data/test_metrics.txt', 'w') as f:
+    with open('data/test_metrics.txt', 'w') as f:
         with redirect_stdout(f):
             trainer.test(model, dm)
 
@@ -168,7 +170,7 @@ def infer(path_to_config="infer_conf.json"):
 if __name__ == "__main__":
     # assert len(sys.argv) > 1, "Provide path to config file"
     if len(sys.argv) == 1:
-        sys.argv.append('train_conf.json')
+        sys.argv.append('pipeline/train_conf.json')
     path_to_config = sys.argv[1]
     t1 = time.time()
     infer(path_to_config=path_to_config)

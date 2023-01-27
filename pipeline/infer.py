@@ -2,6 +2,7 @@ import numpy as np
 import sys
 sys.path.append('../')
 import os
+sys.path.append(os.path.realpath('.'))
 import torch
 import time
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -20,7 +21,6 @@ from src.models.WindCNN import *
 from src.data_assemble.wrap_data import *
 torch.manual_seed(112)
 random.seed(112)
-
 
 def infer(path_to_config="infer_conf.json"):
     with open(path_to_config) as jf:
@@ -59,8 +59,7 @@ def infer(path_to_config="infer_conf.json"):
 
     X_init, y_init = extract_splitted_data(path_to_training_data, st_split_dict)
 
-    # Save X_init, y_init, X to pickle. Then download them here and delete everything above
-    logger = TensorBoardLogger(save_dir='../logs/wind', name='windnet')
+    # logger = TensorBoardLogger(save_dir='../logs/wind', name='windnet')
 
     dm = WindDataModule(X=X_init, y=y_init, batch_size=batch_size, downsample=False)
     model = WindNetPL(args)
@@ -132,7 +131,7 @@ def infer(path_to_config="infer_conf.json"):
 if __name__ == "__main__":
     # assert len(sys.argv) > 1, "Provide path to config file"
     if len(sys.argv) == 1:
-        sys.argv.append('infer_conf.json')
+        sys.argv.append('pipeline/infer_conf.json')
     path_to_config = sys.argv[1]
     t1 = time.time()
     infer(path_to_config=path_to_config)
