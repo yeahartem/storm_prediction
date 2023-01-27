@@ -1,7 +1,7 @@
 {
     "path_to_files": [
-        "../../../data/cmip_stash/elevation/elevation.nc",
-        "../../../data/cmip_stash/*.nc"
+        "data/cmip_stash/elevation/elevation.nc",
+        "data/cmip_stash/*.nc"
     ],
     "path_to_save": "data/nn_inference",
     "inf_file_name": "output.json",
@@ -19,21 +19,23 @@
     "filter_dict": {
         "years": [
             "2006",
-            "2016",
-            "2026"
+            "2016"
         ],
         "bands": [
             "Wind_",
+            "pr",
+            "tasmax",
+            "tasmin",
             "elevation"
         ]
     },
     "time_limits": {
-        "t_start": "2035-01-01",
-        "t_end": "2035-12-31"
+        "t_start": "2023-12-01",
+        "t_end": "2023-12-10"
     },
     "nn_init_data": {
-        "nn_config_path": "../conf/conv_config.json",
-        "path_to_training_data": "data/nn_train",
-        "chk_path": "lightning_logs/version_5"
+        "nn_config_path": "conf/conv_config.json",
+        "path_to_training_data": "data/nn_train/train",
+        "chk_path": "lightning_logs/version_3"
     }
 }

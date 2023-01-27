@@ -1,4 +1,4 @@
-from tkinter import Y
+# from tkinter import Y
 import sys
 sys.path.append('..')
 from src.data_utils.utils import check_leap_year
@@ -42,6 +42,7 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
     xarrays = {}
     for band in contains["bands"]:
         if band == 'elevation':
+            print(band)
             f1_xarray = open_dataxarray(path_to_data, [contains["years"][0], band])
             f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
             f1_xarray_refined = res_incr(X_elev=f1_xarray.lon.data, Y_elev=f1_xarray.lat.data, 
