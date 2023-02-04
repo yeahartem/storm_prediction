@@ -99,12 +99,24 @@ def assemble_numpy_ds(
                         X_i[X_i_idx] = X_i[X_i_idx].assign_coords({'time': X_i[-1].time})       
                 X_i = xarray.concat(X_i, "channels").transpose('time', 'channels', 'lat', 'lon')
                 
-                X[curr_pix] = X_i
+
+                X_s_i = []
+                # target_ind = []
+                for idx, x_day in enumerate(X_i):
+                    if 3 < idx < ((len(X_i)) - 3):
+                        x_stacked = xarray.concat(X_i.loc[X_i['time'][idx - 3:idx + 4]], dim='stack').assign_coords({'time': X_i['time'][idx]})
+                        X_s_i.append(x_stacked)
+                        # target_ind.append(X[k]['time'][idx].values)
+                    else:
+                        continue
+                X_s[curr_pix] = xarray.concat(X_s_i, "time")
+                # y_s[k] = y[k].loc[target_ind]
+                # X_s[curr_pix] = X_i
 
     if include_target:
         return (X_s, y_s)
     else:
-        return X
+        return X_s
 
 
 def get_y(
