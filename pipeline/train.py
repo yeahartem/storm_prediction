@@ -58,8 +58,8 @@ def infer(path_to_config="infer_conf.json"):
     
     if if_generate_dataset:
         print("Preparing target")
-        df = pd.read_csv(path_to_weather_stations)
-        print("data_meteo_full.csv is read")
+        df = pd.read_parquet(path_to_weather_stations)
+        print("data_meteo_full is read")
         target = get_y(df, start, end, station_names, speed_th=speed_th)
         weatherstation_list = pd.read_csv(path_to_weatherstation_list)
         stations_pixs = get_pixel_stations(path_to_cmip, filter_dict, station_names, weatherstation_list, rectangle_coords, target_res)

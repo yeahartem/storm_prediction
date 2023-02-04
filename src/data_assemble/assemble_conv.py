@@ -43,6 +43,8 @@ def assemble_numpy_ds(
     """
     X = {}
     y = {}
+    X_s = {}
+    y_s = {}
     
     if include_target:
         for k in tqdm(target.keys()):
@@ -68,6 +70,19 @@ def assemble_numpy_ds(
                 X[k] = X_i
 
                 y[k] = y_i.loc[inters]
+
+                X_s_i = []
+                target_ind = []
+                for idx, (x_day, y_day) in enumerate(zip(X[k], y[k])):
+                    if 3 < idx < ((len(X[k])) - 3):
+                        x_stacked = xarray.concat(X[k].loc[X[k]['time'][idx - 3:idx + 4]], dim='stack').assign_coords({'time': X[k]['time'][idx]})
+                        X_s_i.append(x_stacked)
+                        target_ind.append(X[k]['time'][idx].values)
+                    else:
+                        continue
+                X_s[k] = xarray.concat(X_s_i, "time")
+                y_s[k] = y[k].loc[target_ind]
+                assert len(X_s[k]) == len(y_s[k])
     else:
         some_key = list(blocks.keys())[0]
         for curr_pix in blocks[some_key].keys():
@@ -87,7 +102,7 @@ def assemble_numpy_ds(
                 X[curr_pix] = X_i
 
     if include_target:
-        return (X, y)
+        return (X_s, y_s)
     else:
         return X
 

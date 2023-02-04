@@ -32,13 +32,15 @@ class WindDataModule(pl.LightningDataModule):
             torch.tensor(y["Val"], dtype=torch.double),
             torch.tensor(y["Test"], dtype=torch.double),
         )
-        mean_channels = self.X_train.mean(dim=[0, -1, -2])
-        std_channels = self.X_train.std(dim=[0, -1, -2])
-        self.transform = transforms.Compose(
-            [
-                transforms.Normalize(mean=mean_channels, std=std_channels),
-            ]
-        )
+        # mean_channels = self.X_train.mean(dim=[0, -1, -2, -3])
+        # std_channels = self.X_train.std(dim=[0, -1, -2, -3])
+        self.transform = None
+
+        # self.transform = transforms.Compose(
+        #     [
+        #         transforms.Normalize(mean=mean_channels, std=std_channels),
+        #     ]
+        # )
 
         self.dl_dict = {"batch_size": self.batch_size}
 
@@ -73,15 +75,15 @@ class WindDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         if stage == "fit" or stage is None:
             self.dataset_train = TensorDataset(
-                self.transform(self.X_train), torch.tensor(self.y_train)
+                self.X_train, torch.tensor(self.y_train)
             )
             self.dataset_val = TensorDataset(
-                self.transform(self.X_val), torch.tensor(self.y_val)
+                self.X_val, torch.tensor(self.y_val)
             )
 
         if stage == "test" or stage is None:
             self.dataset_test = TensorDataset(
-                self.transform(self.X_test), torch.tensor(self.y_test)
+                self.X_test, torch.tensor(self.y_test)
             )
 
     def train_dataloader(self):

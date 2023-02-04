@@ -10,31 +10,33 @@ from sklearn import metrics
 class WindNet(nn.Module):
     def __init__(self, args) -> None:
         super(WindNet, self).__init__()
-        self.conv1 = nn.Conv2d(
+        self.conv1 = nn.Conv3d(
             in_channels=args["in_channels"],
             out_channels=args["out_channels_1"],  # 12
-            kernel_size=args["k_size_1"],
+            kernel_size=(7, 3, 3),
             stride=args["stride_1"],
             dilation=args["dilation_1"],
             padding=args["k_size_1"] - 1,
         )
-        self.conv2 = nn.Conv2d(  # 12, 6, 3
+        self.conv2 = nn.Conv3d(  # 12, 6, 3
             in_channels=args["out_channels_1"],
             out_channels=args["out_channels_2"],
-            kernel_size=args["k_size_2"],
+            kernel_size=(7, 3, 3),
             stride=args["stride_2"],
             dilation=args["dilation_2"],
             padding=args["k_size_2"] - 1,
         )
-        self.maxpool = nn.MaxPool2d(args["maxpool_2"])
+        self.maxpool = nn.MaxPool3d(args["maxpool_2"])
         self.flatten = nn.Flatten()
-        self.fc = nn.Linear(args["fc_size"], 2)
+        self.fc = nn.Linear(1600, 2)
         self.args = args
         self.net = nn.Sequential(
             self.conv1, 
-            nn.ReLU(), 
+            nn.ReLU(),
+            nn.InstanceNorm3d(64),
             self.conv2, 
-            nn.ReLU(), 
+            nn.ReLU(),
+            nn.InstanceNorm3d(32),
             self.maxpool, 
             self.flatten, 
             self.fc, 
