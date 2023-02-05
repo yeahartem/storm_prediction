@@ -96,7 +96,10 @@ def infer(path_to_config="infer_conf.json"):
         curr_lat  = curr_X.lat[half_side_size-1].data
         curr_lon  = curr_X.lon[half_side_size-1].data
         with torch.no_grad():
-            inference_pix = model(dm.transform(torch.tensor(curr_X.data, device=model.device).double())).exp()[:,1].cpu().numpy()
+            if dm.transform is not None:
+                inference_pix = model(dm.transform(torch.tensor(curr_X.data, device=model.device).double())).exp()[:,1].cpu().numpy()
+            else:
+                inference_pix = model(torch.tensor(curr_X.data, device=model.device).double()).exp()[:,1].cpu().numpy()
         inference_xarray.loc[dict(lat=curr_lat, lon=curr_lon)] = inference_pix
     inference_xarray.name = 'prob'
     print("Inference - done")
