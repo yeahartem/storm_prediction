@@ -114,7 +114,7 @@ def assemble_numpy_ds(
                 # X_s[curr_pix] = X_i
 
     if include_target:
-        return (X_s, y_s)
+        return X_s, y_s
     else:
         return X_s
 
@@ -140,7 +140,7 @@ def get_y(
         dict: {station_name: indicators of exceeding threshold}
     """
     
-    df["Дата"] = pd.to_datetime((df["Дата"]), format="%Y/%m/%d")
+    # df["Дата"] = pd.to_datetime((df["Дата"]), format="%Y/%m/%d")
     df_start_end = df.loc[
         (df["Дата"] >= pd.to_datetime(start)) & (df["Дата"] <= pd.to_datetime(end))
     ]
@@ -162,20 +162,21 @@ def get_y(
         columns=["Максимальная скорость", "Средняя скорость ветра"], inplace=True
     )
     if station_name is not None:
-        grpb = df_start_end.groupby(df_start_end["Название метеостанции"])
+        grpb = df_start_end.groupby(df_start_end["Название метеостанции"], observed=True)
         assert (
             station_name in grpb.groups.keys()
         ), "No such station found. Available: " + "; ".join(list(grpb.groups.keys()))
 
         y = {station_name: grpb.get_group(station_name).y} # Should be Applied groupby as below
     else:
-        grpb = df_start_end.groupby(df_start_end["Название метеостанции"])
+        grpb = df_start_end.groupby(df_start_end["Название метеостанции"], observed=True)
         ks = grpb.groups.keys()
 
         y = {
-            k: df_start_end.groupby(df_start_end["Название метеостанции"])
+            k: df_start_end.groupby(df_start_end["Название метеостанции"], observed=True)
             .get_group(k)
-            .y.groupby(df_start_end.groupby(df_start_end["Название метеостанции"]).get_group(k).y.index).max() #Group 8 days in 1
+            .y.groupby(df_start_end.groupby(df_start_end["Название метеостанции"], observed=True).get_group(k).y.index,
+                       observed=True).max() #Group 8 days in 1
             for k in ks
         }
 
@@ -218,7 +219,6 @@ def get_pixel_stations(
         )
         stations_pixs[station_name.casefold()] = pix
     return stations_pixs
-
 
 
 def make_blocks(

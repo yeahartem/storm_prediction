@@ -1,5 +1,7 @@
 # from tkinter import Y
+import logging
 import sys
+
 sys.path.append('..')
 from src.data_utils.utils import check_leap_year
 
@@ -30,7 +32,7 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
     target_res - {'lon_res': 0.25, 'lat_res': 0.25},
     contains - things which should be included into the titles of .nc files: {"years": ['2016', '2026'], "bands": ['max', 'Wind_']}
     '''
-    #unpack required geometry, target resolutions
+    # unpack required geometry, target resolutions
     lat_min = rectangle_coords['lat_min']
     lat_max = rectangle_coords['lat_max']
     lon_max = rectangle_coords['lon_max']
@@ -46,13 +48,13 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
             print(band)
             f1_xarray = open_dataxarray(path_to_data, [contains["years"][0], band])
             f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
-            f1_xarray_refined = res_incr(X_elev=f1_xarray.lon.data, Y_elev=f1_xarray.lat.data, 
+            f1_xarray_refined = res_incr(X_elev=f1_xarray.lon.data, Y_elev=f1_xarray.lat.data,
                                          X_cmip=cmip_xarray.lon.data, Y_cmip=cmip_xarray.lat.data,
                                          elev_data=f1_xarray.data,
-                                         etalon_data=np.zeros(cmip_xarray[0,:,:].data.shape),
-                                         etalon = cmip_xarray[0,:,:].copy())
+                                         etalon_data=np.zeros(cmip_xarray[0, :, :].data.shape),
+                                         etalon=cmip_xarray[0, :, :].copy())
             for num, agr in enumerate(f1_xarray_refined.agregation.data):
-                etalon = cmip_xarray[0,:,:].copy()
+                etalon = cmip_xarray[0, :, :].copy()
                 etalon.data = f1_xarray_refined.data[num]
                 xarrays[agr] = etalon
         else:
@@ -62,14 +64,14 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
                 f1_xarray = open_dataxarray(path_to_data, [year, band])
                 f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
                 f1_xarray_refined = interp_timewise_xarray(f1_xarray, lon_res=lon_res,
-                                                              lat_res=lat_res, interp_method = 'linear',
-                                                              plot_example = False)
+                                                           lat_res=lat_res, interp_method='linear',
+                                                           plot_example=False)
+                del f1_xarray
                 band_year.append(f1_xarray_refined)
-            band_year = xarray.concat(band_year, dim="time") # stack xarrays on time axis
-
-
-            band_year = band_year.sel(time=slice(t_start, t_end))
-            xarrays[band] = band_year
+            band_year_xarray = xarray.concat(band_year, dim="time")  # stack xarrays on time axis
+            del band_year
+            band_year_xarray = band_year_xarray.sel(time=slice(t_start, t_end))
+            xarrays[band] = band_year_xarray
     return xarrays
 
 
@@ -79,50 +81,55 @@ def open_dataxarray(path_to_data: str, contains: list = ['2006', 'max']) -> xarr
     '''
     # path_to_data = os.path.join('..', 'data', 'stash', 'WindProject', 'cmip_stash')
     # path_to_data = '../../../data/cmip_stash/elevation/elevation.nc'
-    
+
     if 'elevation' in path_to_data:
-        f1 = xarray.load_dataset(path_to_data, decode_times=False)  
+        f1 = xarray.load_dataset(path_to_data, decode_times=False)
         f1_xarray = f1.to_array()
         f1_xarray = f1_xarray.reindex(Y=list(reversed(f1_xarray.Y)))
         f1_xarray = f1_xarray.roll(X=21600, roll_coords=True)
-        f1_xarray = f1_xarray.assign_coords(X = [x if x>0 else x+360 for x in f1_xarray.X.values ])
-        f1_xarray = f1_xarray.rename({'X': 'lon','Y': 'lat'})
+        f1_xarray = f1_xarray.assign_coords(X=[x if x > 0 else x + 360 for x in f1_xarray.X.values])
+        f1_xarray = f1_xarray.rename({'X': 'lon', 'Y': 'lat'})
         np.nan_to_num(f1_xarray, copy=False)
-    
+
     else:
         ncs = np.array(sorted(os.listdir(path_to_data)))
         ncs_filtered = [nc for nc in ncs if np.prod([cond in nc for cond in contains])]
-        
-        f1 = xarray.load_dataset(os.path.join(path_to_data, ncs_filtered[0]), decode_times=False)
 
+        f1 = xarray.load_dataset(os.path.join(path_to_data, ncs_filtered[0]), decode_times=False)
         # Exclude 29 of February from date_range()
         first_time = pd.date_range(start=pd.to_datetime(ncs_filtered[0][-20:-12]), periods=f1.sizes['time'])
         t0 = np.apply_along_axis(check_leap_year, axis=0, arr=first_time)
         years_unique = np.unique(first_time[t0].year)
-        second_time = pd.date_range(start=pd.to_datetime(ncs_filtered[0][-20:-12]), periods=f1.sizes['time'] + len(years_unique))
+        second_time = pd.date_range(start=pd.to_datetime(ncs_filtered[0][-20:-12]),
+                                    periods=f1.sizes['time'] + len(years_unique))
         for yea in years_unique:
-            second_time = second_time.drop(pd.to_datetime(str(yea)+'-02-29'))
+            second_time = second_time.drop(pd.to_datetime(str(yea) + '-02-29'))
         f1['time'] = second_time
         f1_xarray = f1.to_array()
         # assert bool(np.prod([str(y) + '-02-29' in f1_xarray.time.loc[t0].data.astype('datetime64[D]').astype('str') for y in years_unique])), "no 29 feb on leap years"
-        
+
     return f1_xarray
 
 
-def reduce_to_area(data_arr: xarray.DataArray, lat_min: float = 24, lat_max: float = 31, lon_min: float = 272, lon_max: float = 280) -> xarray.DataArray:
+def reduce_to_area(data_arr: xarray.DataArray, lat_min: float = 24, lat_max: float = 31, lon_min: float = 272,
+                   lon_max: float = 280) -> xarray.DataArray:
     """
     Reduces the area to the input frames +-1.5 on latitude axis and +-2 on longitude axis.
     """
     band_name = [v for v in dict(data_arr.coords)['variable'].data if 'bnds' not in v][0]
-    output = data_arr.sel(lat=slice(lat_min - 1.5, lat_max + 1.5), lon=slice(lon_min - 2, lon_max + 2), variable=band_name)
+    output = data_arr.sel(lat=slice(lat_min - 1.5, lat_max + 1.5), lon=slice(lon_min - 2, lon_max + 2),
+                          variable=band_name)
     output.data = np.float64(output.data)
     if band_name != 'topo':
-        assert np.allclose(output.data[:, 0, :, :], output.data[:, 1, :, :]), "`bnds` dim components of tensor are not identical"
+        assert np.allclose(output.data[:, 0, :, :],
+                           output.data[:, 1, :, :]), "`bnds` dim components of tensor are not identical"
     return output
 
 
-def interp_timewise(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: float = 0.25, interp_method: str = 'linear', plot_example: bool =False) -> tuple:
-    assert np.allclose(data_arr.data[:, 0, :, :], data_arr.data[:, 1, :, :]), "2d components of tensor are not identical"
+def interp_timewise(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: float = 0.25,
+                    interp_method: str = 'linear', plot_example: bool = False) -> tuple:
+    assert np.allclose(data_arr.data[:, 0, :, :],
+                       data_arr.data[:, 1, :, :]), "2d components of tensor are not identical"
     timesteps = len(data_arr.time.data)
     plot_example_dice = np.random.randint(0, timesteps)
     znews = []
@@ -130,11 +137,11 @@ def interp_timewise(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: 
     y = data_arr.lat.data
     xnew = np.arange(x[0], x[-1], lon_res)
     ynew = np.arange(y[0], y[-1], lat_res)
-    for t in tqdm(range(timesteps)):   
+    for t in tqdm(range(timesteps)):
         # xx, yy = np.meshgrid(x, y)
         z = data_arr.data[t, 0, :, :]
         f = interpolate.interp2d(x, y, z, kind=interp_method)
-        
+
         znew = f(xnew, ynew)
         znews.append(znew)
         if plot_example and t == plot_example_dice:
@@ -150,40 +157,40 @@ def interp_timewise(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: 
     return (output, xnew, ynew)
 
 
-
 def res_incr(X_elev, Y_elev, X_cmip, Y_cmip,
              elev_data, etalon_data, etalon,
              func_list=[np.mean, np.max, np.min, np.std]):
     data = []
     for func in func_list:
-        x=0 
-        y=0
+        x = 0
+        y = 0
         k_start = 0
         i_start = 0
         for k in range(len(Y_elev)):
-            if y<len(Y_cmip) and Y_elev[k] > Y_cmip[y]:
+            if y < len(Y_cmip) and Y_elev[k] > Y_cmip[y]:
                 k_end = k
                 for i in range(len(X_elev)):
-                    if x<len(X_cmip) and X_elev[i] > X_cmip[x] and i>0:
+                    if x < len(X_cmip) and X_elev[i] > X_cmip[x] and i > 0:
                         i_end = i
                         val = func(elev_data[k_start:k_end, i_start:i_end])
-                        etalon_data[y,x] = val
+                        etalon_data[y, x] = val
                         x += 1
                         i_start = i
-                x=0
-                y+=1
+                x = 0
+                y += 1
                 k_start = k
                 i_start = 0
         etalon.data = etalon_data
         data.append(copy.deepcopy(etalon))
-    
+
     name_list = ['elev_' + f.__name__ for f in func_list]
     xarray_refined = xarray.concat(data, pd.Index(name_list, name='agregation'))
-    
+
     return xarray_refined
 
-def interp_timewise_xarray(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: float = 0.25, interp_method: str = 'linear', plot_example: bool =False) -> xarray.DataArray:
 
+def interp_timewise_xarray(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: float = 0.25,
+                           interp_method: str = 'linear', plot_example: bool = False) -> xarray.DataArray:
     data_new, xnew, ynew = interp_timewise(data_arr, interp_method=interp_method, plot_example=plot_example)
     data_arr.coords
     coords_new = {'lon': ("lon", xnew), 'lat': ("lat", ynew), 'time': ("time", data_arr.time.data)}
@@ -193,8 +200,8 @@ def interp_timewise_xarray(data_arr: xarray.DataArray, lon_res: float = 0.25, la
 
 
 def get_file_paths(
-    path_to_data: str = "drive/MyDrive/Belgorodskaya/*.tif",
-    feature_names: list = ["tmax", "tmin", "pr"],
+        path_to_data: str = "drive/MyDrive/Belgorodskaya/*.tif",
+        feature_names: list = ["tmax", "tmin", "pr"],
 ):
     """
     Filters out required features amongs terraclim dataset
@@ -214,33 +221,64 @@ def get_file_paths(
     return file_paths
 
 
-def get_closest_pixel(dataset, coord):   # change gdal.Dataset to xarray
-  """Finds the closest pixel indices in the dataset
+def get_closest_pixel(dataset, coord):  # change gdal.Dataset to xarray
+    """Finds the closest pixel indices in the dataset
   Args:
       dataset (gdal.Dataset): dataset with pixels
       coord (np.ndarray): coordinate for which the closest pixel's indices in the dataset will be found
   Returns:
       tuple: x, y indices among the dataset
   """
-  x_coords = dataset.lon
-  y_coords = dataset.lat[::-1]
-  R = 6371
-  closest = 21212121
-  I = 0
-  J = 0
-  for i, theta in enumerate(x_coords):
-    for j, fi in enumerate(y_coords):
-            r = great_circle((theta,fi), coord).kilometers
+    def find_nearest(array, value):
+        array = np.asarray(array)
+        idx = (np.abs(array - value)).argmin()
+        return idx
+
+    lon = np.array(dataset.lon)
+    lat = np.array(dataset.lat[::-1])
+    theta_bias = 5
+    fi_bias = 5
+    nearest_lat_idx = find_nearest(lat, coord[0])
+    nearest_lon_idx = find_nearest(lon, coord[1])
+    closest = great_circle((lat[nearest_lat_idx], lon[nearest_lon_idx]), coord).kilometers
+
+    for i, theta in enumerate(lon[nearest_lon_idx-5:nearest_lon_idx+5]):
+        for j, fi in enumerate(lat[nearest_lat_idx - 5:nearest_lat_idx + 5]):
+            r = great_circle((fi, theta), coord).kilometers
             if r < closest:
-              closest = r
-              I = i# + 1
-              J = j# + 1
-  closest_x_idx = I 
-  closest_y_idx = J
-  return closest_x_idx, closest_y_idx
+                closest = r
+                theta_bias = i  # + 1
+                fi_bias = j  # + 1
+    closest_x_idx = theta_bias - 5 + nearest_lon_idx
+    closest_y_idx = fi_bias - 5 + nearest_lat_idx
+    return closest_x_idx, closest_y_idx
 
+def get_closest_pixel_old(dataset, coord):  # change gdal.Dataset to xarray
+    """Finds the closest pixel indices in the dataset
+  Args:
+      dataset (gdal.Dataset): dataset with pixels
+      coord (np.ndarray): coordinate for which the closest pixel's indices in the dataset will be found
+  Returns:
+      tuple: x, y indices among the dataset
+  """
+    lon = dataset.lon
+    lat = dataset.lat[::-1]
+    closest = 21212121
+    I = 0
+    J = 0
 
-def closest_pixel_for_station(station_name, dataset, station_list):   # Change gdal.Dataset to xarray
+    for i, theta in enumerate(lon):
+        for j, fi in enumerate(lat):
+            r = great_circle((fi, theta), coord).kilometers
+            if r < closest:
+                closest = r
+                I = i  # + 1
+                J = j  # + 1
+    closest_x_idx = I
+    closest_y_idx = J
+    return closest_x_idx, closest_y_idx, closest
+
+def closest_pixel_for_station(station_name, dataset, station_list):  # Change gdal.Dataset to xarray
     """Finds the closest pixel indices in the dataset for the station
     Args:
       station_name (str): name of the station
@@ -250,11 +288,14 @@ def closest_pixel_for_station(station_name, dataset, station_list):   # Change g
       tuple: x, y indices among the dataset
     """
     station = station_list[station_list["Наименование станции"] == station_name]
-    coord = [station["Долгота"].values[0], station["Широта"].values[0]]
-    pix = get_closest_pixel(dataset=dataset, coord=coord)
-    return pix
- 
+    try:
+        coord = [station["Широта"].values[0], station["Долгота"].values[0]]
+    except IndexError:
+        logging.debug(station_name)
 
+    pix = get_closest_pixel(dataset=dataset, coord=coord)
+    logging.debug(f'{station_name} in progress')
+    return pix
 
 
 def leap_years(ar, leap_idx):
@@ -265,6 +306,6 @@ def leap_years(ar, leap_idx):
     for i in leap_idx:
         feb = (ar[i] + ar[i + 1]) / 2
         feb = np.expand_dims(feb, axis=0)
-        ar = np.vstack((ar[:i+1], feb, ar[i+1:]))
-    
+        ar = np.vstack((ar[:i + 1], feb, ar[i + 1:]))
+
     return ar
