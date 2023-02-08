@@ -1,43 +1,27 @@
-import grp
-from typing import Dict
-
-from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 from collections import OrderedDict
 import os
 from src.data_utils import data_processing as dp
-
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_curve
-import random
 import pandas as pd
 import xarray
-
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.model_selection import GridSearchCV
-from sklearn.preprocessing import normalize
-from sklearn.metrics import roc_curve, auc, roc_auc_score, confusion_matrix
+from datetime import timedelta
 import warnings
-import pickle
 
 warnings.filterwarnings("ignore")
-    
-    
+
+
 def assemble_numpy_ds(
-    blocks: OrderedDict, target: dict, stations_pixs: dict, include_target: bool = True
+        blocks: OrderedDict, target: dict, stations_pixs: dict, include_target: bool = True
 ) -> tuple:
     """Assembles numpy dataset
         stacks all available data into nd tensor, tiles elevation
         matches target and objects on pixels of stations
-
     Args:
         blocks (OrderedDict): block data from climate model, keys must be ordered
         target (dict): target from stations. see `get_y` function
         stations_pixs (dict): pixels of stations
         include_target: (bool): if to include target into dataset
-
     Returns:
         tuple: X, y
     """
@@ -45,7 +29,7 @@ def assemble_numpy_ds(
     y = {}
     X_s = {}
     y_s = {}
-    
+
     if include_target:
         for k in tqdm(target.keys()):
             X_i = []
@@ -58,58 +42,96 @@ def assemble_numpy_ds(
                 X_i.sort(key=lambda x: x.shape[0])
                 for X_i_idx in range(len(X_i)):
                     if len(X_i[X_i_idx].shape) == 2:
-                        X_i[X_i_idx] = xarray.concat([X_i[X_i_idx] for _ in range(X_i[-1].shape[0])], 'time')  # repeating elevation
+                        X_i[X_i_idx] = xarray.concat([X_i[X_i_idx] for _ in range(X_i[-1].shape[0])],
+                                                     'time')  # repeating elevation
                         X_i[X_i_idx] = X_i[X_i_idx].assign_coords({'time': X_i[-1].time})
-                        
+
                 X_i = xarray.concat(X_i, "channels").transpose('time', 'channels', 'lat', 'lon')
 
-                inters = y_i.index.intersection(X_i.time.data) # !!!!!!!!!! Accidentally may be elevation        
+                inters = y_i.index.intersection(X_i.time.data)  # !!!!!!!!!! Accidentally may be elevation
 
-                X_i = X_i.loc[inters]     
+                X_i = X_i.loc[inters]
 
                 X[k] = X_i
 
                 y[k] = y_i.loc[inters]
 
+                target_df = pd.DataFrame({"values": y[k].values, "date": y[k].index})
+                # now max over week
+                y[k] = target_df.groupby([pd.Grouper(key='date', freq='4W')]).max()
+
+                # stacking over weeks
+                # rename dimensions, since stacked dim is added
+                rename_dict = {d_name: d_name for d_name in X_i.dims}
+                rename_dict['time'] = 'stacked'
                 X_s_i = []
-                target_ind = []
-                for idx, (x_day, y_day) in enumerate(zip(X[k], y[k])):
-                    if 3 < idx < ((len(X[k])) - 3):
-                        x_stacked = xarray.concat(X[k].loc[X[k]['time'][idx - 3:idx + 4]], dim='stack').assign_coords({'time': X[k]['time'][idx]})
-                        X_s_i.append(x_stacked)
-                        target_ind.append(X[k]['time'][idx].values)
-                    else:
-                        continue
-                X_s[k] = xarray.concat(X_s_i, "time")
-                y_s[k] = y[k].loc[target_ind]
+                for week_idx in range(len(y[k].index) - 1):
+                    week_slice = X_i.sel(time=slice(y[k].index[week_idx], y[k].index[week_idx + 1] - timedelta(days=1)))
+                    week_slice = week_slice.rename(rename_dict)
+                    if len(week_slice) > 0:
+                        week_slice = week_slice.assign_coords({"time": (week_slice['stacked'].data[0])})
+                        week_slice = week_slice.assign_coords({'stacked': range(len(week_slice.stacked))})
+                        if len(week_slice.stacked) == 7 * 4:  # attention week only!!!
+                            X_s_i.append(week_slice)
+                # X_s_i = []
+                # target_ind = []
+                # for idx, (x_day, y_day) in enumerate(zip(X[k], y[k])):
+                #     if 3 < idx < ((len(X[k])) - 3):
+                #         x_stacked = xarray.concat(X[k].loc[X[k]['time'][idx - 3:idx + 4]], dim='stack').assign_coords({'time': X[k]['time'][idx]})
+                #         X_s_i.append(x_stacked)
+                #         target_ind.append(X[k]['time'][idx].values)
+                #     else:
+                #         continue
+                X_s[k] = xarray.concat(X_s_i, dim='time')
+                correct_time_data = X_s[k].time.data  # nans free, nans avoided by if in line 89
+                y_s[k] = y[k].loc[correct_time_data]
                 assert len(X_s[k]) == len(y_s[k])
     else:
         some_key = list(blocks.keys())[0]
-        for curr_pix in blocks[some_key].keys():
+        for curr_pix in tqdm(blocks[some_key].keys()):
             X_i = []
             for fn in blocks.keys():
-
                 X_i.append(blocks[fn][curr_pix])
-                
+
             if len(X_i) > 0:
                 X_i.sort(key=lambda x: x.shape[0])
                 for X_i_idx in range(len(X_i)):
                     if len(X_i[X_i_idx].shape) == 2:
-                        X_i[X_i_idx] = xarray.concat([X_i[X_i_idx] for _ in range(X_i[-1].shape[0])], 'time')  # repeating elevation
-                        X_i[X_i_idx] = X_i[X_i_idx].assign_coords({'time': X_i[-1].time})       
+                        X_i[X_i_idx] = xarray.concat([X_i[X_i_idx] for _ in range(X_i[-1].shape[0])],
+                                                     'time')  # repeating elevation
+                        X_i[X_i_idx] = X_i[X_i_idx].assign_coords({'time': X_i[-1].time})
                 X_i = xarray.concat(X_i, "channels").transpose('time', 'channels', 'lat', 'lon')
-                
 
+                dates = X_i.time.data
+                target_df = pd.DataFrame({"values": np.zeros(len(dates)), "date": dates})
+                # dummy for getting week indices
+                y_dummy = target_df.groupby([pd.Grouper(key='date', freq='4W')]).max()
+
+                # stacking over weeks
+                # rename dimensions, since stacked dim is added
+                rename_dict = {d_name: d_name for d_name in X_i.dims}
+                rename_dict['time'] = 'stacked'
                 X_s_i = []
-                # target_ind = []
-                for idx, x_day in enumerate(X_i):
-                    if 3 < idx < ((len(X_i)) - 3):
-                        x_stacked = xarray.concat(X_i.loc[X_i['time'][idx - 3:idx + 4]], dim='stack').assign_coords({'time': X_i['time'][idx]})
-                        X_s_i.append(x_stacked)
-                        # target_ind.append(X[k]['time'][idx].values)
-                    else:
-                        continue
-                X_s[curr_pix] = xarray.concat(X_s_i, "time")
+                for week_idx in range(len(y_dummy.index) - 1):
+                    week_slice = X_i.sel(
+                        time=slice(y_dummy.index[week_idx], y_dummy.index[week_idx + 1] - timedelta(days=1)))
+                    week_slice = week_slice.rename(rename_dict)
+                    if len(week_slice) > 0:
+                        week_slice = week_slice.assign_coords({"time": (week_slice['stacked'].data[0])})
+                        week_slice = week_slice.assign_coords({'stacked': range(len(week_slice.stacked))})
+                        if len(week_slice.stacked) == 7 * 4:  # attention week only!!!
+                            X_s_i.append(week_slice)
+                # X_s_i = []
+                # # target_ind = []
+                # for idx, x_day in enumerate(X_i):
+                #     if 3 < idx < ((len(X_i)) - 3):
+                #         x_stacked = xarray.concat(X_i.loc[X_i['time'][idx - 3:idx + 4]], dim='stack').assign_coords({'time': X_i['time'][idx]})
+                #         X_s_i.append(x_stacked)
+                #         # target_ind.append(X[k]['time'][idx].values)
+                #     else:
+                #         continue
+                # X_s[curr_pix] = xarray.concat(X_s_i, "time")
+                X_s[curr_pix] = xarray.concat(X_s_i, dim='time')
                 # y_s[k] = y[k].loc[target_ind]
                 # X_s[curr_pix] = X_i
 
@@ -194,8 +216,8 @@ def get_pixel_stations(
     """maps stations to the pixels in .tifs
 
     Args:
-        path_to_tifs (list): path to tif files to get sample dataset - for shape
-        feature_names (list): feature names - to get sample dataset    = {"year": ['2006'], "band": ['max']}
+        path_to_files (str): path to tif files to get sample dataset - for shape
+        filter_dict (dict): feature names - to get sample dataset    = {"year": ['2006'], "band": ['max']}
         station_names (list): list of station names
         station_list (pd.DataFrame): pandas table with information about stations
 
@@ -267,7 +289,7 @@ def make_blocks(
         for i in range(half_side_size, len(np_.lat.data) - half_side_size):
             for j in range(half_side_size, len(np_.lon.data) - half_side_size):
                 slices_dict[k][(i, j)] = np_.sel(lat=slice(np_.lat.data[i - half_side_size], np_.lat.data[i + half_side_size]),
-                                                 lon=slice(np_.lon.data[j - half_side_size], np_.lon.data[j + half_side_size]))
+                                                 lon=slice(np_.lon.data[j - half_side_size], np_.lon.data[j + half_side_size])).astype(np.float16)
     slices_dict = OrderedDict(sorted(slices_dict.items()))
     return slices_dict
     

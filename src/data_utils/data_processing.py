@@ -46,7 +46,7 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
     for band in contains["bands"]:
         if band == 'elevation':
             print(band)
-            f1_xarray = open_dataxarray(path_to_data, [contains["years"][0], band])
+            f1_xarray = open_dataxarray(path_to_data, [contains["years"][0], band]).astype(np.float16)
             f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
             f1_xarray_refined = res_incr(X_elev=f1_xarray.lon.data, Y_elev=f1_xarray.lat.data,
                                          X_cmip=cmip_xarray.lon.data, Y_cmip=cmip_xarray.lat.data,
@@ -61,15 +61,15 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
             band_year = []
             for year in contains["years"]:
                 print(band, year)
-                f1_xarray = open_dataxarray(path_to_data, [year, band])
+                f1_xarray = open_dataxarray(path_to_data, [year, band]).astype(np.float16)
                 f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
                 f1_xarray_refined = interp_timewise_xarray(f1_xarray, lon_res=lon_res,
                                                            lat_res=lat_res, interp_method='linear',
                                                            plot_example=False)
-                del f1_xarray
+                # del f1_xarray
                 band_year.append(f1_xarray_refined)
             band_year_xarray = xarray.concat(band_year, dim="time")  # stack xarrays on time axis
-            del band_year
+            # del band_year
             band_year_xarray = band_year_xarray.sel(time=slice(t_start, t_end))
             xarrays[band] = band_year_xarray
     return xarrays
@@ -83,7 +83,7 @@ def open_dataxarray(path_to_data: str, contains: list = ['2006', 'max']) -> xarr
     # path_to_data = '../../../data/cmip_stash/elevation/elevation.nc'
 
     if 'elevation' in path_to_data:
-        f1 = xarray.load_dataset(path_to_data, decode_times=False)
+        f1 = xarray.load_dataset(path_to_data, decode_times=False).astype(np.float16)
         f1_xarray = f1.to_array()
         f1_xarray = f1_xarray.reindex(Y=list(reversed(f1_xarray.Y)))
         f1_xarray = f1_xarray.roll(X=21600, roll_coords=True)
@@ -229,6 +229,7 @@ def get_closest_pixel(dataset, coord):  # change gdal.Dataset to xarray
   Returns:
       tuple: x, y indices among the dataset
   """
+
     def find_nearest(array, value):
         array = np.asarray(array)
         idx = (np.abs(array - value)).argmin()
@@ -242,7 +243,7 @@ def get_closest_pixel(dataset, coord):  # change gdal.Dataset to xarray
     nearest_lon_idx = find_nearest(lon, coord[1])
     closest = great_circle((lat[nearest_lat_idx], lon[nearest_lon_idx]), coord).kilometers
 
-    for i, theta in enumerate(lon[nearest_lon_idx-5:nearest_lon_idx+5]):
+    for i, theta in enumerate(lon[nearest_lon_idx - 5:nearest_lon_idx + 5]):
         for j, fi in enumerate(lat[nearest_lat_idx - 5:nearest_lat_idx + 5]):
             r = great_circle((fi, theta), coord).kilometers
             if r < closest:
@@ -253,30 +254,6 @@ def get_closest_pixel(dataset, coord):  # change gdal.Dataset to xarray
     closest_y_idx = fi_bias - 5 + nearest_lat_idx
     return closest_x_idx, closest_y_idx
 
-def get_closest_pixel_old(dataset, coord):  # change gdal.Dataset to xarray
-    """Finds the closest pixel indices in the dataset
-  Args:
-      dataset (gdal.Dataset): dataset with pixels
-      coord (np.ndarray): coordinate for which the closest pixel's indices in the dataset will be found
-  Returns:
-      tuple: x, y indices among the dataset
-  """
-    lon = dataset.lon
-    lat = dataset.lat[::-1]
-    closest = 21212121
-    I = 0
-    J = 0
-
-    for i, theta in enumerate(lon):
-        for j, fi in enumerate(lat):
-            r = great_circle((fi, theta), coord).kilometers
-            if r < closest:
-                closest = r
-                I = i  # + 1
-                J = j  # + 1
-    closest_x_idx = I
-    closest_y_idx = J
-    return closest_x_idx, closest_y_idx, closest
 
 def closest_pixel_for_station(station_name, dataset, station_list):  # Change gdal.Dataset to xarray
     """Finds the closest pixel indices in the dataset for the station

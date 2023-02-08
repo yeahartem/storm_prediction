@@ -4,15 +4,17 @@
         "./data_mounted/cmip/*.nc"
     ],
     "path_to_save": "./data_mounted/nn_train/",
-    "half_side_size": 3,
-    "if_generate_dataset": true,
+    "half_side_size": 5,
+    "if_generate_dataset": false,
     "path_to_weather_stations": "./data_mounted/weather_stations/data_meteo_full.parquet",
     "path_to_weather_stations_list": "./data_mounted/weather_stations/weatherstation_list.json",
+    "min_height": -10,
+    "max_height": 300,
     "rectangle_coords": {
-        "lat_min": 10,
-        "lat_max": 80,
-        "lon_min": 10,
-        "lon_max": 179
+        "lat_min": 36.38,
+        "lat_max": 50.38,
+        "lon_min": 140.45,
+        "lon_max": 180.45
     },
     "target_res": {
         "lon_res": 0.25,

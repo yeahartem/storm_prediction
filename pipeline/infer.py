@@ -93,8 +93,8 @@ def infer(path_to_config="infer_conf.json"):
                                     )
 
     for pix_idx, curr_X in tqdm(X.items()):
-        curr_lat  = curr_X.lat[half_side_size-1].data
-        curr_lon  = curr_X.lon[half_side_size-1].data
+        curr_lat = curr_X.lat[half_side_size-1].data
+        curr_lon = curr_X.lon[half_side_size-1].data
         with torch.no_grad():
             if dm.transform is not None:
                 inference_pix = model(dm.transform(torch.tensor(curr_X.data, device=model.device).double())).exp()[:,1].cpu().numpy()
