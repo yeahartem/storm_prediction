@@ -46,7 +46,7 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
     for band in contains["bands"]:
         if band == 'elevation':
             print(band)
-            f1_xarray = open_dataxarray(path_to_data, [contains["years"][0], band]).astype(np.float16)
+            f1_xarray = open_dataxarray(path_to_data, [contains["years"][0], band]).astype(np.float32)
             f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
             f1_xarray_refined = res_incr(X_elev=f1_xarray.lon.data, Y_elev=f1_xarray.lat.data,
                                          X_cmip=cmip_xarray.lon.data, Y_cmip=cmip_xarray.lat.data,
@@ -61,7 +61,7 @@ def get_xarrays(path_to_data: str, rectangle_coords: dict, target_res: dict,
             band_year = []
             for year in contains["years"]:
                 print(band, year)
-                f1_xarray = open_dataxarray(path_to_data, [year, band]).astype(np.float16)
+                f1_xarray = open_dataxarray(path_to_data, [year, band]).astype(np.float32)
                 f1_xarray = reduce_to_area(f1_xarray, lat_min, lat_max, lon_min, lon_max)
                 f1_xarray_refined = interp_timewise_xarray(f1_xarray, lon_res=lon_res,
                                                            lat_res=lat_res, interp_method='linear',
@@ -83,7 +83,7 @@ def open_dataxarray(path_to_data: str, contains: list = ['2006', 'max']) -> xarr
     # path_to_data = '../../../data/cmip_stash/elevation/elevation.nc'
 
     if 'elevation' in path_to_data:
-        f1 = xarray.load_dataset(path_to_data, decode_times=False).astype(np.float16)
+        f1 = xarray.load_dataset(path_to_data, decode_times=False).astype(np.float32)
         f1_xarray = f1.to_array()
         f1_xarray = f1_xarray.reindex(Y=list(reversed(f1_xarray.Y)))
         f1_xarray = f1_xarray.roll(X=21600, roll_coords=True)

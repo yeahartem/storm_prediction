@@ -289,7 +289,7 @@ def make_blocks(
         for i in range(half_side_size, len(np_.lat.data) - half_side_size):
             for j in range(half_side_size, len(np_.lon.data) - half_side_size):
                 slices_dict[k][(i, j)] = np_.sel(lat=slice(np_.lat.data[i - half_side_size], np_.lat.data[i + half_side_size]),
-                                                 lon=slice(np_.lon.data[j - half_side_size], np_.lon.data[j + half_side_size])).astype(np.float16)
+                                                 lon=slice(np_.lon.data[j - half_side_size], np_.lon.data[j + half_side_size])).astype(np.float32)
     slices_dict = OrderedDict(sorted(slices_dict.items()))
     return slices_dict
     

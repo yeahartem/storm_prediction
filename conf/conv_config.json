@@ -12,7 +12,7 @@
     "fc_size": 800,
     "pos_weight": 133,
     "threshold": 0.5,
-    "lr": 1e-5,
+    "lr": 1e-4,
     "b1": 0.9,
     "b2": 0.999
 }

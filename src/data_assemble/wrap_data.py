@@ -26,24 +26,23 @@ class WindDataModule(pl.LightningDataModule):
         super().__init__()
         self.batch_size = batch_size
         self.X_train, self.X_val, self.X_test = (
-            torch.tensor(X["Train"], dtype=torch.float16),
-            torch.tensor(X["Val"], dtype=torch.float16),
-            torch.tensor(X["Test"], dtype=torch.float16),
+            torch.tensor(X["Train"], dtype=torch.float32),
+            torch.tensor(X["Val"], dtype=torch.float32),
+            torch.tensor(X["Test"], dtype=torch.float32),
         )
         self.y_train, self.y_val, self.y_test = (
             torch.tensor(y["Train"], dtype=torch.int),
             torch.tensor(y["Val"], dtype=torch.int),
             torch.tensor(y["Test"], dtype=torch.int),
         )
-        # mean_channels = self.X_train.mean(dim=[0, -1, -2, -3])
-        # std_channels = self.X_train.std(dim=[0, -1, -2, -3])
-        self.transform = None
+        mean_channels = self.X_train.mean(dim=[0, 1, -1, -2])
+        std_channels = self.X_train.std(dim=[0, 1, -1, -2])
 
-        # self.transform = transforms.Compose(
-        #     [
-        #         transforms.Normalize(mean=mean_channels, std=std_channels),
-        #     ]
-        # )
+        self.transform = transforms.Compose(
+            [
+                transforms.Normalize(mean=mean_channels, std=std_channels),
+            ]
+        )
 
         self.dl_dict = {"batch_size": self.batch_size}
 
@@ -79,15 +78,15 @@ class WindDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         if stage == "fit" or stage is None:
             self.dataset_train = TensorDataset(
-                self.X_train, torch.tensor(self.y_train)
+                self.transform(self.X_train), torch.tensor(self.y_train)
             )
             self.dataset_val = TensorDataset(
-                self.X_val, torch.tensor(self.y_val)
+                self.transform(self.X_val), torch.tensor(self.y_val)
             )
 
         if stage == "test" or stage is None:
             self.dataset_test = TensorDataset(
-                self.X_test, torch.tensor(self.y_test)
+                self.transform(self.X_test), torch.tensor(self.y_test)
             )
 
     def train_dataloader(self):
@@ -138,7 +137,7 @@ def extract_splitted_data(path_to_dump: str, sts: list) -> tuple:
         st_dir = os.path.join(path_to_dump, st)
         try:
             with open(os.path.join(st_dir, "objects.npy"), "rb") as f:
-                X_ = np.load(f, allow_pickle=True).astype(np.float16)
+                X_ = np.load(f, allow_pickle=True).astype(np.float32)
                 X.append(X_)
         except FileNotFoundError:
             logging.warning(f'{st} not found')

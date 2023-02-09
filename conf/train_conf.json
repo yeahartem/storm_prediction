@@ -12,9 +12,9 @@
     "max_height": 300,
     "rectangle_coords": {
         "lat_min": 36.38,
-        "lat_max": 50.38,
-        "lon_min": 140.45,
-        "lon_max": 180.45
+        "lat_max": 80.52,
+        "lon_min": 32.12,
+        "lon_max": 181.45
     },
     "target_res": {
         "lon_res": 0.25,
@@ -41,10 +41,10 @@
     },
     "nn_init_data": {
         "nn_config_path": "conf/conv_config.json",
-        "batch_size": 1024,
+        "batch_size": 2000,
         "speed_th": 20
     },
     "nn_training_data": {
-        "max_epoch": 50
+        "max_epoch": 200
     }
 }

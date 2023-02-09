@@ -11,9 +11,9 @@ class WindNet(nn.Module):
     def __init__(self) -> None:
         super(WindNet, self).__init__()
         self.conv1 = nn.Conv3d(
-            in_channels=7,
+            in_channels=8,
             out_channels=32,
-            kernel_size=(7, 5, 5),
+            kernel_size=(28, 3, 3),
             stride=1,
             dilation=1,
             padding=(1, 1, 1),
@@ -21,14 +21,22 @@ class WindNet(nn.Module):
         self.conv2 = nn.Conv3d(
             in_channels=32,
             out_channels=16,
-            kernel_size=(6, 3, 3),
+            kernel_size=(5, 3, 3),
+            stride=1,
+            dilation=1,
+            padding=(1, 1, 1,)
+        )
+        self.conv3 = nn.Conv3d(
+            in_channels=16,
+            out_channels=16,
+            kernel_size=(3, 3, 3),
             stride=1,
             dilation=1,
             padding=(1, 1, 1,)
         )
 
         self.flatten = nn.Flatten()
-        self.fc = nn.Linear(1296, 1)
+        self.fc = nn.Linear(1936, 1)
 
         self.net = nn.Sequential(
             self.conv1, 
@@ -37,11 +45,15 @@ class WindNet(nn.Module):
             self.conv2, 
             nn.ReLU(),
             nn.InstanceNorm3d(16),
+            self.conv3,
+            nn.ReLU(),
+            nn.InstanceNorm3d(16),
             self.flatten,
             self.fc
         )
 
     def forward(self, X) -> torch.Tensor:
+        X = X.transpose(1, 2)
         output = self.net(X)
         return output
 
@@ -81,7 +93,7 @@ class WindNetPL(pl.LightningModule):
         self.test_recall = torchmetrics.Recall(num_classes=1, threshold=args["threshold"])
 
         #self.criterion = FocalLoss(gamma=5, alpha=6)
-        self.criterion = nn.BCEWithLogitsLoss(weight=torch.tensor([131]))
+        self.criterion = nn.BCEWithLogitsLoss()
 
     def forward(self, x):
         return self.net(x)
@@ -95,7 +107,7 @@ class WindNetPL(pl.LightningModule):
 
     def model_step(self, batch):
         objs, target = batch
-        target = torch.unsqueeze(target, dim=-1)
+        # target = torch.unsqueeze(target, dim=-1)
         predictions = self(objs).float()
         loss = self.loss(predictions, target.float())
 
@@ -180,7 +192,7 @@ class WindNetPL(pl.LightningModule):
 
     def configure_optimizers(self):
         lr = self.args["lr"]
-        optimizer = self.hparams.optimizer(self.net.parameters(), lr=lr,  weight_decay=0.003)
+        optimizer = self.hparams.optimizer(self.net.parameters(), lr=lr,  weight_decay=0.03)
         if self.hparams.scheduler is not None:
             scheduler = self.hparams.scheduler(optimizer=optimizer)
             return {

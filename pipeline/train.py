@@ -65,7 +65,6 @@ def train(path="conf/train_conf.json"):
                          accelerator="gpu",
                          benchmark=True,
                          check_val_every_n_epoch=1,
-                         precision=16,
                          )
 
     dm = WindDataModule(X=X, y=y, batch_size=batch_size, downsample=False)

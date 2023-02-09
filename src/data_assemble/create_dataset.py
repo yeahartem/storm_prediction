@@ -49,6 +49,10 @@ def create_dataset(conf):
     path_to_files = conf["path_to_files"]
     half_side_size = conf["half_side_size"]
     rectangle_coords = conf["rectangle_coords"]
+    max_lat = rectangle_coords['lat_max']
+    min_lat = rectangle_coords['lat_min']
+    max_lon = rectangle_coords['lon_max']
+    min_lon = rectangle_coords['lon_min']
     min_height = conf["min_height"]
     max_height = conf["max_height"]
     target_res = conf["target_res"]
@@ -67,15 +71,7 @@ def create_dataset(conf):
     test_split_path = 'conf/splits/test.txt'
     dataset_save_path = conf['path_to_save']
 
-    stations_list = get_stations(all_stations_data='data_mounted/weather_stations/weatherstation_list.json',
-                                 stations_allowed_path="conf/splits/time_split_stations.txt",
-                                 max_lat=rectangle_coords['lat_max'],
-                                 min_lat=rectangle_coords['lat_min'],
-                                 max_lon=rectangle_coords['lon_max'],
-                                 min_lon=rectangle_coords['lon_min'],
-                                 max_height=300,
-                                 min_height=-10)
-    print('stations to be created: ', stations_list)
+
     for path in path_to_files:
         if 'elevation' not in path_to_files:
             path_to_cmip = path
@@ -86,70 +82,93 @@ def create_dataset(conf):
     df = pd.read_parquet(path_to_weather_stations, columns=columns)
     # logging.debug(df.dtypes)
     # logging.debug(df.memory_usage(deep=True))
-
     df["Название метеостанции"] = df["Название метеостанции"].apply(cleanup_ms_name)
+
     # df["Название метеостанции"] = df["Название метеостанции"].astype("category")
-    # df[["Максимальная скорость", "Средняя скорость ветра"]] =
     # df[["Максимальная скорость", "Средняя скорость ветра"]].apply(pd.to_numeric, downcast="float")
+
     df["Дата"] = pd.to_datetime((df["Дата"]), format="%Y/%m/%d")
     logging.info("data_meteo_full is read")
 
-    weatherstation_list = pd.read_json(path_to_weatherstation_list)
-    i = 0
-    target = get_y(df, start, end, stations_list, speed_th=speed_th)
-    logging.debug(f'Target acquired')
-    stations_pixs = get_pixel_stations(path_to_cmip, filter_dict, stations_list, weatherstation_list,
-                                       rectangle_coords,
-                                       target_res)
-    logging.debug(f"Preparing target - done")
+    block_size = 15
+    for lat in range(int(min_lat), int(max_lat)+block_size, block_size):
+        for lon in range(int(min_lon), int(max_lon)+block_size, block_size):
+            lat = min(lat, max_lat)
+            lon = min(lon, max_lon)
+            rectangle_coords['lat_max'] = lat+block_size
+            rectangle_coords['lat_min'] = lat
+            rectangle_coords['lon_max'] = lon+block_size
+            rectangle_coords['lon_min'] = lon
+            stations_list = get_stations(all_stations_data='data_mounted/weather_stations/weatherstation_list.json',
+                                         stations_allowed_path="conf/splits/time_split_stations.txt",
+                                         max_lat=lat+block_size, min_lat=lat, max_lon=lon+block_size, min_lon=lon,
+                                         max_height=max_height, min_height=min_height)
+            if not stations_list:
+                logging.info('No station in this area')
+                continue
+            logging.info(f'stations to be created: {stations_list}')
+            logging.info(f'working in rectangle: {rectangle_coords}')
 
-    logging.info(f"Preparing blocks")
-    blocks = make_blocks(path_to_files, filter_dict, rectangle_coords, target_res, half_side_size=half_side_size,
-                         time_limits=time_limits)
-    logging.debug(f"Preparing blocks - done")
+            weatherstation_list = pd.read_json(path_to_weatherstation_list)
+            target = get_y(df, start, end, stations_list, speed_th=speed_th)
+            logging.debug(f'Target acquired')
+            stations_pixs = get_pixel_stations(path_to_cmip, filter_dict, stations_list, weatherstation_list,
+                                               rectangle_coords,
+                                               target_res)
+            logging.debug(f"Preparing target - done")
 
-    logging.debug(f"Assembling dataset for training")
-    X, y = assemble_numpy_ds(blocks, target, stations_pixs)
-    logging.debug(f"Assembling dataset for training - done")
+            logging.info(f"Preparing blocks")
+            blocks = make_blocks(path_to_files, filter_dict, rectangle_coords, target_res, half_side_size=half_side_size,
+                                 time_limits=time_limits)
+            logging.debug(f"Preparing blocks - done")
 
-    with open('data_mounted/X_backup.npy', 'wb') as f:
-        pickle.dump(X, f)
-    with open('data_mounted/y_backup.npy', 'wb') as f:
-        pickle.dump(y, f)
+            logging.debug(f"Assembling dataset for training")
+            X, y = assemble_numpy_ds(blocks, target, stations_pixs)
+            logging.debug(f"Assembling dataset for training - done")
 
-    if dataset_save_path:
-        path_to_dump = os.path.join('..', dataset_save_path)
-    for k in X.keys():
-        X_station_train = X[k][X[k].time < split_date]
-        y_station_train = y[k][y[k].index < split_date]
+            with open('data_mounted/X_backup.npy', 'wb') as f:
+                pickle.dump(X, f)
+            with open('data_mounted/y_backup.npy', 'wb') as f:
+                pickle.dump(y, f)
 
-        # Split by date on two groups (train and test), make path_to_save_train and nn_test
-        st_path_train = os.path.join(path_to_save_train, k)
-        if not os.path.isdir(st_path_train):
-            os.makedirs(st_path_train)
+            if dataset_save_path:
+                path_to_dump = os.path.join('..', dataset_save_path)
+            for k in X.keys():
+                X_station_train = X[k][X[k].time < split_date]
+                y_station_train = y[k][y[k].index < split_date]
 
-        with open(os.path.join(st_path_train, 'objects.npy'), 'wb') as f:
-            pickle.dump(X_station_train, f)
-        with open(os.path.join(st_path_train, 'target.npy'), 'wb') as f:
-            pickle.dump(y_station_train, f)
+                # Split by date on two groups (train and test), make path_to_save_train and nn_test
+                st_path_train = os.path.join(path_to_save_train, k)
+                if not os.path.isdir(st_path_train):
+                    os.makedirs(st_path_train)
 
-        X_station_test = X[k][X[k].time >= split_date]
-        y_station_test = y[k][y[k].index >= split_date]
+                with open(os.path.join(st_path_train, 'objects.npy'), 'wb') as f:
+                    pickle.dump(X_station_train, f)
+                with open(os.path.join(st_path_train, 'target.npy'), 'wb') as f:
+                    pickle.dump(y_station_train, f)
 
-        st_path_test = os.path.join(path_to_save_test, k)
-        if not os.path.isdir(st_path_test):
-            os.makedirs(st_path_test)
+                X_station_test = X[k][X[k].time >= split_date]
+                y_station_test = y[k][y[k].index >= split_date]
 
-        with open(os.path.join(st_path_test, 'objects.npy'), 'wb') as f:
-            pickle.dump(X_station_test, f)
-        with open(os.path.join(st_path_test, 'target.npy'), 'wb') as f:
-            pickle.dump(y_station_test, f)
-        logging.debug(f'{k} station saved')
+                st_path_test = os.path.join(path_to_save_test, k)
+                if not os.path.isdir(st_path_test):
+                    os.makedirs(st_path_test)
+
+                with open(os.path.join(st_path_test, 'objects.npy'), 'wb') as f:
+                    pickle.dump(X_station_test, f)
+                with open(os.path.join(st_path_test, 'target.npy'), 'wb') as f:
+                    pickle.dump(y_station_test, f)
+                logging.debug(f'{k} station saved')
+                gc.collect()
 
 
 if __name__ == "__main__":
 
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s-%(message)s')
+    logging.basicConfig(filename='dataset.log',
+                        filemode='a',
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=logging.DEBUG)
 
     if len(sys.argv) == 1:
         sys.argv.append('conf/train_conf.json')
