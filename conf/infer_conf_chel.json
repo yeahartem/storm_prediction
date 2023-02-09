@@ -1,0 +1,41 @@
+{
+    "path_to_files": [
+        "./data_mounted/cmip/elevation/elevation.nc",
+        "./data_mounted/cmip/*.nc"
+    ],
+    "path_to_save": "data_mounted/nn_inference/",
+    "inf_file_name": "output.json",
+    "region_name": "Chelyabinsk",
+    "half_side_size": 5,
+    "rectangle_coords": {
+        "lat_min": 51.843804,
+        "lat_max": 56.601209,
+        "lon_min": 63.903479,
+        "lon_max": 42.94
+    },
+    "target_res": {
+        "lon_res": 0.25,
+        "lat_res": 0.25
+    },
+    "filter_dict": {
+        "years": [
+            "2016"
+        ],
+        "bands": [
+            "Wind_",
+            "pr",
+            "tasmax",
+            "tasmin",
+            "elevation"
+        ]
+    },
+    "time_limits": {
+        "t_start": "2023-09-01",
+        "t_end": "2024-02-02"
+    },
+    "nn_init_data": {
+        "nn_config_path": "conf/conv_config.json",
+        "path_to_training_data": "data_mounted/nn_train",
+        "chk_path": "lightning_logs/version_12"
+    }
+}
