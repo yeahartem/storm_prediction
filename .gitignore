@@ -8,3 +8,4 @@ notebooks/lightning_logs
 *.nc
 logs/*
 *pycache*
+data_mounted

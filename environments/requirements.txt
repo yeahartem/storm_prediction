@@ -1,6 +1,8 @@
 ipykernel
 jupyter
 xarray
+fastparquet
+pyarrow
 beautifulsoup4==4.11.1
 debugpy==1.5.1
 geographiclib==1.52
