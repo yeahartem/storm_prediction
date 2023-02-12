@@ -13,7 +13,7 @@ May need more than 64 Gb of RAM
 # Data, NN
 Expected data folder structure:
 ``` bash
-wind_data2
+data_mounted
 ├── cmip
 │   ├── elevation
 │   │   └── elevation.nc
