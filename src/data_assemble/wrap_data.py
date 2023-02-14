@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import pickle
@@ -15,25 +16,28 @@ from shapely.geometry import Point, Polygon, box, LineString
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from src.data_assemble.create_dataset import read_splits
+
 
 class WindDataModule(pl.LightningDataModule):
     def __init__(
-        self, X: dict, y: dict, batch_size: int = 128, downsample: bool = True
+            self, X: dict, y: dict, batch_size: int = 128, downsample: bool = True
     ):
         super().__init__()
         self.batch_size = batch_size
         self.X_train, self.X_val, self.X_test = (
-            torch.tensor(X["Train"], dtype=torch.double),
-            torch.tensor(X["Val"], dtype=torch.double),
-            torch.tensor(X["Test"], dtype=torch.double),
+            torch.tensor(X["Train"], dtype=torch.float32),
+            torch.tensor(X["Val"], dtype=torch.float32),
+            torch.tensor(X["Test"], dtype=torch.float32),
         )
         self.y_train, self.y_val, self.y_test = (
-            torch.tensor(y["Train"], dtype=torch.double),
-            torch.tensor(y["Val"], dtype=torch.double),
-            torch.tensor(y["Test"], dtype=torch.double),
+            torch.tensor(y["Train"], dtype=torch.int),
+            torch.tensor(y["Val"], dtype=torch.int),
+            torch.tensor(y["Test"], dtype=torch.int),
         )
-        mean_channels = self.X_train.mean(dim=[0, -1, -2])
-        std_channels = self.X_train.std(dim=[0, -1, -2])
+        mean_channels = self.X_train.mean(dim=[0, 1, -1, -2])
+        std_channels = self.X_train.std(dim=[0, 1, -1, -2])
+
         self.transform = transforms.Compose(
             [
                 transforms.Normalize(mean=mean_channels, std=std_channels),
@@ -55,10 +59,11 @@ class WindDataModule(pl.LightningDataModule):
                 for idx, (image, image_class) in enumerate(images):
                     weights[idx] = weight_per_class[image_class]
                 return weights
-            weights = make_weights_for_balanced_classes(self.X_train, 2)                                                                
-            weights = torch.tensor(weights, dtype=self.X_train.dtype, device=self.X_train.device)                                       
-            self.sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))                     
-                                                                                            
+
+            weights = make_weights_for_balanced_classes(self.X_train, 2)
+            weights = torch.tensor(weights, dtype=self.X_train.dtype, device=self.X_train.device)
+            self.sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))
+
         else:
             self.sampler = None
 
@@ -66,9 +71,9 @@ class WindDataModule(pl.LightningDataModule):
         if type(self.y_train) == torch.Tensor and len(self.y_train.shape) == 2:
             pass
         else:
-            self.y_train = torch.tensor(self.y_train, dtype=torch.long)
-            self.y_val = torch.tensor(self.y_val, dtype=torch.long)
-            self.y_test = torch.tensor(self.y_test, dtype=torch.long)
+            self.y_train = torch.tensor(self.y_train)
+            self.y_val = torch.tensor(self.y_val)
+            self.y_test = torch.tensor(self.y_test)
 
     def setup(self, stage=None):
         if stage == "fit" or stage is None:
@@ -94,74 +99,62 @@ class WindDataModule(pl.LightningDataModule):
         return DataLoader(self.dataset_test, sampler=self.sampler, **self.dl_dict)
 
 
-def train_val_test_split(
-    path_to_data: str,
-    train: float = 0.5,
-    val: float = 0.25,
-    test: float = 0.25,
-    verbose: bool = False,
-) -> dict:
-    """randomly splits weather stations to train, val, test in proportions given
-
-    Args:
-        path_to_data (str): path to folder which contains folder with preparsed numpy objects from stations
-        train (float, optional): train weather stations share. Defaults to 0.5.
-        val (float, optional): val weather stations share. Defaults to 0.25.
-        test (float, optional): test weather stations share. Defaults to 0.25.
-        verbose (bool, optional): if to print out the result of split. Defaults to False.
-
-    Returns:
-        dict: [description]
-    """
-    stations = os.listdir(path_to_data)
-    random.Random(112).shuffle(stations)
-    partition = {"train_share": train, "val_share": val, "test_share": test}
-    train_len = int(len(stations) * partition["train_share"])
-    val_len = int(len(stations) * partition["val_share"])
-    test_len = int(len(stations) * partition["test_share"])
-    train_sts, val_sts, test_sts = (
-        stations[:train_len],
-        stations[train_len : train_len + val_len],
-        stations[train_len + val_len :],
-    )
-    st_split_dict = {"Train": train_sts, "Val": val_sts, "Test": test_sts}
-    if verbose:
-        print(st_split_dict)
-    return st_split_dict
+def get_stations(all_stations_data='data_mounted/weather_stations/weatherstation_list.json',
+                 stations_allowed_path="conf/splits/time_split_stations.txt",
+                 max_lat=None, min_lat=None, max_lon=None, min_lon=None, max_height=None, min_height=None):
+    all_stations = pd.read_json(all_stations_data)
+    with open(stations_allowed_path) as f:
+        stations_allowed = f.read().split('\n')
+    result_stations = all_stations[all_stations['Наименование станции'].isin(stations_allowed)]
+    if max_lat:
+        result_stations = result_stations[result_stations['Широта'] < max_lat]
+    if min_lat:
+        result_stations = result_stations[result_stations['Широта'] > min_lat]
+    if max_lon:
+        result_stations = result_stations[result_stations['Долгота'] < max_lon]
+    if min_lon:
+        result_stations = result_stations[result_stations['Долгота'] > min_lon]
+    if max_height:
+        result_stations = result_stations[result_stations['Высота метеопл.'] < max_height]
+    if min_height:
+        result_stations = result_stations[result_stations['Высота метеопл.'] > min_height]
+    return list(result_stations['Наименование станции'])
 
 
-def extract_splitted_data(path_to_dump: str, st_split_dict: dict, return_xarray: bool = False) -> tuple:
-    """extracts X, y, splitted into train, val, test
-
+def extract_splitted_data(path_to_dump: str, sts: list) -> tuple:
+    """extract data from listed stations
     Args:
         path_to_dump (str): path to folder which contains folder with preparsed numpy objects from stations
-        st_split_dict (dict): division by stations' names into train, val, test
-
+        sts (list): list of stations to be extracted
     Returns:
-        tuple: (X - keys = train, val, test. values = objects; y - similarly)
+        X (np.array) : data
+        y (np.array) : targets
     """
-    X = {}
-    y = {}
-    for split_part, sts in st_split_dict.items():
-        X_split = []
-        y_split = []
-        for st in sts:
-            st_dir = os.path.join(path_to_dump, st)
+    X = []
+    y = []
+    for st in sts:
+        logging.debug(f'extracting {st}')
+        st_dir = os.path.join(path_to_dump, st)
+        try:
             with open(os.path.join(st_dir, "objects.npy"), "rb") as f:
-                X_ = pickle.load(f)
+                X_ = np.load(f, allow_pickle=True).astype(np.float32)
+                X.append(X_)
+        except FileNotFoundError:
+            logging.warning(f'{st} not found')
+            continue
+        try:
+            with open(os.path.join(st_dir, "target.npy"), "rb") as f:
+                y_ = np.load(f, allow_pickle=True)
+            y.append(y_)
+        except FileNotFoundError:
+            logging.warning(f'{st} empty target')
+            continue
 
-            X_split.append(X_)
-            try:
-                with open(os.path.join(st_dir, "target.npy"), "rb") as f:
-                    y_ = pickle.load(f)
-                y_split.append(y_)
-            except FileNotFoundError:
-                y_split.append([])
-        if return_xarray:
-            X[split_part] = X_split
-        else:
-            X[split_part] = np.concatenate(X_split)
-        y[split_part] = np.concatenate(y_split)
+    if X:
+        X = np.concatenate(X)
+        y = np.concatenate(y)
+    else:
+        logging.critical('Train data is empty')
     return X, y
 
 
@@ -231,6 +224,7 @@ def ewma_vectorized(data, alpha, offset=None, dtype=None, order='C', out=None):
         out += offset * scaling_factors[1:]
 
     return out
+
 
 def ewma_vectorized_2d(data, alpha, axis=None, offset=None, dtype=None, order='C', out=None):
     """
@@ -329,37 +323,36 @@ def ewma_vectorized_2d(data, alpha, axis=None, offset=None, dtype=None, order='C
 
 
 def map_to_pandas(grid, x_axis, y_axis, t_axis, start_date, day_interval=1):
-    df = pd.DataFrame(np.zeros((len(list(range(grid.shape[0]))[::day_interval])*grid[0,3:-3,3:-3].shape[0]*grid[0,3:-3,3:-3].shape[1],4)))
-    df.rename(columns={0:'date', 1:'lon', 2:'lat', 3:'value'}, inplace=True)
-    k=0
+    df = pd.DataFrame(np.zeros((len(list(range(grid.shape[0]))[::day_interval]) * grid[0, 3:-3, 3:-3].shape[0] *
+                                grid[0, 3:-3, 3:-3].shape[1], 4)))
+    df.rename(columns={0: 'date', 1: 'lon', 2: 'lat', 3: 'value'}, inplace=True)
+    k = 0
     for t in tqdm(list(range(grid.shape[0]))[::day_interval]):
-        for i in range(3,grid[t,:,:].shape[0]-3):
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],0]=t_axis[t] #str(start_date + pd.DateOffset(1) * t)
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],1]=x_axis[:]
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],2]=y_axis[i-3] 
-            df.iloc[k:k+grid[t,3:-3,3:-3].shape[1],3]=grid[t,i,3:-3]
-            k+=grid[t,3:-3,3:-3].shape[1]
-    df=df.reset_index()
+        for i in range(3, grid[t, :, :].shape[0] - 3):
+            df.iloc[k:k + grid[t, 3:-3, 3:-3].shape[1], 0] = t_axis[t]  # str(start_date + pd.DateOffset(1) * t)
+            df.iloc[k:k + grid[t, 3:-3, 3:-3].shape[1], 1] = x_axis[:]
+            df.iloc[k:k + grid[t, 3:-3, 3:-3].shape[1], 2] = y_axis[i - 3]
+            df.iloc[k:k + grid[t, 3:-3, 3:-3].shape[1], 3] = grid[t, i, 3:-3]
+            k += grid[t, 3:-3, 3:-3].shape[1]
+    df = df.reset_index()
     return df
 
 
-def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=None, text=None, show=True, vmin=None, vmax=None):
-    
+def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=None, text=None, show=True, vmin=None,
+             vmax=None):
     dx, dy = .25, .25
-    geometry = [Polygon([(x-dx, y-dy),
-                         (x+dx, y-dy),
-                         (x+dx, y+dy),
-                         (x-dx, y+dy)]) for x, y in zip(df_year.lon, df_year.lat)]
+    geometry = [Polygon([(x - dx, y - dy),
+                         (x + dx, y - dy),
+                         (x + dx, y + dy),
+                         (x - dx, y + dy)]) for x, y in zip(df_year.lon, df_year.lat)]
 
-    geodf = gpd.GeoDataFrame(df_year, crs = 4326, geometry=geometry)
-    
-    
+    geodf = gpd.GeoDataFrame(df_year, crs=4326, geometry=geometry)
+
     polygon = box(-180, 23, 180, 90)
 
-    
     world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
     world = gpd.clip(world, polygon)
-    
+
     if part_world_to_plot == 'Florida':
         Fl_polygon = box(-92, 22, -75, 34)
         world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
@@ -380,9 +373,10 @@ def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=No
     elif part_world_to_plot == 'world':
         basemap = world
     elif part_world_to_plot == 'europe':
-        basemap = world[world.continent == 'Europe'] 
-        
+        basemap = world[world.continent == 'Europe']
+
         a = basemap.geometry.iloc[0]
+
         def restriction(x):
             x = x.bounds
             l1, r1 = x[0], x[2]
@@ -391,13 +385,14 @@ def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=No
             return (l1 > a.bounds[0] and r1 < a.bounds[2]) and (l2 > a.bounds[1] and r2 < a.bounds[3])
 
         geodf = geodf[geodf.geometry.apply(restriction) == True]
-        
+
     elif part_world_to_plot == 'russia':
-        europe = world[world.continent == 'Europe'] 
-        basemap = europe[europe.name =='Russia']
-        
+        europe = world[world.continent == 'Europe']
+        basemap = europe[europe.name == 'Russia']
+
         a = basemap.geometry.iloc[0]
         print(a.bounds)
+
         def restriction(x):
             x = x.bounds
             l1, r1 = x[0], x[2]
@@ -406,25 +401,25 @@ def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=No
             return (l1 > a.bounds[0] and r1 < a.bounds[2]) and (l2 > a.bounds[1] and r2 < a.bounds[3])
 
         geodf = geodf[geodf.geometry.apply(restriction) == True]
-        
+
     basemap = basemap.to_crs(epsg=epsg)
     geodf = geodf.to_crs(epsg=epsg)
-    
-    f = plt.figure(dpi = 200)
+
+    f = plt.figure(dpi=200)
     ax = f.gca()
     ax.set_facecolor('white')
 
     if vmin is None:
         vmin = df_year[column].min()
-    
+
     if vmax is None:
         vmax = df_year[column].max()
 
-    basemap.plot(ax=ax, color = '#CACACA')
-    geodf.plot(ax = ax, column = column, legend=True,
-              legend_kwds={'orientation': "horizontal",
-                            'shrink': 0.8}, #cax=cax,
-              vmin=vmin, vmax=vmax, aspect=1, edgecolor="white", linewidth=0.05, alpha=1.)
+    basemap.plot(ax=ax, color='#CACACA')
+    geodf.plot(ax=ax, column=column, legend=True,
+               legend_kwds={'orientation': "horizontal",
+                            'shrink': 0.8},  # cax=cax,
+               vmin=vmin, vmax=vmax, aspect=1, edgecolor="white", linewidth=0.05, alpha=1.)
 
     if text is None:
         text = column
@@ -436,20 +431,22 @@ def plot_map(df_year, column, epsg=3035, part_world_to_plot='world', img_path=No
     if show:
         plt.show()
 
-def plot_grid(ax, crs, color='black', linewidth=.5, alpha=0.2, xmin=-180, 
+
+def plot_grid(ax, crs, color='black', linewidth=.5, alpha=0.2, xmin=-180,
               xmax=179.999, ymin=-90, ymax=90, n=10, width=15, height=15):
     cols = list(np.arange(xmin, xmax + width, width))
     rows = list(np.arange(ymin, ymax + height, height))
 
-    xlin = np.linspace(xmin, xmax, n*len(cols))
-    ylin = np.linspace(ymin, ymax, n*len(rows))
-    lines  = [LineString(zip([x]*(n*len(rows)), ylin)) for x in cols]
-    lines += [LineString(zip(xlin, [y]*(n*len(cols)))) for y in rows]
+    xlin = np.linspace(xmin, xmax, n * len(cols))
+    ylin = np.linspace(ymin, ymax, n * len(rows))
+    lines = [LineString(zip([x] * (n * len(rows)), ylin)) for x in cols]
+    lines += [LineString(zip(xlin, [y] * (n * len(cols)))) for y in rows]
 
     grid = gpd.GeoDataFrame(lines, crs=4326, geometry=lines)
     grid.to_crs(crs, inplace=True)
 
     grid.plot(ax=ax, color=color, linewidth=linewidth, alpha=alpha)
+
 
 def plot_points(df, epsg=3035):
     polygon = box(-180, 23, 180, 90)
@@ -459,9 +456,9 @@ def plot_points(df, epsg=3035):
     basemap = world.cx[:, 52:]
     basemap = basemap.to_crs(epsg=epsg)
 
-    f = plt.figure(dpi = 200)
+    f = plt.figure(dpi=200)
     ax = f.gca()
-    basemap.plot(ax=ax, color = '#CACACA')
+    basemap.plot(ax=ax, color='#CACACA')
 
     pts = gpd.points_from_xy(df.lon, df.lat)
     pts = gpd.GeoDataFrame(pts)

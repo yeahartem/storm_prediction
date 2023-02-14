@@ -1,0 +1,11 @@
+lightning_logs
+notebooks/lightning_logs
+.idea
+.vscode
+*ipynb_checkpoints
+*.csv
+*.npy
+*.nc
+logs/*
+*pycache*
+data_mounted
