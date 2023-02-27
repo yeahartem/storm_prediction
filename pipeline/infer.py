@@ -1,6 +1,8 @@
 import numpy as np
 import sys
 
+from src.data_assemble.create_dataset import load_dataset_as_xarray
+
 sys.path.append('../')
 import os
 
@@ -9,10 +11,10 @@ import torch
 import time
 import warnings
 import json
+
 warnings.filterwarnings("ignore")
 import xarray as xr
-import geopandas as gpd
-from sklearn.metrics import accuracy_score, log_loss
+from sklearn.metrics import log_loss
 from sklearn.calibration import calibration_curve
 import matplotlib as mpl
 from src.data_assemble.assemble_conv import *
@@ -21,6 +23,7 @@ from src.models.WindCNN import *
 from src.models.temperature_scaling import *
 from src.data_assemble.wrap_data import *
 import logging
+import copy
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s-%(message)s')
 
 torch.manual_seed(112)
@@ -28,7 +31,6 @@ random.seed(112)
 
 
 def infer(path_to_config):
-
     with open(path_to_config) as jf:
         conf = json.load(jf)
     rus_bnd_gdf = gpd.read_file('conf/geo.json')
@@ -53,25 +55,32 @@ def infer(path_to_config):
     path_to_files = conf["path_to_files"]
     half_side_size = conf["half_side_size"]
     target_res = conf["target_res"]
-    filter_dict = conf["filter_dict"]
-    time_limits = conf["time_limits"]
-    time_limits = {'t_start': np.datetime64(time_limits['t_start']), 't_end': np.datetime64(time_limits['t_end'])}
-    nn_config_path = conf["nn_init_data"]["nn_config_path"]
+    time_limits = copy.deepcopy(conf["time_limits"])
+    time_limits[0] = np.datetime64(time_limits[0])
+    time_limits[1] = np.datetime64(time_limits[1])
     chk_path = conf["nn_init_data"]["chk_path"]
     inf_file_name = conf['inf_file_name']
     path_to_save = os.path.join(conf['path_to_save'], region_name)
     conf['actual rectangle'] = rectangle_coords
+    bands = conf['bands']
+    args = {'lr': 1e-4, 'threshold': 0.5}
+
     os.makedirs(path_to_save, exist_ok=True)
     with open(os.path.join(path_to_save, 'infer_conf.json'), 'w') as fp:
         json.dump(conf, fp)
 
     logging.info("Preparing blocks")
     if not load_data:
-        blocks = make_blocks(path_to_files, filter_dict, rectangle_coords, target_res, half_side_size=half_side_size,
-                             time_limits=time_limits)
+        dataset_as_xarray = load_dataset_as_xarray(file_paths=path_to_files,
+                                                   rectangle_coords=rectangle_coords,
+                                                   target_res=target_res,
+                                                   bands=bands,
+                                                   time_limits=time_limits)
+
+        X = make_blocks_no_target(dataset_as_xarray=dataset_as_xarray,
+                                  half_side_size=half_side_size)
         logging.info("Preparing blocks - done")
         logging.info("Assembling dataset for inference")
-        X = assemble_numpy_ds(blocks=blocks, target='', stations_pixs='', include_target=False)
         file = open(save_dump, 'wb')
         pickle.dump(X, file)
         file.close()
@@ -83,16 +92,14 @@ def infer(path_to_config):
 
     logging.info("Initializing NN")
     batch_size = 1024
-    with open(nn_config_path) as fs:
-        args = json.load(fs)
     stations_list = get_stations(all_stations_data='data_mounted/weather_stations/weatherstation_list.json',
                                  stations_allowed_path="conf/splits/time_split_stations.txt",
-                                 max_lat=rectangle_coords['lat_max'], min_lat=rectangle_coords['lat_min'],
-                                 max_lon=rectangle_coords['lon_max'], min_lon=rectangle_coords['lon_min'],
+                                 max_lat=80.52, min_lat=36.38,
+                                 max_lon=181.45, min_lon=32.12,
                                  max_height=300, min_height=-10)
 
     logging.info(f'Total stations: {len(stations_list)}')
-    X_train, y_train = extract_splitted_data(os.path.join(conf["path_to_init_data"],"train"), stations_list)
+    X_train, y_train = extract_splitted_data(os.path.join(conf["path_to_init_data"], "train"), stations_list)
     X_test, y_test = extract_splitted_data(os.path.join(conf["path_to_init_data"], "test"), stations_list)
     X_init = {"Train": X_train, "Val": X_test, "Test": X_test}
     y_init = {"Train": y_train, "Val": y_test, "Test": y_test}
@@ -118,39 +125,30 @@ def infer(path_to_config):
         logging.info(f'Temperature set {temperature}')
 
     logging.info("Inference")
-    lat_axis = []
-    lon_axis = []
-    for pix_idx, curr_X in X.items():
-        curr_lat = curr_X.lat[half_side_size - 1].data
-        lat_axis.append(curr_lat)
-        curr_lon = curr_X.lon[half_side_size - 1].data
-        lon_axis.append(curr_lon)
-    time_axis = curr_X.time.data
-    lat_axis = np.sort(np.unique(np.array(lat_axis)))
-    lon_axis = np.sort(np.unique(np.array(lon_axis)))
-    inference_xarray = xr.DataArray(
-        data=np.ones((len(lon_axis), len(lat_axis), len(time_axis))),
-        dims=["lon", "lat", "time"],
+
+    result_xarray = xr.DataArray(
+        data=np.ones((len(X.lat.data), len(X.lon.data), len(X.time.data))),
+        dims=["lat", "lon", "time"],
         coords=dict(
-            lon=(["lon"], lon_axis),
-            lat=(["lat"], lat_axis),
-            time=(["time"], time_axis)
+            lat=(["lat"], X.lat.data),
+            lon=(["lon"], X.lon.data),
+            time=(["time"], X.time.data)
         ),
-        attrs=curr_X.attrs
+        attrs=X.attrs
     )
 
-    for pix_idx, curr_X in tqdm(X.items()):
-        curr_lat = curr_X.lat[half_side_size - 1].data
-        curr_lon = curr_X.lon[half_side_size - 1].data
+    for (curr_lat, curr_lon) in tqdm(zip(X.lat.data, X.lon.data)):
         with torch.no_grad():
             if dm.transform is not None:
-                inference_pix = nn.Sigmoid()(temp_scaled_model(dm.transform(torch.tensor(curr_X.data, device=0)))).cpu()
+                inference_pix = nn.Sigmoid()(temp_scaled_model(dm.transform(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0)))).cpu()
             else:
-                inference_pix = nn.Sigmoid()(temp_scaled_model(torch.tensor(curr_X.data, device=0))).cpu()
-        inference_xarray.loc[dict(lat=curr_lat, lon=curr_lon)] = torch.squeeze(inference_pix).numpy()
-    inference_xarray.name = 'prob'
+                inference_pix = nn.Sigmoid()(temp_scaled_model(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0))).cpu()
+        result_xarray.loc[dict(lat=curr_lat, lon=curr_lon)] = torch.squeeze(inference_pix).numpy()
+
+    np_res = result_xarray.values
+    result_xarray.name = 'prob'
     logging.info("Inference - done")
-    tmp = inference_xarray.to_dataframe().reset_index()
+    tmp = result_xarray.to_dataframe().reset_index()
     logging.info("Converting to GeoDataFrame")
     gdf = gpd.GeoDataFrame(
         tmp.prob, geometry=gpd.points_from_xy(tmp.lon, tmp.lat), crs="EPSG:4326")
@@ -169,13 +167,17 @@ def infer(path_to_config):
     if make_calibration_curve:
         logging.info("Calibraiton curve")
         with torch.no_grad():
-            y_pred_binary = nn.Sigmoid()(temp_scaled_model(dm.transform(torch.tensor(X_init['Val'], device=0)))).detach().cpu().numpy()  # binary_model.predict(x_val_binary)
-            # y_pred_binary = temp_scaled_model(dm.transform(torch.tensor(X_init['Val'], device=model.device))).exp()[:, 1].detach().cpu().numpy()#binary_model.predict(x_val_binary)
+            y_pred_binary = nn.Sigmoid()(temp_scaled_model(dm.transform(
+                torch.tensor(X_init['Val'], device=0)))).detach().cpu().numpy()  # binary_model.predict(x_val_binary)
+            # y_pred_binary = temp_scaled_model(dm.transform(torch.tensor(X_init['Val'], device=model.device)))
+            # .exp()[:, 1].detach().cpu().numpy()#binary_model.predict(x_val_binary)
             y_val_binary = y_init["Val"]
         acc_score = accuracy_score(y_val_binary, y_pred_binary >= args['threshold'])
         loss_score = log_loss(y_val_binary, y_pred_binary)
-        logging.info('Binary metrics: validation accuracy is {0:.2f}, validation loss is {1:.2f}'.format(acc_score, loss_score))
-        prob_true_binary, prob_pred_binary = calibration_curve(y_val_binary, y_pred_binary, n_bins=5, strategy='quantile')
+        logging.info(
+            'Binary metrics: validation accuracy is {0:.2f}, validation loss is {1:.2f}'.format(acc_score, loss_score))
+        prob_true_binary, prob_pred_binary = calibration_curve(y_val_binary, y_pred_binary, n_bins=5,
+                                                               strategy='quantile')
         plot_reliability_diagram(prob_true_binary, prob_pred_binary, "WindNet")
         plt.savefig(os.path.join(path_to_save, 'pics', 'calibration_curve' + '.png'))
         logging.info("Calibraiton curve saved")
@@ -188,8 +190,7 @@ def infer(path_to_config):
     #     #     break
     #     plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
     # print("Sample maps (10) - done")
-    logging.info("Sample maps (10)")
-
+    # logging.info("Sample maps (10)")
     try:
         state_df = rus_bnd_gdf[(rus_bnd_gdf.NAME_1 == region_name)]
         for i, time in enumerate(gdf.time.unique()):
@@ -202,7 +203,7 @@ def infer(path_to_config):
             sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
             cbar = plt.colorbar(sm, orientation="horizontal", fraction=0.03, pad=0.009, ).set_label(
                 label='Probability of Strong Wind', size=15)  # ,weight='bold'
-            #gax.axis('off')
+            # gax.axis('off')
             plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
             plt.close(fig)
             # plt.title(str(time)[:10], fontsize=25)

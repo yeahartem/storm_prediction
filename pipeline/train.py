@@ -17,12 +17,12 @@ sys.path.append('../')
 from contextlib import redirect_stdout
 from src.models.WindCNN import WindNet, WindNetPL
 from src.data_assemble.wrap_data import get_stations, extract_splitted_data, WindDataModule
-from src.data_assemble.create_dataset import create_dataset, read_splits
+from src.data_assemble.create_dataset import create_dataset
 
 warnings.filterwarnings("ignore")
 torch.manual_seed(112)
 random.seed(112)
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s-%(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s-%(message)s')
 
 
 def train(path="conf/train_conf.json"):
@@ -33,12 +33,9 @@ def train(path="conf/train_conf.json"):
     if conf["if_generate_dataset"]:
         create_dataset(conf)
 
-    nn_config_path = conf["nn_init_data"]["nn_config_path"]
     batch_size = conf["nn_init_data"]["batch_size"]
     max_epoch = conf["nn_training_data"]["max_epoch"]
-    train_split_path = 'conf/splits/train.txt'  # TODO move to conf
-    test_split_path = 'conf/splits/test.txt'
-    path_to_save_train = path_to_save_train = conf["path_to_save"] + "train"
+    args = {'lr': 1e-4, 'threshold': 0.5}
 
     print("Reading dataset")
 
@@ -51,15 +48,13 @@ def train(path="conf/train_conf.json"):
     X_train, y_train = extract_splitted_data(conf["path_to_save"] + "train", stations_list)
     X_test, y_test = extract_splitted_data(conf["path_to_save"] + "test", stations_list)
 
-    print(f"class balance train: {sum(y_train)/len(y_train)} test: {sum(y_test)/len(y_test)}")
+    print(f"class balance train: {sum(y_train) / len(y_train)} test: {sum(y_test) / len(y_test)}")
 
     X = {"Train": X_train, "Val": X_test, "Test": X_test}
     y = {"Train": y_train, "Val": y_test, "Test": y_test}
     print("Reading - done")
 
     print("Initializing NN")
-    with open(nn_config_path) as fs:
-        args = json.load(fs)
 
     trainer = pl.Trainer(max_epochs=max_epoch,
                          accelerator="gpu",

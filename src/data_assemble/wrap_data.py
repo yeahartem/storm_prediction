@@ -1,8 +1,5 @@
 import logging
 import os
-import random
-import pickle
-from click import pass_context
 import numpy as np
 import pytorch_lightning as pl
 from torchvision import transforms
@@ -15,8 +12,6 @@ from shapely.geometry import Point, Polygon, box, LineString
 
 import pandas as pd
 import matplotlib.pyplot as plt
-
-from src.data_assemble.create_dataset import read_splits
 
 
 class WindDataModule(pl.LightningDataModule):
@@ -37,6 +32,12 @@ class WindDataModule(pl.LightningDataModule):
         )
         mean_channels = self.X_train.mean(dim=[0, 1, -1, -2])
         std_channels = self.X_train.std(dim=[0, 1, -1, -2])
+        # file = open('mean.pickle', 'wb')
+        # pickle.dump(mean_channels, file)
+        # file.close()
+        # file = open('std.pickle', 'wb')
+        # pickle.dump(std_channels, file)
+        # file.close()
 
         self.transform = transforms.Compose(
             [

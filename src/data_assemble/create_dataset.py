@@ -1,48 +1,42 @@
 import gc
 import json
+import pickle
 import time
-from itertools import islice
-import numpy as np
 import os
-import sys
 import logging
 import warnings
 
-sys.path.append('../')
-sys.path.append(os.path.realpath('.'))
+import numpy as np
+import pandas as pd
+import torch
+import random
+
+from src.data_assemble.assemble_conv import get_y, get_pixel_stations, make_blocks, assemble_numpy_ds
+from src.data_assemble.wrap_data import get_stations
+from src.data_utils.data_processing import get_xarrays, get_xarrays_elevation
+from src.data_utils.utils import cleanup_ms_name
+
 warnings.filterwarnings("ignore")
-from src.data_assemble.assemble_conv import *
-from src.data_assemble.wrap_data import *
+
 
 torch.manual_seed(112)
 random.seed(112)
 
 
-def read_splits(train_path, val_path, test_path):
-    with open(train_path) as f:
-        train_list = f.read().split('\n')
-    with open(test_path) as f:
-        test_list = f.read().split('\n')
-    if val_path:
-        with open(test_path) as f:
-            val_list = f.read().split('\n')
-    else:
-        val_list = test_list
-    return train_list, val_list, test_list
-
-
-def batched(iterable, n):
-    if n < 1:
-        raise ValueError('n must be at least one')
-    it = iter(iterable)
-    while batch := tuple(islice(it, n)):
-        yield batch
-
-
-def cleanup_ms_name(name: str):
-    name = name.replace('"', '')
-    name = name.replace(',', '')
-    return name
+def load_dataset_as_xarray(file_paths, rectangle_coords, target_res, bands, time_limits):
+    cmip_data = get_xarrays(
+        path_to_cmip_folder=file_paths[1],
+        rectangle_coords=rectangle_coords,
+        bands=bands,
+        target_res=target_res,
+        time_limits=time_limits)
+    cmip_xarray = cmip_data['Wind_']
+    elevation = get_xarrays_elevation(
+        path_to_data=file_paths[0],
+        rectangle_coords=rectangle_coords,
+        reference_xarray=cmip_xarray)
+    cmip_data.update(elevation)
+    return cmip_data
 
 
 def create_dataset(conf):
@@ -56,80 +50,72 @@ def create_dataset(conf):
     min_height = conf["min_height"]
     max_height = conf["max_height"]
     target_res = conf["target_res"]
-    filter_dict = conf["filter_dict"]
-    time_limits = conf["time_limits"]
+    time_limits = conf["time_limits"].deepcopy()
+    time_limits[0] = np.datetime64(time_limits[0])
+    time_limits[1] = np.datetime64(time_limits[1])
     start_of_test = conf["start_of_test"]
-    start = time_limits['t_start']
-    end = time_limits['t_end']
     split_date = pd.to_datetime(start_of_test['t_split'])
     path_to_weather_stations = conf["path_to_weather_stations"]
     path_to_weatherstation_list = conf["path_to_weather_stations_list"]
     path_to_save_train = conf["path_to_save"] + "train"
     path_to_save_test = conf["path_to_save"] + "test"
     speed_th = conf["nn_init_data"]["speed_th"]
-    train_split_path = 'conf/splits/train.txt'  # TODO move to conf
-    test_split_path = 'conf/splits/test.txt'
     dataset_save_path = conf['path_to_save']
+    bands = conf['bands']
 
+    path_to_cmip = path_to_files[1]
 
-    for path in path_to_files:
-        if 'elevation' not in path_to_files:
-            path_to_cmip = path
-
+    block_size = 10
     logging.info("Preparing target")
     columns = ["Название метеостанции", "Максимальная скорость", "Средняя скорость ветра", "Дата"]
-
     df = pd.read_parquet(path_to_weather_stations, columns=columns)
-    # logging.debug(df.dtypes)
-    # logging.debug(df.memory_usage(deep=True))
     df["Название метеостанции"] = df["Название метеостанции"].apply(cleanup_ms_name)
-
-    # df["Название метеостанции"] = df["Название метеостанции"].astype("category")
-    # df[["Максимальная скорость", "Средняя скорость ветра"]].apply(pd.to_numeric, downcast="float")
-
+    df["Название метеостанции"] = df["Название метеостанции"].astype("category")
+    df[["Максимальная скорость", "Средняя скорость ветра"]].apply(pd.to_numeric, downcast="float")
     df["Дата"] = pd.to_datetime((df["Дата"]), format="%Y/%m/%d")
     logging.info("data_meteo_full is read")
 
-    block_size = 15
-    for lat in range(int(min_lat), int(max_lat)+block_size, block_size):
-        for lon in range(int(min_lon), int(max_lon)+block_size, block_size):
+    for lat in range(int(min_lat), int(max_lat) + block_size, block_size):
+        for lon in range(int(min_lon), int(max_lon) + block_size, block_size):
             lat = min(lat, max_lat)
             lon = min(lon, max_lon)
-            rectangle_coords['lat_max'] = lat+block_size
+            rectangle_coords['lat_max'] = lat + block_size
             rectangle_coords['lat_min'] = lat
-            rectangle_coords['lon_max'] = lon+block_size
+            rectangle_coords['lon_max'] = lon + block_size
             rectangle_coords['lon_min'] = lon
             stations_list = get_stations(all_stations_data='data_mounted/weather_stations/weatherstation_list.json',
                                          stations_allowed_path="conf/splits/time_split_stations.txt",
-                                         max_lat=lat+block_size, min_lat=lat, max_lon=lon+block_size, min_lon=lon,
+                                         max_lat=lat + block_size, min_lat=lat, max_lon=lon + block_size, min_lon=lon,
                                          max_height=max_height, min_height=min_height)
             if not stations_list:
                 logging.info('No station in this area')
                 continue
             logging.info(f'stations to be created: {stations_list}')
             logging.info(f'working in rectangle: {rectangle_coords}')
-
             weatherstation_list = pd.read_json(path_to_weatherstation_list)
-            target = get_y(df, start, end, stations_list, speed_th=speed_th)
-            logging.debug(f'Target acquired')
-            stations_pixs = get_pixel_stations(path_to_cmip, filter_dict, stations_list, weatherstation_list,
-                                               rectangle_coords,
-                                               target_res)
+            target = get_y(weather_stations_data=df,
+                           start=time_limits[0],
+                           end=time_limits[1],
+                           station_name_list=stations_list,
+                           speed_th=speed_th)
+
+            dataset_as_xarray = load_dataset_as_xarray(file_paths=path_to_files,
+                                                 rectangle_coords=rectangle_coords,
+                                                 target_res=target_res,
+                                                 bands=bands,
+                                                 time_limits=time_limits)
+
+            stations_pixs = get_pixel_stations(dataset=dataset_as_xarray,
+                                               station_names=stations_list,
+                                               station_list=weatherstation_list)
             logging.debug(f"Preparing target - done")
 
-            logging.info(f"Preparing blocks")
-            blocks = make_blocks(path_to_files, filter_dict, rectangle_coords, target_res, half_side_size=half_side_size,
-                                 time_limits=time_limits)
+            blocks = make_blocks(dataset_as_xarray=dataset_as_xarray,
+                                 half_side_size=half_side_size)
             logging.debug(f"Preparing blocks - done")
 
-            logging.debug(f"Assembling dataset for training")
             X, y = assemble_numpy_ds(blocks, target, stations_pixs)
             logging.debug(f"Assembling dataset for training - done")
-
-            with open('data_mounted/X_backup.npy', 'wb') as f:
-                pickle.dump(X, f)
-            with open('data_mounted/y_backup.npy', 'wb') as f:
-                pickle.dump(y, f)
 
             if dataset_save_path:
                 path_to_dump = os.path.join('..', dataset_save_path)
@@ -163,21 +149,24 @@ def create_dataset(conf):
 
 
 if __name__ == "__main__":
-
     logging.basicConfig(filename='dataset.log',
                         filemode='a',
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                        format='%(asctime)s - %(levelname)s - %(message)s',
                         datefmt='%H:%M:%S',
                         level=logging.DEBUG)
 
-    if len(sys.argv) == 1:
-        sys.argv.append('conf/train_conf.json')
-    path_to_config = sys.argv[1]
-    t1 = time.time()
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
+    logger = logging.getLogger(__name__)
+    path_to_config = 'conf/train_conf.json'
 
+    t1 = time.process_time()
     with open(path_to_config) as fs:
-        conf = json.load(fs)
+        config_dict = json.load(fs)
 
-    create_dataset(conf)
-    t2 = time.time()
+    create_dataset(config_dict)
+    t2 = time.process_time()
     print("Total time: ", t2 - t1)
