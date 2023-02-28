@@ -5,6 +5,8 @@ import warnings
 import json
 from typing import Any
 
+import numpy as np
+import pandas as pd
 import torch
 import random
 import logging
@@ -17,8 +19,6 @@ sys.path.append('../')
 from contextlib import redirect_stdout
 from src.models.WindCNN import WindNet, WindNetPL
 from src.data_assemble.wrap_data import get_stations, extract_splitted_data, WindDataModule
-from src.data_assemble.create_dataset import create_dataset
-
 warnings.filterwarnings("ignore")
 torch.manual_seed(112)
 random.seed(112)
@@ -30,9 +30,6 @@ def train(path="conf/train_conf.json"):
         conf = json.load(fs)
 
     print(conf)
-    if conf["if_generate_dataset"]:
-        create_dataset(conf)
-
     batch_size = conf["nn_init_data"]["batch_size"]
     max_epoch = conf["nn_training_data"]["max_epoch"]
     args = {'lr': 1e-4, 'threshold': 0.5}
@@ -48,19 +45,22 @@ def train(path="conf/train_conf.json"):
     X_train, y_train = extract_splitted_data(conf["path_to_save"] + "train", stations_list)
     X_test, y_test = extract_splitted_data(conf["path_to_save"] + "test", stations_list)
 
+    nans_train = np.squeeze(np.argwhere(np.isnan(y_train.flatten())))
+    y_train = np.delete(y_train, nans_train, axis=0)
+    X_train = np.delete(X_train, nans_train, axis=0)
+    nans_test = np.squeeze(np.argwhere(np.isnan(y_test.flatten())))
+    y_test = np.delete(y_test, nans_test, axis=0)
+    X_test = np.delete(X_test, nans_test, axis=0)
+
     print(f"class balance train: {sum(y_train) / len(y_train)} test: {sum(y_test) / len(y_test)}")
 
     X = {"Train": X_train, "Val": X_test, "Test": X_test}
     y = {"Train": y_train, "Val": y_test, "Test": y_test}
-    print("Reading - done")
-
-    print("Initializing NN")
 
     trainer = pl.Trainer(max_epochs=max_epoch,
                          accelerator="gpu",
                          benchmark=True,
-                         check_val_every_n_epoch=1,
-                         )
+                         check_val_every_n_epoch=1)
 
     dm = WindDataModule(X=X, y=y, batch_size=batch_size, downsample=False)
 

@@ -2,7 +2,7 @@ import logging
 import sys
 
 sys.path.append('..')
-from src.data_utils.utils import check_leap_year
+from src.data_utils.utils import check_leap_year, find_nearest
 import glob
 import matplotlib.pyplot as plt
 import os
@@ -19,6 +19,8 @@ import time
 def filter_cmip_files(all_cmip_files, time_limits, band):
     band_cmip_files = []
     for file in all_cmip_files:
+        if not file.endswith('.nc'):
+            continue
         start = np.datetime64(pd.to_datetime(file[-20:-12]))
         end = np.datetime64(pd.to_datetime(file[-11:-3]))
         if (end > time_limits[0]) and (start < time_limits[1]):
@@ -27,20 +29,20 @@ def filter_cmip_files(all_cmip_files, time_limits, band):
     return band_cmip_files
 
 
-def get_xarrays(path_to_cmip_folder: str, rectangle_coords: dict, target_res: dict,
+def get_xarrays(all_cmip_files: list[str], rectangle_coords: list, target_res: dict,
                 time_limits: (np.datetime64, np.datetime64), bands: list) -> dict:
     """
     Returns reduced to rectangle_coords xarrays EXCEPT elevation.
-    rectangle_coords - {'lat_min': 41.12, 'lat_max': 81.49,'lon_min': 19.38, 'lon_max': 169.40}, target_res - {
-    'lon_res': 0.25, 'lat_res': 0.25}, contains - things which should be included into the titles of .nc files: {
-    "years": ['2016', '2026'], "bands": ['max', 'Wind_']}
+    rectangle_coords - [lat, lat_max, lon, lon_max],
+    target_res - {'lon_res': 0.25, 'lat_res': 0.25}, contains - things which should
+    be included into the titles of .nc files:
     """
+    # TODO return rectangle_coords to dict
     lat_res = target_res['lat_res']
     lon_res = target_res['lon_res']
     xarrays = {}
     start_time = time.process_time()
 
-    all_cmip_files = [os.path.join(path_to_cmip_folder, fn) for fn in next(os.walk(path_to_cmip_folder))[2]]
     for band in bands:
         band_year = []
         cmip_files = filter_cmip_files(all_cmip_files, time_limits, band)
@@ -63,7 +65,7 @@ def get_xarrays(path_to_cmip_folder: str, rectangle_coords: dict, target_res: di
     return xarrays
 
 
-def get_xarrays_elevation(path_to_data: str, rectangle_coords: dict,
+def get_xarrays_elevation(path_to_data: str, rectangle_coords: list,
                           reference_xarray: xarray.DataArray = None) -> dict:
     """
     Returns reduced to rectangle_coords elevation xarrays.
@@ -125,32 +127,17 @@ def open_elevation_as_xarray(path_to_file: str) -> xarray.DataArray:
     return f1_xarray
 
 
-def reduce_to_area(data_arr: xarray.DataArray, rectangle_coords: dict) -> xarray.DataArray:
+def reduce_to_area(data_arr: xarray.DataArray, rectangle_coords: list) -> xarray.DataArray:  # TODO redo
     """
-    Reduces the area to the input frames +-1.5 on latitude axis and +-2 on longitude axis.
+    Reduces the area to the input frames +-2 on latitude axis and +-2 on longitude axis.
     """
-    lat_min = rectangle_coords['lat_min'] - 1.5 - 0.25 * 5  # TODO get numbers from config
-    lat_max = rectangle_coords['lat_max'] + 1.5 + 0.25 * 5
-    lon_max = rectangle_coords['lon_max'] + 2 + 0.25 * 5
-    lon_min = rectangle_coords['lon_min'] - 2 - 0.25 * 5
+    lat_min = rectangle_coords[0] - 2 - 0.25 * 3  # TODO get numbers from config
+    lat_max = rectangle_coords[1] + 2 + 0.25 * 3
+    lon_min = rectangle_coords[2] - 2 - 0.25 * 3
+    lon_max = rectangle_coords[3] + 2 + 0.25 * 3
 
     band_name = [v for v in dict(data_arr.coords)['variable'].data if 'bnds' not in v][0]
     output = data_arr.sel(lat=slice(lat_min, lat_max), lon=slice(lon_min, lon_max),
-                          variable=band_name)
-    # output.data = np.float32(output.data)
-    if band_name != 'topo':
-        assert np.allclose(output.data[:, 0, :, :],
-                           output.data[:, 1, :, :]), "`bnds` dim components of tensor are not identical"
-    return output
-
-
-def old_reduce_to_area(data_arr: xarray.DataArray, lat_min: float = 24, lat_max: float = 31, lon_min: float = 272,
-                       lon_max: float = 280) -> xarray.DataArray:
-    """
-    Reduces the area to the input frames +-1.5 on latitude axis and +-2 on longitude axis.
-    """
-    band_name = [v for v in dict(data_arr.coords)['variable'].data if 'bnds' not in v][0]
-    output = data_arr.sel(lat=slice(lat_min - 1.5, lat_max + 1.5), lon=slice(lon_min - 2, lon_max + 2),
                           variable=band_name)
     # output.data = np.float32(output.data)
     if band_name != 'topo':
@@ -187,12 +174,14 @@ def interp_timewise(data_arr: xarray.DataArray, lon_res: float = 0.25, lat_res: 
             plt.imshow(znew)
             plt.show()
     output = np.stack(znews)
-    return (output, xnew, ynew)
+    return output, xnew, ynew
 
 
 def res_incr(X_elev, Y_elev, X_cmip, Y_cmip,
              elev_data, etalon_data, etalon,
-             func_list=[np.mean, np.max, np.min, np.std]):
+             func_list=None):
+    if func_list is None:
+        func_list = [np.mean, np.max, np.min, np.std]
     data = []
     for func in func_list:
         x = 0
@@ -231,22 +220,25 @@ def interp_timewise_xarray(data_arr: xarray.DataArray, lon_res: float = 0.25, la
     return output
 
 
-def get_closest_pixel(dataset, coord):  # change gdal.Dataset to xarray
-    """Finds the closest pixel indices in the dataset
-  Args:
-      dataset (gdal.Dataset): dataset with pixels
-      coord (np.ndarray): coordinate for which the closest pixel's indices in the dataset will be found
-  Returns:
+def closest_pixel_for_station(station_name, dataset, station_list):
+    """Finds the closest pixel in the dataset for the station
+    FIXED: NOT INDICES, BUT ABS VALUES
+    Args:
+      station_name (str): name of the station
+      dataset (xarray.DataArray): dataset with pixels
+      station_list (pd.DataFrame): table with stations' coordinates
+    Returns:
       tuple: x, y indices among the dataset
-  """
+    """
+    station = station_list[station_list["Наименование станции"] == station_name]
+    try:
+        coord = [station["Широта"].values[0], station["Долгота"].values[0]]
+    except IndexError:
+        logging.debug(f'Coords not read {station_name}')
+        return None
 
-    def find_nearest(array, value):
-        array = np.asarray(array)
-        idx = (np.abs(array - value)).argmin()
-        return idx
-
-    lon = np.array(dataset.lon)
-    lat = np.array(dataset.lat[::-1])
+    lon = np.array(dataset.lon.data)
+    lat = np.array(dataset.lat[::-1].data)
     theta_bias = 5
     fi_bias = 5
     nearest_lat_idx = find_nearest(lat, coord[0])
@@ -262,27 +254,9 @@ def get_closest_pixel(dataset, coord):  # change gdal.Dataset to xarray
                 fi_bias = j  # + 1
     closest_x_idx = theta_bias - 5 + nearest_lon_idx
     closest_y_idx = fi_bias - 5 + nearest_lat_idx
-    return closest_x_idx, closest_y_idx
 
-
-def closest_pixel_for_station(station_name, dataset, station_list):  # Change gdal.Dataset to xarray
-    """Finds the closest pixel indices in the dataset for the station
-    Args:
-      station_name (str): name of the station
-      dataset (gdal.Dataset): dataset with pixels
-      station_list (pd.DataFrame): table with stations' coordinates
-    Returns:
-      tuple: x, y indices among the dataset
-    """
-    station = station_list[station_list["Наименование станции"] == station_name]
-    try:
-        coord = [station["Широта"].values[0], station["Долгота"].values[0]]
-    except IndexError:
-        logging.debug(station_name)
-
-    pix = get_closest_pixel(dataset=dataset, coord=coord)
     logging.debug(f'{station_name} pixel found')
-    return pix
+    return lon[closest_x_idx], lat[closest_y_idx]
 
 
 def leap_years(ar, leap_idx):

@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 
-from src.data_assemble.create_dataset import load_dataset_as_xarray
+from create_dataset import load_dataset_as_xarray
 
 sys.path.append('../')
 import os
@@ -24,6 +24,7 @@ from src.models.temperature_scaling import *
 from src.data_assemble.wrap_data import *
 import logging
 import copy
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s-%(message)s')
 
 torch.manual_seed(112)
@@ -52,6 +53,8 @@ def infer(path_to_config):
         rectangle_coords['lat_max'] = df.bounds['maxy'].values[0] + coord_offset
     else:
         rectangle_coords = conf["rectangle_coords"]
+
+    rectangle_coords = [rectangle_coords['lat_min'], rectangle_coords['lat_max'], rectangle_coords['lon_min'], rectangle_coords['lon_max']]
     path_to_files = conf["path_to_files"]
     half_side_size = conf["half_side_size"]
     target_res = conf["target_res"]
@@ -71,14 +74,18 @@ def infer(path_to_config):
 
     logging.info("Preparing blocks")
     if not load_data:
-        dataset_as_xarray = load_dataset_as_xarray(file_paths=path_to_files,
+        all_cmip_files = [os.path.join(path_to_files[1], fn) for fn in next(os.walk(path_to_files[1]))[2]]
+
+        dataset_as_xarray = load_dataset_as_xarray(cmip_file_paths=all_cmip_files,
+                                                   elevation_path=path_to_files[0],
                                                    rectangle_coords=rectangle_coords,
                                                    target_res=target_res,
                                                    bands=bands,
                                                    time_limits=time_limits)
 
-        X = make_blocks_no_target(dataset_as_xarray=dataset_as_xarray,
-                                  half_side_size=half_side_size)
+        X = make_blocks_numpy_no_target(dataset_as_xarray=dataset_as_xarray,
+                                        half_side_size=half_side_size,
+                                        time_stack_size=28)
         logging.info("Preparing blocks - done")
         logging.info("Assembling dataset for inference")
         file = open(save_dump, 'wb')
@@ -140,12 +147,13 @@ def infer(path_to_config):
     for (curr_lat, curr_lon) in tqdm(zip(X.lat.data, X.lon.data)):
         with torch.no_grad():
             if dm.transform is not None:
-                inference_pix = nn.Sigmoid()(temp_scaled_model(dm.transform(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0)))).cpu()
+                inference_pix = nn.Sigmoid()(temp_scaled_model(
+                    dm.transform(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0)))).cpu()
             else:
-                inference_pix = nn.Sigmoid()(temp_scaled_model(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0))).cpu()
+                inference_pix = nn.Sigmoid()(
+                    temp_scaled_model(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0))).cpu()
         result_xarray.loc[dict(lat=curr_lat, lon=curr_lon)] = torch.squeeze(inference_pix).numpy()
 
-    np_res = result_xarray.values
     result_xarray.name = 'prob'
     logging.info("Inference - done")
     tmp = result_xarray.to_dataframe().reset_index()
@@ -168,9 +176,7 @@ def infer(path_to_config):
         logging.info("Calibraiton curve")
         with torch.no_grad():
             y_pred_binary = nn.Sigmoid()(temp_scaled_model(dm.transform(
-                torch.tensor(X_init['Val'], device=0)))).detach().cpu().numpy()  # binary_model.predict(x_val_binary)
-            # y_pred_binary = temp_scaled_model(dm.transform(torch.tensor(X_init['Val'], device=model.device)))
-            # .exp()[:, 1].detach().cpu().numpy()#binary_model.predict(x_val_binary)
+                torch.tensor(X_init['Val'], device=0)))).detach().cpu().numpy()
             y_val_binary = y_init["Val"]
         acc_score = accuracy_score(y_val_binary, y_pred_binary >= args['threshold'])
         loss_score = log_loss(y_val_binary, y_pred_binary)
