@@ -82,7 +82,6 @@ def infer(path_to_config):
                                                    target_res=target_res,
                                                    bands=bands,
                                                    time_limits=time_limits)
-
         X = make_blocks_numpy_no_target(dataset_as_xarray=dataset_as_xarray,
                                         half_side_size=half_side_size,
                                         time_stack_size=28)
@@ -133,26 +132,27 @@ def infer(path_to_config):
 
     logging.info("Inference")
 
+    result = np.zeros((len(X.lat.data), len(X.lon.data), len(X.time.data)))
+    for i, curr_lat in enumerate(X.lat.data):
+        for j, curr_lon in enumerate(X.lon.data):
+            with torch.no_grad():
+                if dm.transform is not None:
+                    data_pix = X.sel(lat=curr_lat, lon=curr_lon)
+                    data_pix = dm.transform(torch.tensor(data_pix.data))
+                    inference_pix = nn.Sigmoid()(temp_scaled_model(data_pix.cuda())).cpu()
+                else:
+                    inference_pix = nn.Sigmoid()(
+                        temp_scaled_model(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0))).cpu()
+            result[i, j] = torch.squeeze(inference_pix).numpy()
+
     result_xarray = xr.DataArray(
-        data=np.ones((len(X.lat.data), len(X.lon.data), len(X.time.data))),
+        data=result,
         dims=["lat", "lon", "time"],
         coords=dict(
-            lat=(["lat"], X.lat.data),
-            lon=(["lon"], X.lon.data),
-            time=(["time"], X.time.data)
-        ),
-        attrs=X.attrs
-    )
-
-    for (curr_lat, curr_lon) in tqdm(zip(X.lat.data, X.lon.data)):
-        with torch.no_grad():
-            if dm.transform is not None:
-                inference_pix = nn.Sigmoid()(temp_scaled_model(
-                    dm.transform(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0)))).cpu()
-            else:
-                inference_pix = nn.Sigmoid()(
-                    temp_scaled_model(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0))).cpu()
-        result_xarray.loc[dict(lat=curr_lat, lon=curr_lon)] = torch.squeeze(inference_pix).numpy()
+            lat=X.lat.data,
+            lon=X.lon.data,
+            time=X.time.data
+        ))
 
     result_xarray.name = 'prob'
     logging.info("Inference - done")
@@ -173,7 +173,7 @@ def infer(path_to_config):
     gdf.to_file(os.path.join(path_to_save, inf_file_name), driver="GeoJSON")
 
     if make_calibration_curve:
-        logging.info("Calibraiton curve")
+        logging.info("Calibration curve")
         with torch.no_grad():
             y_pred_binary = nn.Sigmoid()(temp_scaled_model(dm.transform(
                 torch.tensor(X_init['Val'], device=0)))).detach().cpu().numpy()
@@ -186,7 +186,7 @@ def infer(path_to_config):
                                                                strategy='quantile')
         plot_reliability_diagram(prob_true_binary, prob_pred_binary, "WindNet")
         plt.savefig(os.path.join(path_to_save, 'pics', 'calibration_curve' + '.png'))
-        logging.info("Calibraiton curve saved")
+        logging.info("Calibration curve saved")
 
     # print("Sample maps")
     # for i, time in enumerate(gdf.time.unique()):
@@ -197,6 +197,7 @@ def infer(path_to_config):
     #     plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
     # print("Sample maps (10) - done")
     # logging.info("Sample maps (10)")
+
     try:
         state_df = rus_bnd_gdf[(rus_bnd_gdf.NAME_1 == region_name)]
         for i, time in enumerate(gdf.time.unique()):

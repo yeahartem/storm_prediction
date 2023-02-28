@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 
@@ -118,7 +119,6 @@ def get_y(
     else:
         grpb = df_start_end.groupby(df_start_end["Название метеостанции"], observed=True)
         ks = grpb.groups.keys()
-
         y = {
             k: df_start_end.groupby(df_start_end["Название метеостанции"], observed=True)
             .get_group(k)
@@ -158,13 +158,14 @@ def make_blocks_numpy_no_target(
 ) -> xarray.DataArray:
 
     start_time = time.process_time()
+    bands_list = []
     channels_stack = np.zeros(((8,) + dataset_as_xarray['Wind_'].shape))  # TODO channel number and base band from cfg
     for i, band in enumerate(dataset_as_xarray.keys()):
         if 'elev' in band:
             channels_stack[i] = np.repeat(dataset_as_xarray[band].to_numpy()[np.newaxis, :, :],
                                           channels_stack.shape[1], axis=0)
         else: channels_stack[i] = dataset_as_xarray[band]
-
+        bands_list.append(band)
     channels_stack = np.moveaxis(channels_stack, 0, 1)
     windows = np.lib.stride_tricks.sliding_window_view(channels_stack,
                                                        (time_stack_size, 8, 2 * half_side_size + 1,
@@ -182,10 +183,22 @@ def make_blocks_numpy_no_target(
                 "lon": lon_coords,
                 "time": time_coords,
                 "time_stack": list(range(time_stack_size)),
-                "channels": list(range(8)),
+                "channels": bands_list,
                 "window_lat": list(range(2 * half_side_size + 1)),
                 "window_lon": list(range(2 * half_side_size + 1))})
     print(f"Numpy block preparation took {time.process_time() - start_time} seconds")
+
+    stats = {}
+    for channel in bands_list:
+        stats[channel] = {
+            'mean': X.sel(channels=channel).data.mean(),
+            'std': X.sel(channels=channel).data.std(),
+            'min': X.sel(channels=channel).data.min(),
+            'max': X.sel(channels=channel).data.max(),
+        }
+    with open('debug_stats.json', 'w') as fp:
+        json.dump(stats, fp)
+    print('saved')
 
     return X.astype(np.float32)
 
@@ -225,5 +238,7 @@ def make_blocks_numpy(
                 "window_lat": list(range(2 * half_side_size + 1)),
                 "window_lon": list(range(2 * half_side_size + 1))})
     print(f"Numpy block preparation took {time.process_time() - start_time} seconds")
+
     del dataset_as_xarray
+
     return X.astype(np.float32)
