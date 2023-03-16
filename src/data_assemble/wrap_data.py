@@ -148,7 +148,7 @@ def extract_splitted_data(path_to_dump: str, sts: list) -> tuple:
                 y_ = np.load(f, allow_pickle=True)
             y.append(y_)
         except FileNotFoundError:
-            logging.warning(f'{st} empty target')
+            # logging.warning(f'{st} empty target')
             continue
 
     if X:

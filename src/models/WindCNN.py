@@ -63,8 +63,8 @@ class WindNetPL(pl.LightningModule):
     def __init__(self,
                  args,
                  net: torch.nn.Module,
-                 optimizer: torch.optim.Optimizer,
-                 scheduler: torch.optim.lr_scheduler,
+                 optimizer,
+                 scheduler,
                  ):
         super().__init__()
         self.args = args

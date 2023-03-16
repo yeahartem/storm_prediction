@@ -14,8 +14,8 @@ import pytorch_lightning as pl
 from numpy import ndarray
 from pandas import Series, DataFrame
 
-sys.path.append(os.path.realpath('.'))
-sys.path.append('../')
+sys.path.append(os.path.realpath('pipeline'))
+sys.path.append('/')
 from contextlib import redirect_stdout
 from src.models.WindCNN import WindNet, WindNetPL
 from src.data_assemble.wrap_data import get_stations, extract_splitted_data, WindDataModule
@@ -37,13 +37,14 @@ def train(path="conf/train_conf.json"):
     print("Reading dataset")
 
     stations_list = get_stations(all_stations_data='data_mounted/weather_stations/weatherstation_list.json',
-                                 stations_allowed_path="conf/splits/time_split_stations.txt",
+                                 stations_allowed_path="configs/splits/time_split_stations.txt",
                                  max_lat=80.52, min_lat=36.38, max_lon=181.45, min_lon=32.12, max_height=300,
                                  min_height=-10)
 
     logging.info(f'Total stations: {len(stations_list)}')
     X_train, y_train = extract_splitted_data(conf["path_to_save"] + "train", stations_list)
     X_test, y_test = extract_splitted_data(conf["path_to_save"] + "test", stations_list)
+    print(f"Dataset size: train {len(y_train)} test: {len(y_test)}")
 
     nans_train = np.squeeze(np.argwhere(np.isnan(y_train.flatten())))
     y_train = np.delete(y_train, nans_train, axis=0)
@@ -82,7 +83,7 @@ def train(path="conf/train_conf.json"):
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
-        sys.argv.append('conf/train_conf.json')
+        sys.argv.append('configs/train_conf.json')
     path_to_config = sys.argv[1]
     t1 = time.time()
     train(path=path_to_config)

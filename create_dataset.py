@@ -12,9 +12,9 @@ import random
 
 from src.data_assemble.assemble_conv import get_y, get_pixel_stations, make_blocks_numpy, assemble_numpy_ds
 from src.data_assemble.wrap_data import get_stations
-from src.data_utils.data_processing import get_xarrays, get_xarrays_elevation
-from src.data_utils.utils import cleanup_ms_name
-from src.data_utils.utils import Config
+from src.utils.data_processing import get_xarrays, get_xarrays_elevation
+from src.utils.utils import cleanup_ms_name
+from src.utils.utils import Config
 
 warnings.filterwarnings("ignore")
 
@@ -78,23 +78,18 @@ def create_dataset(conf):
                            end=conf.time_limits[1],
                            station_name_list=stations_list,
                            speed_th=conf.nn_init_data.speed_th)
-
             dataset_as_xarray = load_dataset_as_xarray(cmip_file_paths=all_cmip_files,
                                                        elevation_path=conf.path_to_files[0],
                                                        rectangle_coords=[lat, lat_max, lon, lon_max],
                                                        target_res=conf.target_res,
                                                        bands=conf.bands,
                                                        time_limits=time_limits)
-
             stations_pixs = get_pixel_stations(dataset=dataset_as_xarray,
                                                station_names=stations_list,
                                                station_list=weatherstation_list)
-            logging.debug(f"Preparing target - done")
 
             blocks = make_blocks_numpy(dataset_as_xarray=dataset_as_xarray,
                                        half_side_size=conf.half_side_size)
-            logging.debug(f"Preparing blocks - done")
-
             X, y = assemble_numpy_ds(blocks, target, stations_pixs)
             logging.debug(f"Assembling dataset for training - done")
 

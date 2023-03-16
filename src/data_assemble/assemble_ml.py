@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import os
-from src.data_utils import data_processing as dp
+from src.utils import data_processing as dp
 
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression

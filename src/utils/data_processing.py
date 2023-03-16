@@ -2,7 +2,7 @@ import logging
 import sys
 
 sys.path.append('..')
-from src.data_utils.utils import check_leap_year, find_nearest
+from src.utils.utils import check_leap_year, find_nearest
 import glob
 import matplotlib.pyplot as plt
 import os
@@ -55,10 +55,13 @@ def get_xarrays(all_cmip_files: list[str], rectangle_coords: list, target_res: d
                                                        lat_res=lat_res, interp_method='linear',
                                                        plot_example=False)
             band_year.append(f1_xarray_refined)
-            band_year_xarray = xarray.concat(band_year, dim="time")  # stack xarrays on time axis
-            band_year_xarray = band_year_xarray.sel(time=slice(time_limits[0],
-                                                               time_limits[1]))
-            xarrays[band] = band_year_xarray
+
+        band_year_xarray = xarray.concat(band_year, dim="time")  # stack xarrays on time axis
+        actual_start_time_limit = max(time_limits[0], band_year_xarray.time.data.min())
+        actual_end_time_limit = min(time_limits[1], band_year_xarray.time.data.max())
+
+        band_year_xarray = band_year_xarray.sel(time=slice(actual_start_time_limit, actual_end_time_limit))
+        xarrays[band] = band_year_xarray
 
     logging.info(f"All xarrays preparation took {time.process_time() - start_time} seconds")
 

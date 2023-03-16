@@ -6,8 +6,8 @@ import numpy as np
 from tqdm import tqdm
 from collections import OrderedDict
 import os
-from src.data_utils.data_processing import closest_pixel_for_station
-from src.data_utils.utils import find_nearest
+from src.utils.data_processing import closest_pixel_for_station
+from src.utils.utils import find_nearest
 import pandas as pd
 import xarray
 from datetime import timedelta
@@ -205,8 +205,7 @@ def make_blocks_numpy_no_target(
 
 def make_blocks_numpy(
         dataset_as_xarray: dict,
-        half_side_size: int,
-        station_pixels: dict) -> xarray.DataArray:
+        half_side_size: int) -> xarray.DataArray:
 
     start_time = time.process_time()
     channels_stack = np.zeros(

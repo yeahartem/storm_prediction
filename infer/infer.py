@@ -6,7 +6,7 @@ from create_dataset import load_dataset_as_xarray
 sys.path.append('../')
 import os
 
-sys.path.append(os.path.realpath('.'))
+sys.path.append(os.path.realpath('../pipeline'))
 import torch
 import time
 import warnings
@@ -41,6 +41,7 @@ def infer(path_to_config):
     load_data = conf['load_data']
     load_dump = conf['load_dump']
     save_dump = conf['save_dump']
+    save_dump = None
     calibrate_model = conf['calibrate_model']
     temperature = conf['temperature']
     coord_offset = conf['coord_offset']
@@ -54,7 +55,8 @@ def infer(path_to_config):
     else:
         rectangle_coords = conf["rectangle_coords"]
 
-    rectangle_coords = [rectangle_coords['lat_min'], rectangle_coords['lat_max'], rectangle_coords['lon_min'], rectangle_coords['lon_max']]
+    rectangle_coords = [rectangle_coords['lat_min'], rectangle_coords['lat_max'], rectangle_coords['lon_min'],
+                        rectangle_coords['lon_max']]
     path_to_files = conf["path_to_files"]
     half_side_size = conf["half_side_size"]
     target_res = conf["target_res"]
@@ -63,6 +65,7 @@ def infer(path_to_config):
     time_limits[1] = np.datetime64(time_limits[1])
     chk_path = conf["nn_init_data"]["chk_path"]
     inf_file_name = conf['inf_file_name']
+    inf_file_name_parquet = conf['inf_file_name_parquet']
     path_to_save = os.path.join(conf['path_to_save'], region_name)
     conf['actual rectangle'] = rectangle_coords
     bands = conf['bands']
@@ -85,11 +88,11 @@ def infer(path_to_config):
         X = make_blocks_numpy_no_target(dataset_as_xarray=dataset_as_xarray,
                                         half_side_size=half_side_size,
                                         time_stack_size=28)
-        logging.info("Preparing blocks - done")
         logging.info("Assembling dataset for inference")
-        file = open(save_dump, 'wb')
-        pickle.dump(X, file)
-        file.close()
+        if save_dump:
+            file = open(save_dump, 'wb')
+            pickle.dump(X, file)
+            file.close()
         logging.info("Assembling dataset for inference - done")
     else:
         file = open(load_dump, 'rb')
@@ -107,6 +110,8 @@ def infer(path_to_config):
     logging.info(f'Total stations: {len(stations_list)}')
     X_train, y_train = extract_splitted_data(os.path.join(conf["path_to_init_data"], "train"), stations_list)
     X_test, y_test = extract_splitted_data(os.path.join(conf["path_to_init_data"], "test"), stations_list)
+    print(f"Dataset size: train {len(y_train)} test: {len(y_test)}")
+
     X_init = {"Train": X_train, "Val": X_test, "Test": X_test}
     y_init = {"Train": y_train, "Val": y_test, "Test": y_test}
 
@@ -145,6 +150,7 @@ def infer(path_to_config):
                         temp_scaled_model(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0))).cpu()
             result[i, j] = torch.squeeze(inference_pix).numpy()
 
+    result_mean_prob = result.mean()
     result_xarray = xr.DataArray(
         data=result,
         dims=["lat", "lon", "time"],
@@ -169,8 +175,9 @@ def infer(path_to_config):
     if not os.path.exists(os.path.join(path_to_save, 'pics')):
         os.makedirs(os.path.join(path_to_save, 'pics'))
 
+    # gdf.to_file(os.path.join(path_to_save, inf_file_name), driver="GeoJSON")
+    gdf.to_parquet(os.path.join(path_to_save, inf_file_name_parquet))
     logging.info("Saving into - done")
-    gdf.to_file(os.path.join(path_to_save, inf_file_name), driver="GeoJSON")
 
     if make_calibration_curve:
         logging.info("Calibration curve")
@@ -188,23 +195,13 @@ def infer(path_to_config):
         plt.savefig(os.path.join(path_to_save, 'pics', 'calibration_curve' + '.png'))
         logging.info("Calibration curve saved")
 
-    # print("Sample maps")
-    # for i, time in enumerate(gdf.time.unique()):
-    #     f, ax = plt.subplots(1, figsize=(10, 5))
-    #     ax = gdf[gdf['time'] == time].plot(column='prob', cmap='afmhot', ax=ax, legend=True)
-    #     # if i > 10:
-    #     #     break
-    #     plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
-    # print("Sample maps (10) - done")
-    # logging.info("Sample maps (10)")
-
     try:
         state_df = rus_bnd_gdf[(rus_bnd_gdf.NAME_1 == region_name)]
         for i, time in enumerate(gdf.time.unique()):
             fig, gax = plt.subplots(1, figsize=(10, 10))
             g = gdf[gdf['time'] == time].plot(ax=gax, c=gdf[gdf['time'] == time]['prob'], marker='s', markersize=3000,
                                               alpha=0.95)
-            state_df.plot(ax=gax, edgecolor="white", color="None", lw=3, alpha=1)
+            # state_df.plot(ax=gax, edgecolor="white", color="None", lw=3, alpha=1)
             cmap = gax.collections[-1].colorbar
             norm = mpl.colors.Normalize(vmin=0, vmax=1)
             sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
@@ -214,19 +211,18 @@ def infer(path_to_config):
             plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
             plt.close(fig)
             # plt.title(str(time)[:10], fontsize=25)
-            if i >= 10:
+            if i >= 1:
                 break
 
     except KeyError:
         for i, time in enumerate(gdf.time.unique()):
             f, ax = plt.subplots(1, figsize=(10, 5))
             ax = gdf[gdf['time'] == time].plot(column='prob', cmap='afmhot', ax=ax, legend=True)
-            if i > 10:
+            if i > 1:
                 break
             plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
 
-    logging.info("Sample maps (10) - done")
-
+    print('RESULT PROB:', result_mean_prob)
 
 if __name__ == "__main__":
     path_to_config = 'conf/infer_conf.json'

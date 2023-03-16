@@ -1,6 +1,6 @@
 import sys
 import os
-sys.path.append('../src')
+sys.path.append('..')
 
 from data_utils.utils import download_gdrive
 
@@ -18,4 +18,4 @@ if __name__ == "__main__":
         os.chdir(k)
         print("Downloading ", k)
         download_gdrive(v)
-        os.chdir('..')
+        os.chdir('../..')

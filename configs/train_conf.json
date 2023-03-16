@@ -21,7 +21,6 @@
         "lon_res": 0.25,
         "lat_res": 0.25
     },
-
     "bands": [
             "Wind_",
             "pr",
@@ -34,7 +33,7 @@
 
     "nn_init_data": {
         "batch_size": 2000,
-        "speed_th": 20
+        "speed_th": 10
     },
     "nn_training_data": {
         "max_epoch": 200

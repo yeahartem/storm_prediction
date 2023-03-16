@@ -1,5 +1,5 @@
-lightning_logs
-notebooks/lightning_logs
+logs/lightning_logs
+src/notebooks/lightning_logs
 .idea
 .vscode
 *ipynb_checkpoints
