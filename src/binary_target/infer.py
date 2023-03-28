@@ -3,7 +3,7 @@ import sys
 
 from create_dataset import load_dataset_as_xarray
 
-sys.path.append('../')
+sys.path.append('../../')
 import os
 
 sys.path.append(os.path.realpath('../pipeline'))
