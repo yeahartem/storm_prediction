@@ -1,6 +1,5 @@
 import gc
 import pickle
-import time
 import os
 import logging
 import warnings
@@ -12,7 +11,7 @@ import random
 
 from src.data_assemble.assemble_conv import get_y, get_pixel_stations, make_blocks_numpy, assemble_numpy_ds
 from src.data_assemble.wrap_data import get_stations
-from src.utils.data_processing import get_xarrays, get_xarrays_elevation
+from src.data_assemble.data_processing import get_xarrays, get_xarrays_elevation
 from src.utils.utils import cleanup_ms_name
 from src.utils.utils import Config
 

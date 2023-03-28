@@ -1,20 +1,32 @@
 import json
-import logging
 import time
+import logging
 
 import numpy as np
 from tqdm import tqdm
-from collections import OrderedDict
-import os
-from src.utils.data_processing import closest_pixel_for_station
-from src.utils.utils import find_nearest
 import pandas as pd
 import xarray
 from datetime import timedelta
 import warnings
+from geopy.distance import great_circle
 
 warnings.filterwarnings("ignore")
 
+
+def load_weatherstation_df(path_to_weather_stations):
+
+    def cleanup_ms_name(name: str):
+        name = name.replace('"', '')
+        name = name.replace(',', '')
+        return name
+
+    columns = ["Название метеостанции", "Максимальная скорость", "Средняя скорость ветра", "Дата"]
+    df = pd.read_parquet(path_to_weather_stations, columns=columns)
+    df["Название метеостанции"] = df["Название метеостанции"].apply(cleanup_ms_name)
+    df["Название метеостанции"] = df["Название метеостанции"].astype("category")
+    df[["Максимальная скорость", "Средняя скорость ветра"]].apply(pd.to_numeric, downcast="float")
+    df["Дата"] = pd.to_datetime((df["Дата"]), format="%Y/%m/%d")
+    return df
 
 def assemble_numpy_ds(
         blocks: xarray.DataArray, target: dict, stations_pixs: dict) -> tuple:
@@ -144,12 +156,54 @@ def get_pixel_stations(
     stations_pixs = {}
     for station_name in station_names:
         pix = closest_pixel_for_station(
-            station_name=station_name, dataset=dataset['Wind_'], station_list=station_list
+            station_name=station_name, dataset=dataset['sfcWind'], station_list=station_list
         )
         stations_pixs[station_name.casefold()] = pix
 
     return stations_pixs
 
+def closest_pixel_for_station(station_name, dataset, station_list):
+    """Finds the closest pixel in the dataset for the station
+    FIXED: NOT INDICES, BUT ABS VALUES
+    Args:
+      station_name (str): name of the station
+      dataset (xarray.DataArray): dataset with pixels
+      station_list (pd.DataFrame): table with stations' coordinates
+    Returns:
+      tuple: x, y indices among the dataset
+    """
+    station = station_list[station_list["Наименование станции"] == station_name]
+    try:
+        coord = [station["Широта"].values[0], station["Долгота"].values[0]]
+    except IndexError:
+        logging.debug(f'Coords not read {station_name}')
+        return None
+
+    lon = np.array(dataset.lon.data)
+    lat = np.array(dataset.lat[::-1].data)
+    theta_bias = 5
+    fi_bias = 5
+    nearest_lat_idx = find_nearest(lat, coord[0])
+    nearest_lon_idx = find_nearest(lon, coord[1])
+    closest = great_circle((lat[nearest_lat_idx], lon[nearest_lon_idx]), coord).kilometers
+
+    for i, theta in enumerate(lon[nearest_lon_idx - 5:nearest_lon_idx + 5]):
+        for j, fi in enumerate(lat[nearest_lat_idx - 5:nearest_lat_idx + 5]):
+            r = great_circle((fi, theta), coord).kilometers
+            if r < closest:
+                closest = r
+                theta_bias = i  # + 1
+                fi_bias = j  # + 1
+    closest_x_idx = theta_bias - 5 + nearest_lon_idx
+    closest_y_idx = fi_bias - 5 + nearest_lat_idx
+
+    logging.debug(f'{station_name} pixel found')
+    return lon[closest_x_idx], lat[closest_y_idx]
+
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx
 
 def make_blocks_numpy_no_target(
         dataset_as_xarray: dict,
@@ -187,18 +241,6 @@ def make_blocks_numpy_no_target(
                 "window_lat": list(range(2 * half_side_size + 1)),
                 "window_lon": list(range(2 * half_side_size + 1))})
     print(f"Numpy block preparation took {time.process_time() - start_time} seconds")
-
-    stats = {}
-    for channel in bands_list:
-        stats[channel] = {
-            'mean': X.sel(channels=channel).data.mean(),
-            'std': X.sel(channels=channel).data.std(),
-            'min': X.sel(channels=channel).data.min(),
-            'max': X.sel(channels=channel).data.max(),
-        }
-    with open('debug_stats.json', 'w') as fp:
-        json.dump(stats, fp)
-    print('saved')
 
     return X.astype(np.float32)
 

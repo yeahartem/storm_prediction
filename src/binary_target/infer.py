@@ -1,4 +1,3 @@
-import numpy as np
 import sys
 
 from create_dataset import load_dataset_as_xarray
@@ -7,10 +6,7 @@ sys.path.append('../../')
 import os
 
 sys.path.append(os.path.realpath('../pipeline'))
-import torch
-import time
 import warnings
-import json
 
 warnings.filterwarnings("ignore")
 import xarray as xr
@@ -18,9 +14,9 @@ from sklearn.metrics import log_loss
 from sklearn.calibration import calibration_curve
 import matplotlib as mpl
 from src.data_assemble.assemble_conv import *
-from src.models.utils import *
-from src.models.WindCNN import *
-from src.models.temperature_scaling import *
+from src.binary_target.models.utils import *
+from src.binary_target.models.WindCNN import *
+from src.binary_target.models.temperature_scaling import *
 from src.data_assemble.wrap_data import *
 import logging
 import copy

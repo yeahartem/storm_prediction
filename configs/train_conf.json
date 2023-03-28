@@ -3,12 +3,13 @@
         "./data_mounted/elevation/elevation.nc",
         "/home/teshbek/Datasets/rcp45/rcp45"
     ],
+    "data_dir": "./data_mounted/new_cmip5_npz",
     "path_to_save": "./data_mounted/nn_train/",
     "half_side_size": 3,
     "if_generate_dataset": false,
     "path_to_weather_stations_data": "./data_mounted/weather_stations/data_meteo_full.parquet",
     "path_to_weather_station_list": "./data_mounted/weather_stations/weatherstation_list.json",
-    "path_to_allowed_stations": "conf/splits/time_split_stations.txt",
+    "path_to_allowed_stations": "configs/splits/time_split_stations.txt",
     "min_height": -10,
     "max_height": 300,
     "rectangle_coords": {
@@ -21,21 +22,28 @@
         "lon_res": 0.25,
         "lat_res": 0.25
     },
+    "variables":[
+        "sfcWindmax",
+        "sfcWind",
+        "pr",
+        "psl",
+        "tasmax",
+        "tasmin"
+    ],
     "bands": [
             "Wind_",
             "pr",
             "tasmax",
             "tasmin"
     ],
+
     "time_limits":
         ["2006-01-01", "2015-11-14"],
     "start_of_test": "2012-01-01",
+    "speed_th": 20,
 
-    "nn_init_data": {
-        "batch_size": 2000,
-        "speed_th": 10
-    },
     "nn_training_data": {
+        "batch_size": 2000,
         "max_epoch": 200
     }
 }

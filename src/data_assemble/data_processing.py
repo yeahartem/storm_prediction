@@ -2,14 +2,12 @@ import logging
 import sys
 
 sys.path.append('..')
-from src.utils.utils import check_leap_year, find_nearest
 import glob
 import matplotlib.pyplot as plt
 import os
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
-from geopy.distance import great_circle
 from scipy import interpolate
 import xarray
 import copy
@@ -30,7 +28,7 @@ def filter_cmip_files(all_cmip_files, time_limits, band):
 
 
 def get_xarrays(all_cmip_files: list[str], rectangle_coords: list, target_res: dict,
-                time_limits: (np.datetime64, np.datetime64), bands: list) -> dict:
+                time_limits: tuple, bands: list) -> dict:
     """
     Returns reduced to rectangle_coords xarrays EXCEPT elevation.
     rectangle_coords - [lat, lat_max, lon, lon_max],
@@ -221,45 +219,6 @@ def interp_timewise_xarray(data_arr: xarray.DataArray, lon_res: float = 0.25, la
     output = xarray.DataArray(data=data_new, coords=coords_new, dims=('time', 'lat', 'lon'), attrs=data_arr.attrs)
 
     return output
-
-
-def closest_pixel_for_station(station_name, dataset, station_list):
-    """Finds the closest pixel in the dataset for the station
-    FIXED: NOT INDICES, BUT ABS VALUES
-    Args:
-      station_name (str): name of the station
-      dataset (xarray.DataArray): dataset with pixels
-      station_list (pd.DataFrame): table with stations' coordinates
-    Returns:
-      tuple: x, y indices among the dataset
-    """
-    station = station_list[station_list["Наименование станции"] == station_name]
-    try:
-        coord = [station["Широта"].values[0], station["Долгота"].values[0]]
-    except IndexError:
-        logging.debug(f'Coords not read {station_name}')
-        return None
-
-    lon = np.array(dataset.lon.data)
-    lat = np.array(dataset.lat[::-1].data)
-    theta_bias = 5
-    fi_bias = 5
-    nearest_lat_idx = find_nearest(lat, coord[0])
-    nearest_lon_idx = find_nearest(lon, coord[1])
-    closest = great_circle((lat[nearest_lat_idx], lon[nearest_lon_idx]), coord).kilometers
-
-    for i, theta in enumerate(lon[nearest_lon_idx - 5:nearest_lon_idx + 5]):
-        for j, fi in enumerate(lat[nearest_lat_idx - 5:nearest_lat_idx + 5]):
-            r = great_circle((fi, theta), coord).kilometers
-            if r < closest:
-                closest = r
-                theta_bias = i  # + 1
-                fi_bias = j  # + 1
-    closest_x_idx = theta_bias - 5 + nearest_lon_idx
-    closest_y_idx = fi_bias - 5 + nearest_lat_idx
-
-    logging.debug(f'{station_name} pixel found')
-    return lon[closest_x_idx], lat[closest_y_idx]
 
 
 def leap_years(ar, leap_idx):
