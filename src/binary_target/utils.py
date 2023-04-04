@@ -81,7 +81,10 @@ def batched(iterable, n):
     it = iter(iterable)
     while batch := tuple(islice(it, n)):
         yield batch
-
+def cleanup_ms_name(name: str):
+        name = name.replace('"', '')
+        name = name.replace(',', '')
+        return name
 # print("Sample maps")
 #     for i, time in enumerate(gdf.time.unique()):
 #         f, ax = plt.subplots(1, figsize=(10, 5))

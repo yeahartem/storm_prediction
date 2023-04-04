@@ -1,6 +1,7 @@
 import gc
 import pickle
 import os
+import sys
 import logging
 import warnings
 
@@ -9,11 +10,13 @@ import pandas as pd
 import torch
 import random
 
-from src.data_assemble.assemble_conv import get_y, get_pixel_stations, make_blocks_numpy, assemble_numpy_ds
-from src.data_assemble.wrap_data import get_stations
+sys.path.append(os.path.join('/', 'wind'))
+
+from src.binary_target.assemble_conv import get_y, get_pixel_stations, make_blocks_numpy, assemble_numpy_ds
+from src.binary_target.datamodule import get_stations
 from src.data_assemble.data_processing import get_xarrays, get_xarrays_elevation
-from src.utils.utils import cleanup_ms_name
-from src.utils.utils import Config
+from src.binary_target.utils import cleanup_ms_name
+from src.binary_target.utils import Config
 
 warnings.filterwarnings("ignore")
 
@@ -76,7 +79,7 @@ def create_dataset(conf):
                            start=conf.time_limits[0],
                            end=conf.time_limits[1],
                            station_name_list=stations_list,
-                           speed_th=conf.nn_init_data.speed_th)
+                           speed_th=conf.speed_th)
             dataset_as_xarray = load_dataset_as_xarray(cmip_file_paths=all_cmip_files,
                                                        elevation_path=conf.path_to_files[0],
                                                        rectangle_coords=[lat, lat_max, lon, lon_max],
@@ -137,5 +140,5 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     Configuration = Config()
-    config = Configuration.load_json('conf/train_conf.json')
+    config = Configuration.load_json('configs/train_conf.json')
     create_dataset(config)

@@ -232,3 +232,9 @@ def leap_years(ar, leap_idx):
         ar = np.vstack((ar[:i + 1], feb, ar[i + 1:]))
 
     return ar
+
+def check_leap_year(date):
+    year = date.astype('datetime64[Y]').astype(int) + 1970
+
+    return np.logical_not(
+        np.logical_and(np.not_equal(year % 4, 0), np.logical_or(np.not_equal(year % 100, 0), np.equal(year % 400, 0))))

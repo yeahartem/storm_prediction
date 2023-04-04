@@ -156,7 +156,7 @@ def get_pixel_stations(
     stations_pixs = {}
     for station_name in station_names:
         pix = closest_pixel_for_station(
-            station_name=station_name, dataset=dataset['sfcWind'], station_list=station_list
+            station_name=station_name, dataset=dataset[list(dataset.keys())[0]], station_list=station_list
         )
         stations_pixs[station_name.casefold()] = pix
 
