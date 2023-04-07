@@ -13,15 +13,19 @@ class CMIP5File():
     def __init__(self, path):
         self.filename = os.path.basename(path)
         self.path = path
-        self.variable_name = self.filename.split('_')[0]
-        self.variable_table = self.filename.split('_')[1]       
-        if self.variable_table != 'day':
-            raise NotImplementedError('Only daily data is supported.')                 
-        self.model_name = self.filename.split('_')[2]
-        self.experiment_name = self.filename.split('_')[3]
-        self.ensemble_member = self.filename.split('_')[4]
-        self.temporal_subset = self.filename.split('_')[5]
-    
+        if 'elevation' not in path:
+            self.variable_name = self.filename.split('_')[0]
+            self.variable_table = self.filename.split('_')[1]       
+            if self.variable_table != 'day':
+                raise NotImplementedError('Only daily data is supported.')                 
+            self.model_name = self.filename.split('_')[2]
+            self.experiment_name = self.filename.split('_')[3]
+            self.ensemble_member = self.filename.split('_')[4]
+            self.temporal_subset = self.filename.split('_')[5]
+        else:
+            self.variable_name = 'elevation'
+            self.variable_table = 'day'
+        
     def __str__(self):
         return self.filename
 
@@ -81,8 +85,8 @@ def test_data_load(save_dir, variables):
     print(data_arr)
 
 def main(
-    root_dir = '/home/teshbek/Datasets/cmip5_orig/rcp45',
-    save_dir = './data_mounted/new_cmip5_npz',
+    root_dir = '/data_mounted/cmip',
+    save_dir = '/data_mounted/new_cmip5_npz_2072',
     variables = [
         "sfcWindmax",
         "sfcWind",
@@ -103,11 +107,11 @@ def main(
         "lon_max": 181.45
     }
 
-    time_limits = ["2006-01-01", "2015-11-14"]    
+    time_limits = ["2072-01-01", "2075-11-14"]    
 
     time_limits = [np.datetime64(pd.to_datetime(t)) for t in time_limits]
     rectangle_coords = list(rectangle_coords.values())
-
+    
     climate_to_npz(files, variables, save_dir, time_limits, rectangle_coords)
 
     test_data_load(save_dir, variables)

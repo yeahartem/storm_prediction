@@ -15,7 +15,7 @@ import warnings
 import pickle
 warnings.filterwarnings("ignore")
 
-from src.data_assemble.assemble_ml import *
+# from src.data_assemble.assemble_ml import *
 
 import pandas as pd
 from sklearn.metrics import accuracy_score

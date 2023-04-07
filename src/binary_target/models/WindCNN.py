@@ -8,10 +8,10 @@ from torch.functional import F
 import torch.nn as nn
 
 class WindNet(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, cfg) -> None:
         super(WindNet, self).__init__()
         self.conv1 = nn.Conv3d(
-            in_channels=8,
+            in_channels=len(cfg.variables),
             out_channels=32,
             kernel_size=(28, 3, 3),
             stride=1,

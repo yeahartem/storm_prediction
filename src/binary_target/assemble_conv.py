@@ -24,6 +24,8 @@ def load_weatherstation_df(path_to_weather_stations):
     df = pd.read_parquet(path_to_weather_stations, columns=columns)
     df["Название метеостанции"] = df["Название метеостанции"].apply(cleanup_ms_name)
     df["Название метеостанции"] = df["Название метеостанции"].astype("category")
+    df['Название метеостанции'] = df['Название метеостанции'].str.casefold()
+    df['Дата'] =pd.DatetimeIndex(df['Дата'])
     df[["Максимальная скорость", "Средняя скорость ветра"]].apply(pd.to_numeric, downcast="float")
     df["Дата"] = pd.to_datetime((df["Дата"]), format="%Y/%m/%d")
     return df
@@ -48,9 +50,9 @@ def assemble_numpy_ds(
     for k in tqdm(target.keys()):
         station_pix = stations_pixs[k.casefold()]
         y_i = target[k].dropna()
-        lat = find_nearest(blocks.lat, station_pix[0])
-        lon = find_nearest(blocks.lon, station_pix[1])
-        X_i = blocks[lat, lon]
+        lat = stations_pixs[k][1]
+        lon = stations_pixs[k][0]
+        X_i = blocks.sel(lat=lat, lon=lon)
         a = X_i.time.data
         b = y_i.index.values
         inters = np.intersect1d(a, b)
@@ -58,9 +60,9 @@ def assemble_numpy_ds(
         y[k] = y_i.loc[inters]
 
         target_df = pd.DataFrame({"values": y[k].values, "date": y[k].index})
-        # now max over week
+        # now max over 4 weeks
         y[k] = target_df.groupby([pd.Grouper(key='date', freq='4W')]).max()
-        # stacking over weeks
+        # stacking over 4 weeks
         # rename dimensions, since stacked dim is added
         rename_dict = {d_name: d_name for d_name in X_i.dims}
         rename_dict['time'] = 'stacked'
@@ -71,11 +73,11 @@ def assemble_numpy_ds(
             if len(week_slice) > 0:
                 week_slice = week_slice.assign_coords({"time": (week_slice['stacked'].data[0])})
                 week_slice = week_slice.assign_coords({'stacked': range(len(week_slice.stacked))})
-                if len(week_slice.stacked) == 7 * 4:  # attention week only!!!
+                if len(week_slice.stacked) == 7 * 4:  # attention 4 weeks only!!!
                     X_s_i.append(week_slice)
 
         X_s[k] = xarray.concat(X_s_i, dim='time')
-        correct_time_data = X_s[k].time.data  # nans free, nans avoided by if in line 89
+        correct_time_data = X_s[k].time.data  # nans free
         y_s[k] = y[k].loc[correct_time_data]
         assert len(X_s[k]) == len(y_s[k])
 
@@ -156,7 +158,7 @@ def get_pixel_stations(
     stations_pixs = {}
     for station_name in station_names:
         pix = closest_pixel_for_station(
-            station_name=station_name, dataset=dataset[list(dataset.keys())[0]], station_list=station_list
+            station_name=station_name, dataset=dataset, station_list=station_list
         )
         stations_pixs[station_name.casefold()] = pix
 
@@ -172,7 +174,7 @@ def closest_pixel_for_station(station_name, dataset, station_list):
     Returns:
       tuple: x, y indices among the dataset
     """
-    station = station_list[station_list["Наименование станции"] == station_name]
+    station = station_list[station_list["Наименование станции"].str.casefold() == station_name]
     try:
         coord = [station["Широта"].values[0], station["Долгота"].values[0]]
     except IndexError:
@@ -248,10 +250,12 @@ def make_blocks_numpy_no_target(
 def make_blocks_numpy(
         dataset_as_xarray: dict,
         half_side_size: int) -> xarray.DataArray:
-
+    
     start_time = time.process_time()
+    n_channels = len(dataset_as_xarray.keys())
+    some_key = list(dataset_as_xarray.data_vars)[0]
     channels_stack = np.zeros(
-        ((8,) + dataset_as_xarray['Wind_'].shape))  # TODO channel number and base band from cfg
+        ((n_channels,) + dataset_as_xarray[some_key].shape))  
     for i, band in enumerate(dataset_as_xarray.keys()):
         if 'elev' in band:
             channels_stack[i] = np.repeat(dataset_as_xarray[band].to_numpy()[np.newaxis, :, :],
@@ -260,26 +264,26 @@ def make_blocks_numpy(
 
     channels_stack = np.moveaxis(channels_stack, 0, 1)
     windows = np.lib.stride_tricks.sliding_window_view(channels_stack,
-                                                       (1, 8, 2 * half_side_size + 1,
+                                                       (1, n_channels, 2 * half_side_size + 1,
                                                         2 * half_side_size + 1))
     windows = np.squeeze(windows)
 
     windows = np.moveaxis(windows, 0, 2)
-    time_coords = dataset_as_xarray['Wind_'].time.data
-    lat_coords = dataset_as_xarray['Wind_'].lat.data[half_side_size:-half_side_size]
-    lon_coords = dataset_as_xarray['Wind_'].lon.data[half_side_size:-half_side_size]
+    time_coords = dataset_as_xarray[some_key].time.data
+    lat_coords = dataset_as_xarray[some_key].lat.data[half_side_size:-half_side_size]
+    lon_coords = dataset_as_xarray[some_key].lon.data[half_side_size:-half_side_size]
 
     X = xarray.DataArray(
         windows,
         dims=["lat", "lon", "time", "channels", "window_lat", "window_lon"],
         coords={"lat": lat_coords,
                 "lon": lon_coords,
-                "time": time_coords,
-                "channels": list(range(8)),
+                "time": time_coords.astype('datetime64[D]'),
+                "channels": list(range(n_channels)),
                 "window_lat": list(range(2 * half_side_size + 1)),
                 "window_lon": list(range(2 * half_side_size + 1))})
     print(f"Numpy block preparation took {time.process_time() - start_time} seconds")
 
-    del dataset_as_xarray
+    # del dataset_as_xarray
 
     return X.astype(np.float32)

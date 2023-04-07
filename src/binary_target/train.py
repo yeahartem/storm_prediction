@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import warnings
+import pickle
 import json
 
 import numpy as np
@@ -9,7 +10,7 @@ import torch
 import random
 import logging
 import pytorch_lightning as pl
-
+import utils
 
 from contextlib import redirect_stdout
 from models.WindCNN import WindNet, WindNetPL
@@ -29,36 +30,16 @@ def train(conf_path):
 
     print("Reading dataset")
 
-    # stations_list = get_stations(all_stations_data='data_mounted/weather_stations/weatherstation_list.json',
-    #                              stations_allowed_path="../../configs/splits/time_split_stations.txt",
-    #                              max_lat=80.52, min_lat=36.38, max_lon=181.45, min_lon=32.12, max_height=300,
-    #                              min_height=-10)
-
-    # logging.info(f'Total stations: {len(stations_list)}')
-    # X_train, y_train = extract_splitted_data(conf["path_to_save"] + "train", stations_list)
-    # X_test, y_test = extract_splitted_data(conf["path_to_save"] + "test", stations_list)
-    # print(f"Dataset size: train {len(y_train)} test: {len(y_test)}")
-
-    # nans_train = np.squeeze(np.argwhere(np.isnan(y_train.flatten())))
-    # y_train = np.delete(y_train, nans_train, axis=0)
-    # X_train = np.delete(X_train, nans_train, axis=0)
-    # nans_test = np.squeeze(np.argwhere(np.isnan(y_test.flatten())))
-    # y_test = np.delete(y_test, nans_test, axis=0)
-    # X_test = np.delete(X_test, nans_test, axis=0)
-
-    # print(f"class balance train: {sum(y_train) / len(y_train)} test: {sum(y_test) / len(y_test)}")
-
-    # X = {"Train": X_train, "Val": X_test, "Test": X_test}
-    # y = {"Train": y_train, "Val": y_test, "Test": y_test}
-
     trainer = pl.Trainer(max_epochs=max_epoch,
                          accelerator="gpu",
                          benchmark=True,
                          check_val_every_n_epoch=1)
 
     dm = WindDataModule(conf_path)
-
-    net = WindNet()
+    
+    Configuration = utils.Config()
+    cfg = Configuration.load_json(conf_path)
+    net = WindNet(cfg)
     optimizer = torch.optim.Adam
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau
     model = WindNetPL(args, net=net, optimizer=optimizer, scheduler=scheduler)
@@ -68,13 +49,14 @@ def train(conf_path):
     print("See, e.g., tensorboard")
     trainer.fit(model, dm)
     print("Training NN - done")
-
-    with open('data/test_metrics.txt', 'w') as f:
+    last_log_folder = sorted(os.listdir('lightning_logs'), key=lambda x: int(x.split('_')[-1]))[-1]
+    file = open(os.path.join('lightning_logs', last_log_folder,'transform.pkl'), 'wb')
+    pickle.dump(dm.transform, file)
+    file.close()
+    with open(os.path.join('lightning_logs', last_log_folder, 'test_metrics.txt'), 'w') as f:
         with redirect_stdout(f):
             trainer.test(model, dm)
 
 
 if __name__ == "__main__":
-
-
-    train(conf_path='/home/teshbek/repos/Wind/configs/train_conf.json')
+    train(conf_path='/wind/configs/train_conf.json')

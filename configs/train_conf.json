@@ -1,7 +1,7 @@
 {
     "path_to_files": [
         "/data_mounted/cmip/elevation/elevation.nc",
-        "/data_mounted/cmip/"
+        "/data_mounted/new_cmip5_npz/"
     ],
     "data_dir": "/data_mounted/new_cmip5_npz",
     "path_to_save": "/data_mounted/nn_train/",
@@ -9,7 +9,7 @@
     "if_generate_dataset": false,
     "path_to_weather_stations_data": "/data_mounted/weather_stations/data_meteo_full.parquet",
     "path_to_weather_station_list": "/data_mounted/weather_stations/weatherstation_list.json",
-    "path_to_allowed_stations": "configs/splits/time_split_stations.txt",
+    "path_to_allowed_stations": "/wind/configs/splits/time_split_stations.txt",
     "min_height": -10,
     "max_height": 300,
     "rectangle_coords": {

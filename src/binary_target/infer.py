@@ -13,11 +13,13 @@ import xarray as xr
 from sklearn.metrics import log_loss
 from sklearn.calibration import calibration_curve
 import matplotlib as mpl
-from src.data_assemble.assemble_conv import *
+import json
+
+from src.binary_target.assemble_conv import *
 from src.binary_target.models.utils import *
 from src.binary_target.models.WindCNN import *
 from src.binary_target.models.temperature_scaling import *
-from src.data_assemble.wrap_data import *
+from src.binary_target.datamodule import *
 import logging
 import copy
 
@@ -28,122 +30,58 @@ random.seed(112)
 
 
 def infer(path_to_config):
-    with open(path_to_config) as jf:
-        conf = json.load(jf)
-    rus_bnd_gdf = gpd.read_file('conf/geo.json')
-    region_name = conf['region_name']
-    override_region_rectangle = conf['override_region_rectangle']
-    make_calibration_curve = conf['make_calibration_curve']
-    load_data = conf['load_data']
-    load_dump = conf['load_dump']
-    save_dump = conf['save_dump']
-    save_dump = None
-    calibrate_model = conf['calibrate_model']
-    temperature = conf['temperature']
-    coord_offset = conf['coord_offset']
-    rectangle_coords = {}
-    if not override_region_rectangle:
-        df = rus_bnd_gdf[(rus_bnd_gdf.NAME_1 == region_name)]
-        rectangle_coords['lon_min'] = df.bounds['minx'].values[0] - coord_offset
-        rectangle_coords['lon_max'] = df.bounds['maxx'].values[0] + coord_offset
-        rectangle_coords['lat_min'] = df.bounds['miny'].values[0] - coord_offset
-        rectangle_coords['lat_max'] = df.bounds['maxy'].values[0] + coord_offset
-    else:
-        rectangle_coords = conf["rectangle_coords"]
-
-    rectangle_coords = [rectangle_coords['lat_min'], rectangle_coords['lat_max'], rectangle_coords['lon_min'],
-                        rectangle_coords['lon_max']]
-    path_to_files = conf["path_to_files"]
-    half_side_size = conf["half_side_size"]
-    target_res = conf["target_res"]
-    time_limits = copy.deepcopy(conf["time_limits"])
-    time_limits[0] = np.datetime64(time_limits[0])
-    time_limits[1] = np.datetime64(time_limits[1])
-    chk_path = conf["nn_init_data"]["chk_path"]
-    inf_file_name = conf['inf_file_name']
-    inf_file_name_parquet = conf['inf_file_name_parquet']
-    path_to_save = os.path.join(conf['path_to_save'], region_name)
-    conf['actual rectangle'] = rectangle_coords
-    bands = conf['bands']
-    args = {'lr': 1e-4, 'threshold': 0.5}
-
-    os.makedirs(path_to_save, exist_ok=True)
-    with open(os.path.join(path_to_save, 'infer_conf.json'), 'w') as fp:
-        json.dump(conf, fp)
+    Configuration = utils.Config()
+    cfg = Configuration.load_json(path_to_config)
+    path_to_save = os.path.join(cfg.path_to_save, cfg.region_name)
+    inf_file_name = cfg.inf_file_name
+    inf_file_name_parquet = cfg.inf_file_name_parquet
+    region_name = cfg.region_name
+    rus_bnd_gdf = gpd.read_file('/wind/configs/geo.json')
 
     logging.info("Preparing blocks")
-    if not load_data:
-        all_cmip_files = [os.path.join(path_to_files[1], fn) for fn in next(os.walk(path_to_files[1]))[2]]
+    climate_file_paths = [os.path.join(cfg.data_dir, var + '.nc') for var in cfg.variables]
+    print(f'loading {climate_file_paths}')
+    lat_lon_bnds = cfg['rectangle_coords']
+    time_bnds = cfg['time_limits']
+    def _cut_lan_lot_time(x, lat_lon_bnds, time_bnds):
+        return x.sel(lon=slice(*(lat_lon_bnds['lon_min'], lat_lon_bnds['lon_max'])), lat=slice(*(lat_lon_bnds['lat_min'], lat_lon_bnds['lat_max'])), time=slice(*(time_bnds[0], time_bnds[1])))
+    _cut = partial(_cut_lan_lot_time, lat_lon_bnds=lat_lon_bnds, time_bnds=time_bnds)
+    dataset_as_xarray = xr.open_mfdataset(climate_file_paths,  combine="by_coords", parallel=True, engine='scipy', compat='override', preprocess=_cut)
+    var_names_to_drop = [v for v in dataset_as_xarray.keys() if v not in cfg.variables + ['lat', 'lon', 'time'] ] 
+    coords_names_to_drop = [v for v in dataset_as_xarray.coords.keys() if v not in cfg.variables + ['lat', 'lon', 'time'] ] 
+    dataset_as_xarray = dataset_as_xarray.drop_vars(var_names_to_drop)
+    dataset_as_xarray = dataset_as_xarray.drop_vars(coords_names_to_drop)
+    dataset_as_blocks = make_blocks_numpy(dataset_as_xarray, cfg.half_side_size)
+    X = dataset_as_blocks
 
-        dataset_as_xarray = load_dataset_as_xarray(cmip_file_paths=all_cmip_files,
-                                                   elevation_path=path_to_files[0],
-                                                   rectangle_coords=rectangle_coords,
-                                                   target_res=target_res,
-                                                   bands=bands,
-                                                   time_limits=time_limits)
-        X = make_blocks_numpy_no_target(dataset_as_xarray=dataset_as_xarray,
-                                        half_side_size=half_side_size,
-                                        time_stack_size=28)
-        logging.info("Assembling dataset for inference")
-        if save_dump:
-            file = open(save_dump, 'wb')
-            pickle.dump(X, file)
-            file.close()
-        logging.info("Assembling dataset for inference - done")
-    else:
-        file = open(load_dump, 'rb')
-        X = pickle.load(file)
-        file.close()
-
-    logging.info("Initializing NN")
-    batch_size = 1024
-    stations_list = get_stations(all_stations_data='data_mounted/weather_stations/weatherstation_list.json',
-                                 stations_allowed_path="conf/splits/time_split_stations.txt",
-                                 max_lat=80.52, min_lat=36.38,
-                                 max_lon=181.45, min_lon=32.12,
-                                 max_height=300, min_height=-10)
-
-    logging.info(f'Total stations: {len(stations_list)}')
-    X_train, y_train = extract_splitted_data(os.path.join(conf["path_to_init_data"], "train"), stations_list)
-    X_test, y_test = extract_splitted_data(os.path.join(conf["path_to_init_data"], "test"), stations_list)
-    print(f"Dataset size: train {len(y_train)} test: {len(y_test)}")
-
-    X_init = {"Train": X_train, "Val": X_test, "Test": X_test}
-    y_init = {"Train": y_train, "Val": y_test, "Test": y_test}
-
-    dm = WindDataModule(X=X_init, y=y_init, batch_size=batch_size, downsample=False)
-    dm.setup()
     optimizer = torch.optim.Adam
-    net = WindNet()
+    args = {'lr': 1e-4, 'threshold': 0.5}
+    chk_path = cfg["nn_init_data"]["chk_path"]
+    net = WindNet(cfg)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau
     chk_path = os.path.join(chk_path, "checkpoints", os.listdir(os.path.join(chk_path, "checkpoints"))[0])
     model = WindNetPL.load_from_checkpoint(chk_path, args=args, net=net, optimizer=optimizer,
-                                           scheduler=scheduler)
+                                            scheduler=scheduler)
     model.eval()
     logging.info("Initializing NN - done")
 
-    temp_scaled_model = ModelWithTemperature(model)
-    if calibrate_model:
-        logging.info("Calibrating on val")
-        temp_scaled_model.set_temperature(dm.val_dataloader())
-    else:
-        temp_scaled_model.temperature = torch.nn.Parameter(torch.tensor([temperature]))
-        temp_scaled_model = temp_scaled_model.cuda()
-        logging.info(f'Temperature set {temperature}')
+    file = open(os.path.join(cfg["nn_init_data"]["chk_path"], 'transform.pkl'), 'rb')
+    transform = pickle.load(file)
+    file.close()
 
     logging.info("Inference")
-
-    result = np.zeros((len(X.lat.data), len(X.lon.data), len(X.time.data)))
+    # data_pix = X.sel(lat=curr_lat, lon=curr_lon)
+    days = len(X.time.data)
+    days_full_4weeks = (days // 28) * 28 
+    result = np.zeros((len(X.lat.data), len(X.lon.data), days_full_4weeks // 28))
     for i, curr_lat in enumerate(X.lat.data):
         for j, curr_lon in enumerate(X.lon.data):
             with torch.no_grad():
-                if dm.transform is not None:
-                    data_pix = X.sel(lat=curr_lat, lon=curr_lon)
-                    data_pix = dm.transform(torch.tensor(data_pix.data))
-                    inference_pix = nn.Sigmoid()(temp_scaled_model(data_pix.cuda())).cpu()
-                else:
-                    inference_pix = nn.Sigmoid()(
-                        temp_scaled_model(torch.tensor(X.sel(lat=curr_lat, lon=curr_lon).data, device=0))).cpu()
+                
+                data_pix = X.sel(lat=curr_lat, lon=curr_lon)
+                data_pix = model(transform(torch.tensor(data_pix.data[:days_full_4weeks].reshape(-1, 28, dataset_as_blocks.shape[-3], dataset_as_blocks.shape[-2], dataset_as_blocks.shape[-1]))))
+                inference_pix = nn.Sigmoid()(data_pix).cpu()
+                
             result[i, j] = torch.squeeze(inference_pix).numpy()
 
     result_mean_prob = result.mean()
@@ -153,7 +91,7 @@ def infer(path_to_config):
         coords=dict(
             lat=X.lat.data,
             lon=X.lon.data,
-            time=X.time.data
+            time=X.time.data[:days_full_4weeks][::28]
         ))
 
     result_xarray.name = 'prob'
@@ -175,53 +113,30 @@ def infer(path_to_config):
     gdf.to_parquet(os.path.join(path_to_save, inf_file_name_parquet))
     logging.info("Saving into - done")
 
-    if make_calibration_curve:
-        logging.info("Calibration curve")
-        with torch.no_grad():
-            y_pred_binary = nn.Sigmoid()(temp_scaled_model(dm.transform(
-                torch.tensor(X_init['Val'], device=0)))).detach().cpu().numpy()
-            y_val_binary = y_init["Val"]
-        acc_score = accuracy_score(y_val_binary, y_pred_binary >= args['threshold'])
-        loss_score = log_loss(y_val_binary, y_pred_binary)
-        logging.info(
-            'Binary metrics: validation accuracy is {0:.2f}, validation loss is {1:.2f}'.format(acc_score, loss_score))
-        prob_true_binary, prob_pred_binary = calibration_curve(y_val_binary, y_pred_binary, n_bins=5,
-                                                               strategy='quantile')
-        plot_reliability_diagram(prob_true_binary, prob_pred_binary, "WindNet")
-        plt.savefig(os.path.join(path_to_save, 'pics', 'calibration_curve' + '.png'))
-        logging.info("Calibration curve saved")
+    # state_df = rus_bnd_gdf[(rus_bnd_gdf.NAME_1 == region_name)]
+    for i, time in enumerate(gdf.time.unique()):
+        fig, gax = plt.subplots(1, figsize=(10, 10))
+        g = gdf[gdf['time'] == time].plot(ax=gax, c=gdf[gdf['time'] == time]['prob'], marker='s', markersize=3000,
+                                            alpha=0.95)
+        rus_bnd_gdf.plot(ax=gax, edgecolor="white", color="None", lw=3, alpha=1)
+        cmap = gax.collections[-1].colorbar
+        norm = mpl.colors.Normalize(vmin=0, vmax=1)
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        cbar = plt.colorbar(sm, orientation="horizontal", fraction=0.03, pad=0.009, ).set_label(
+            label='Probability of Strong Wind', size=15)  # ,weight='bold'
+        # gax.axis('off')
+        plt.ylim((result_xarray.lat.min().data, result_xarray.lat.max().data))
+        plt.xlim((result_xarray.lon.min().data, result_xarray.lon.max().data))
+        plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
+        plt.close(fig)
+        # plt.title(str(time)[:10], fontsize=25)
+        if i >= 1:
+            break
 
-    try:
-        state_df = rus_bnd_gdf[(rus_bnd_gdf.NAME_1 == region_name)]
-        for i, time in enumerate(gdf.time.unique()):
-            fig, gax = plt.subplots(1, figsize=(10, 10))
-            g = gdf[gdf['time'] == time].plot(ax=gax, c=gdf[gdf['time'] == time]['prob'], marker='s', markersize=3000,
-                                              alpha=0.95)
-            # state_df.plot(ax=gax, edgecolor="white", color="None", lw=3, alpha=1)
-            cmap = gax.collections[-1].colorbar
-            norm = mpl.colors.Normalize(vmin=0, vmax=1)
-            sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-            cbar = plt.colorbar(sm, orientation="horizontal", fraction=0.03, pad=0.009, ).set_label(
-                label='Probability of Strong Wind', size=15)  # ,weight='bold'
-            # gax.axis('off')
-            plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
-            plt.close(fig)
-            # plt.title(str(time)[:10], fontsize=25)
-            if i >= 1:
-                break
-
-    except KeyError:
-        for i, time in enumerate(gdf.time.unique()):
-            f, ax = plt.subplots(1, figsize=(10, 5))
-            ax = gdf[gdf['time'] == time].plot(column='prob', cmap='afmhot', ax=ax, legend=True)
-            if i > 1:
-                break
-            plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
-
-    print('RESULT PROB:', result_mean_prob)
+    # print('RESULT PROB:', result_mean_prob)
 
 if __name__ == "__main__":
-    path_to_config = 'conf/infer_conf.json'
+    path_to_config = '/wind/configs/infer_conf.json'
     t1 = time.time()
     infer(path_to_config=path_to_config)
     t2 = time.time()
