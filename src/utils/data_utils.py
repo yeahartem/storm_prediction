@@ -1,7 +1,7 @@
 import numpy as np
 from scipy import interpolate
 import xarray
-from tqdm import tqdm
+
 
 NAME_TO_VAR = {
     "2m_temperature": "t2m",
@@ -145,3 +145,8 @@ def get_region_info(region, lat, lon, patch_size):
         'min_w': min_w,
         'max_w': max_w
     }
+
+def cleanup_ms_name(name: str):
+    name = name.replace('"', '')
+    name = name.replace(',', '')
+    return name

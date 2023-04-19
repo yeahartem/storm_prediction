@@ -1,0 +1,52 @@
+{
+
+    "make_climate_data": true,
+    "make_target": true,
+    "paths_to_climate_files_folders": ["/home/teshbek/Datasets/cmip5_orig/rcp45/",
+        "/media/teshbek/SSD1TB/datasets/historical/historical"],
+    "path_to_elevation": "./data_mounted/cmip/elevation/elevation.nc",
+    
+    "path_to_weather_stations_data": "./data_mounted/weather_stations/data_meteo_full.parquet",
+    "path_to_weather_station_list": "./data_mounted/weather_stations/weatherstation_list.json",
+    "path_to_allowed_stations": "./configs/splits/allowed_stations.txt",  
+    
+    "path_to_prepared_data_dir": "/home/teshbek/repos/Wind/data_mounted/cmip5_basic",
+    "path_to_prepared_target_data": "./data_mounted/cmip5_basic/target.parquet",
+    "path_to_prepared_stations": "./data_mounted/cmip5_basic/stations.parquet",
+
+    "min_height": -10,
+    "max_height": 300,
+    
+    "rectangle_coords": {
+        "lat_min": 36.38,
+        "lat_max": 80.52,
+        "lon_min": 32.12,
+        "lon_max": 51.45
+    },
+
+    "target_res": {
+        "lon_res": 0.25,
+        "lat_res": 0.25
+    },
+
+    "variables": [
+        "sfcWindmax",
+        "sfcWind",
+        "pr",
+        "psl",
+        "tasmax",
+        "tasmin"
+    ],
+    "bands": [
+        "Wind_",
+        "pr",
+        "tasmax",
+        "tasmin"
+    ],
+    "time_limits": [
+        "2000-01-01", "2020-11-14"
+    ],
+    "start_of_test": "2012-01-01",
+    "test_load": true,
+    "speed_th": 20
+}

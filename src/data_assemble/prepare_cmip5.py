@@ -1,120 +1,159 @@
-import glob
-import os
+import sys,os
+sys.path.append(os.getcwd())
 import numpy as np
 import xarray as xr
-from tqdm import tqdm
 import pandas as pd
-from data_utils import interp_timewise_xarray
+import logging
+import dask
+import time
+from src.utils.data_utils import interp_timewise_xarray
+from src.utils.conf_utils import Config, Dict, timeit
+from src.data_assemble.assemble_target import get_stations, get_y, load_weatherstations_RU
+from src.data_assemble.assemble_data import make_blocks_numpy
+
 
 class CMIP5File():
+
     """Parse the filename of a CMIP5 file to get the model name and experiment name.
         e.g. filename = 'pr_day_MRI-CGCM3_rcp45_r1i1p1_20560101-20651231.nc' """
-    
+
     def __init__(self, path):
         self.filename = os.path.basename(path)
         self.path = path
-        if 'elevation' not in path:
-            self.variable_name = self.filename.split('_')[0]
-            self.variable_table = self.filename.split('_')[1]       
-            if self.variable_table != 'day':
-                raise NotImplementedError('Only daily data is supported.')                 
-            self.model_name = self.filename.split('_')[2]
-            self.experiment_name = self.filename.split('_')[3]
-            self.ensemble_member = self.filename.split('_')[4]
-            self.temporal_subset = self.filename.split('_')[5]
-        else:
-            self.variable_name = 'elevation'
-            self.variable_table = 'day'
-        
+        self.variable_name = self.filename.split('_')[0]
+        self.variable_table = self.filename.split('_')[1]
+        if self.variable_table != 'day':
+            raise NotImplementedError('Only daily data is supported.')
+        self.model_name = self.filename.split('_')[2]
+        self.experiment_name = self.filename.split('_')[3]
+        self.ensemble_member = self.filename.split('_')[4]
+        self.temporal_subset = self.filename.split('_')[5]
+
     def __str__(self):
         return self.filename
 
     def __repr__(self):
         return self.filename
 
-def get_cmip5_files(root_dir, variables):
-    """Get all the CMIP5 files in the root directory."""
+
+def get_cmip5_files(folders, variables):
+    """Get all the CMIP5 files in the directories in folders list"""
     files = []
-    for root, dirs, filenames in os.walk(root_dir):
-        for filename in filenames:
-            if filename.endswith('.nc'):
-                file = CMIP5File(os.path.join(root, filename))
-                if file.variable_name in variables:
-                    files.append(file)
+    for folder in folders:
+        for root, dirs, filenames in os.walk(folder):
+            for filename in filenames:
+                if filename.endswith('.nc'):
+                    file = CMIP5File(os.path.join(root, filename))
+                    if file.variable_name in variables:
+                        files.append(file)
     return files
 
-def process_coords(ds, concat_dim='time', drop=True):
+
+def process_coords(ds, concat_dim='time', drop=True):    
     coord_vars = ['height']
     if drop:
         return ds.drop_vars(coord_vars, errors="ignore")
     else:
         return ds.set_coords(coord_vars)
-    
-def climate_to_npz(files, variables, save_dir, time_range=None, rect_coords=None, interp_res=0.25):
+
+@timeit
+def climate_to_npz(files: list, variables: list, save_dir: str, time_range: list, rect_coords: list, interp_res: float):
     """Convert climate data to nc files."""
 
     file_paths = [file.path for file in files]
-    # data_arr = xr.open_mfdataset(file_paths, combine='nested', concat_dim='bnds', parallel=True, coords='minimal')  
-    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True)  
+    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True)
 
     print(f'before time cut {len(data_arr.time)}')
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
     if rect_coords:
-        data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))   
-    print(f'before leap days excl {len(data_arr.time)}')    
+        data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
+
+    print(f'before leap days excl {len(data_arr.time)}')
     data_arr = data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
     print(f'after leap days excl {len(data_arr.time)}')
+    
+    # data_arr.time = data_arr.time.astype('datetime64[D]')
 
-    # np.save(os.path.join(save_dir, f"{var}.npy"), data_arr)
     for var in variables:
-        print(var)
-        data_var = data_arr[var]                
+        print(f"Saving: {var}")
+        data_var = data_arr[var]
         # data_var = interp_timewise_xarray(data_var,
         #                     res=interp_res,
         #                     interp_method='linear')
-        
-        data_var.to_netcdf(os.path.join(save_dir, f"{var}.nc"), engine='scipy') # TODO use faster engine
+
+        data_var.to_netcdf(os.path.join(save_dir, f"{var}.nc"), engine='scipy')  # TODO use faster engine
 
 
 def test_data_load(save_dir, variables):
-
-    file_paths = [os.path.join(save_dir, var + '.nc') for var in variables]
-    print(f'loading {file_paths}')
-    data_arr = xr.open_mfdataset(file_paths,  combine="by_coords", parallel=True, engine='scipy')
-    print(data_arr)
-
-def main(
-    root_dir = '/data_mounted/cmip',
-    save_dir = '/data_mounted/new_cmip5_npz_2072',
-    variables = [
-        "sfcWindmax",
-        "sfcWind",
-        "pr",
-        "psl",
-        "tasmax",
-        "tasmin"
-    ]
-):
-
-    files = get_cmip5_files(root_dir, variables)
-    os.makedirs(save_dir, exist_ok=True)
-
-    rectangle_coords =  {
-        "lat_min": 36.38,
-        "lat_max": 80.52,
-        "lon_min": 32.12,
-        "lon_max": 181.45
-    }
-
-    time_limits = ["2072-01-01", "2075-11-14"]    
-
-    time_limits = [np.datetime64(pd.to_datetime(t)) for t in time_limits]
-    rectangle_coords = list(rectangle_coords.values())
     
-    climate_to_npz(files, variables, save_dir, time_limits, rectangle_coords)
+    file_paths = [os.path.join(save_dir, var + '.nc') for var in variables]
+    logging.info(f'loading {file_paths}')
+    data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy')
+    for var in variables:
+        data_var = data_arr[var]
+        print(f"Opening: {var}")
+        print(data_var.shape)
+        print(f"""min: {dask.array.min(data_var).compute()}, max: {dask.array.max(data_var).compute()}, std: {dask.array.std(data_var).compute()}""")     
+    logging.info(f'OK')
 
-    test_data_load(save_dir, variables)
+
+@timeit
+def make_target_data(cfg: Dict):
+    
+    rectangle_coords = cfg.get("rectangle_coords")
+    rectangle_coords = list(rectangle_coords.values())    
+    stations_df = get_stations(all_stations_data=cfg.path_to_weather_station_list,
+                                    stations_allowed_path=cfg.path_to_allowed_stations,                                    
+                                    min_lat=rectangle_coords[0],
+                                    max_lat=rectangle_coords[1],                                    
+                                    min_lon=rectangle_coords[2],
+                                    max_lon=rectangle_coords[3],
+                                    max_height= cfg.max_height,
+                                    min_height=cfg.min_height)
+    
+    stations_list = list(stations_df['station_name'].str.casefold())
+    if not stations_list:
+        raise ValueError('No stations found in the given area')
+    
+    df = load_weatherstations_RU(cfg.path_to_weather_stations_data, stations_list)
+    target_df = get_y(weather_stations_data=df,
+                    start=cfg.time_limits[0],
+                    end=cfg.time_limits[1],
+                    speed_th=cfg.speed_th)
+    
+    
+    # file_paths = [os.path.join(cfg.path_to_prepared_data_dir, var + '.nc') for var in cfg.variables]
+    # dataset_as_xarray = xr.open_mfdataset(file_paths,  combine="by_coords", parallel=True, engine='scipy')
+    # dataset_as_blocks = make_blocks_numpy(dataset_as_xarray, 3)   
+    
+    target_df.to_parquet(cfg.path_to_prepared_target_data)
+    stations_df.to_parquet(cfg.path_to_prepared_stations)
+
+
+def main(cfg: Dict):
+
+    logging.info(f"Starting climate data processing")
+    files = get_cmip5_files(cfg.paths_to_climate_files_folders, cfg.variables)
+    os.makedirs(cfg.path_to_prepared_data_dir, exist_ok=True)
+
+    rectangle_coords = cfg.get("rectangle_coords")
+    rectangle_coords = list(rectangle_coords.values()) #rect_coords = [min_lat, max_lat, min_lon, max_lon]
+
+    time_limits = [np.datetime64(pd.to_datetime(t)) for t in cfg.get("time_limits")]
+
+    if cfg.make_climate_data:
+        climate_to_npz(files, cfg.variables, cfg.path_to_prepared_data_dir, time_limits, rectangle_coords, cfg.get("interp_res"))
+        logging.info(f"Climate data saved to {cfg.path_to_prepared_data_dir}")
+
+    if cfg.test_load:
+        test_data_load(cfg.path_to_prepared_data_dir, cfg.variables)
+
+    if cfg.make_target:
+        make_target_data(cfg)        
+        logging.info(f"Target data saved to {cfg.path_to_prepared_target_data}")
+
+
     # save lat and lon data
     # ps = glob.glob(os.path.join(root_dir, variables[0], f"*{train_years[0]}*.nc"))
     # x = xr.open_mfdataset(ps[0], parallel=True)
@@ -123,8 +162,23 @@ def main(
     # np.save(os.path.join(save_dir, "lat.npy"), lat)
     # np.save(os.path.join(save_dir, "lon.npy"), lon)
 
-    
 
 if __name__ == "__main__":
-    main()  
-    
+
+    logging.basicConfig(filename='logs/dataset.log',
+                        filemode='a',
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=logging.DEBUG)
+
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
+    logger = logging.getLogger(__name__)
+
+    Configuration = Config()
+    cfg = Configuration.load_json('./configs/dataset_configs/cmip5_dataset_basic_local.json')
+
+    main(cfg)

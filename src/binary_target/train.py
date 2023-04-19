@@ -1,20 +1,14 @@
-import sys
-import os
-import time
+import sys,os
+sys.path.append(os.getcwd())
 import warnings
 import pickle
-import json
-
-import numpy as np
 import torch
 import random
 import logging
 import pytorch_lightning as pl
-import utils
-
-from contextlib import redirect_stdout
+from src.utils import conf_utils
 from models.WindCNN import WindNet, WindNetPL
-from datamodule import get_stations, extract_splitted_data, WindDataModule
+from datamodule import WindDataModule
 
 warnings.filterwarnings("ignore")
 torch.manual_seed(112)
@@ -23,8 +17,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s-%(me
 
 
 def train(conf_path):
-
-   
     max_epoch = 200
     args = {'lr': 1e-4, 'threshold': 0.5}
 
@@ -33,11 +25,13 @@ def train(conf_path):
     trainer = pl.Trainer(max_epochs=max_epoch,
                          accelerator="gpu",
                          benchmark=True,
-                         check_val_every_n_epoch=1)
+                         check_val_every_n_epoch=1,
+                         default_root_dir='logs',
+                         )
 
     dm = WindDataModule(conf_path)
-    
-    Configuration = utils.Config()
+
+    Configuration = conf_utils.Config()
     cfg = Configuration.load_json(conf_path)
     net = WindNet(cfg)
     optimizer = torch.optim.Adam
@@ -49,14 +43,13 @@ def train(conf_path):
     print("See, e.g., tensorboard")
     trainer.fit(model, dm)
     print("Training NN - done")
-    last_log_folder = sorted(os.listdir('lightning_logs'), key=lambda x: int(x.split('_')[-1]))[-1]
-    file = open(os.path.join('lightning_logs', last_log_folder,'transform.pkl'), 'wb')
+    last_log_folder = sorted(os.listdir('logs/lightning_logs'), key=lambda x: int(x.split('_')[-1]))[-1]
+    file = open(os.path.join('logs/lightning_logs', last_log_folder, 'transform.pkl'), 'wb')
     pickle.dump(dm.transform, file)
     file.close()
-    with open(os.path.join('lightning_logs', last_log_folder, 'test_metrics.txt'), 'w') as f:
-        with redirect_stdout(f):
-            trainer.test(model, dm)
 
 
 if __name__ == "__main__":
-    train(conf_path='/wind/configs/train_conf.json')
+    train(conf_path='./configs/train_configs/train_conf.json')
+    # TODO dataset conf
+    # TODO train conf

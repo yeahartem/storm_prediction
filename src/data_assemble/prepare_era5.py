@@ -5,7 +5,7 @@ import numpy as np
 import xarray as xr
 from tqdm import tqdm
 
-from data_utils import DEFAULT_PRESSURE_LEVELS, NAME_TO_VAR
+from src.utils.data_utils import DEFAULT_PRESSURE_LEVELS, NAME_TO_VAR
 HOURS_PER_YEAR = 8760  
 
 def nc2np(path, variables, years, save_dir, partition, num_shards_per_year):

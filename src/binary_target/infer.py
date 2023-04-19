@@ -1,7 +1,5 @@
 import sys
 
-from create_dataset import load_dataset_as_xarray
-
 sys.path.append('../../')
 import os
 
@@ -9,19 +7,14 @@ sys.path.append(os.path.realpath('../pipeline'))
 import warnings
 
 warnings.filterwarnings("ignore")
-import xarray as xr
-from sklearn.metrics import log_loss
-from sklearn.calibration import calibration_curve
 import matplotlib as mpl
-import json
 
-from src.binary_target.assemble_conv import *
+from src.data_assemble.assemble_data import *
 from src.binary_target.models.utils import *
 from src.binary_target.models.WindCNN import *
 from src.binary_target.models.temperature_scaling import *
 from src.binary_target.datamodule import *
 import logging
-import copy
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s-%(message)s')
 
@@ -30,7 +23,7 @@ random.seed(112)
 
 
 def infer(path_to_config):
-    Configuration = utils.Config()
+    Configuration = conf_utils.Config()
     cfg = Configuration.load_json(path_to_config)
     path_to_save = os.path.join(cfg.path_to_save, cfg.region_name)
     inf_file_name = cfg.inf_file_name

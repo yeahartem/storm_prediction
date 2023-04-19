@@ -5,7 +5,8 @@ from matplotlib import pyplot as plt
 from calendar import isleap
 import xarray
 import json
-
+from functools import wraps
+import time
 
 class Dict(dict):
     """dot.notation access to dictionary attributes"""
@@ -81,16 +82,14 @@ def batched(iterable, n):
     it = iter(iterable)
     while batch := tuple(islice(it, n)):
         yield batch
-def cleanup_ms_name(name: str):
-        name = name.replace('"', '')
-        name = name.replace(',', '')
-        return name
-# print("Sample maps")
-#     for i, time in enumerate(gdf.time.unique()):
-#         f, ax = plt.subplots(1, figsize=(10, 5))
-#         ax = gdf[gdf['time'] == time].plot(column='prob', cmap='afmhot', ax=ax, legend=True)
-#         # if i > 10:
-#         #     break
-#         plt.savefig(os.path.join(path_to_save, 'pics', str(time) + '.png'))
-#     print("Sample maps (10) - done")
-#     logging.info("Sample maps (10)")
+
+def timeit(func):
+    @wraps(func)
+    def timeit_wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        total_time = end_time - start_time
+        print(f'Function {func.__name__}{args} {kwargs} Took {total_time:.4f} seconds')
+        return result
+    return timeit_wrapper

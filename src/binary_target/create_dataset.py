@@ -12,11 +12,11 @@ import random
 
 sys.path.append(os.path.join('/', 'wind'))
 
-from src.binary_target.assemble_conv import get_y, get_pixel_stations, make_blocks_numpy, assemble_numpy_ds
+from src.data_assemble.assemble_data import get_y, get_pixel_stations, make_blocks_numpy, assemble_numpy_ds
 from src.binary_target.datamodule import get_stations
 from src.data_assemble.data_processing import get_xarrays, get_xarrays_elevation
-from src.binary_target.utils import cleanup_ms_name
-from src.binary_target.utils import Config
+from src.utils.conf_utils import cleanup_ms_name
+from src.utils.conf_utils import Config
 
 warnings.filterwarnings("ignore")
 
