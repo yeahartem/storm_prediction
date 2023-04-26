@@ -2,9 +2,10 @@
     "data_dir": "./data_mounted/cmip5_basic",
     "path_to_prepared_target_data": "./data_mounted/cmip5_basic/target.parquet",
     "path_to_prepared_stations": "./data_mounted/cmip5_basic/stations.parquet",
+
     "half_side_size": 3,
     "time_window": 28,
-    "if_generate_dataset": false,
+
     "min_height": -10,
     "max_height": 300,
     "rectangle_coords": {
@@ -13,10 +14,7 @@
         "lon_min": 32.12,
         "lon_max": 181.45
     },
-    "target_res": {
-        "lon_res": 0.25,
-        "lat_res": 0.25
-    },
+
     "variables": [
         "sfcWindmax",
         "sfcWind",
@@ -25,19 +23,17 @@
         "tasmax",
         "tasmin"
     ],
-    "bands": [
-        "Wind_",
-        "pr",
-        "tasmax",
-        "tasmin"
-    ],
+
     "time_limits": [
         "2000-01-01", "2020-11-14"
     ],
-    "start_of_test": "2012-01-01",
+    "start_of_test": "2012-01-01",    
     "speed_th": 20,
-    "nn_training_data": {
+
+    "hparams": {
         "batch_size": 2000,
-        "max_epoch": 4
+        "learning_rate": 0.0001,
+        "max_epoch": 200,
+        "threshold": 0.5
     }
 }

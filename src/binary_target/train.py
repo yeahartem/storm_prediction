@@ -17,12 +17,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s-%(me
 
 
 def train(conf_path):
-    max_epoch = 200
-    args = {'lr': 1e-4, 'threshold': 0.5}
-
+    Configuration = conf_utils.Config()
+    cfg = Configuration.load_json(conf_path)
     print("Reading dataset")
 
-    trainer = pl.Trainer(max_epochs=max_epoch,
+    trainer = pl.Trainer(max_epochs=cfg.hparams.max_epoch,
                          accelerator="gpu",
                          benchmark=True,
                          check_val_every_n_epoch=1,
@@ -36,20 +35,15 @@ def train(conf_path):
     net = WindNet(cfg)
     optimizer = torch.optim.Adam
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau
-    model = WindNetPL(args, net=net, optimizer=optimizer, scheduler=scheduler)
+    model = WindNetPL(cfg, net=net, optimizer=optimizer, scheduler=scheduler)
 
-    print("Initializing NN - done")
-    print("Training NN")
-    print("See, e.g., tensorboard")
+    print("Training NN")    
     trainer.fit(model, dm)
-    print("Training NN - done")
-    last_log_folder = sorted(os.listdir('logs/lightning_logs'), key=lambda x: int(x.split('_')[-1]))[-1]
-    file = open(os.path.join('logs/lightning_logs', last_log_folder, 'transform.pkl'), 'wb')
-    pickle.dump(dm.transform, file)
-    file.close()
+
+   
 
 
 if __name__ == "__main__":
+    
     train(conf_path='./configs/train_configs/train_conf.json')
-    # TODO dataset conf
-    # TODO train conf
+

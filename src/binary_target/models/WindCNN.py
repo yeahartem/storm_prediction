@@ -7,6 +7,7 @@ from torchmetrics import MaxMetric, MeanMetric
 from torch.functional import F
 import torch.nn as nn
 
+
 class WindNet(nn.Module):
     def __init__(self, cfg) -> None:
         super(WindNet, self).__init__()
@@ -61,36 +62,34 @@ class WindNet(nn.Module):
 class WindNetPL(pl.LightningModule):
 
     def __init__(self,
-                 args,
+                 cfg,
                  net: torch.nn.Module,
                  optimizer,
                  scheduler,
                  ):
+        
         super().__init__()
-        self.args = args
-        self.save_hyperparameters(logger=False, ignore=["net"])
+        self.cfg = cfg
         self.net = net
+        self.optimizer = optimizer
+        self.scheduler = scheduler
         self.sigmoid = nn.Sigmoid()
         self.train_loss = MeanMetric()
         self.val_loss = MeanMetric()
         self.test_loss = MeanMetric()
         self.val_auroc_best = MaxMetric()
 
-        self.train_accuracy = torchmetrics.Accuracy(num_classes=1, threshold=args["threshold"])
-        self.val_accuracy = torchmetrics.Accuracy(num_classes=1, threshold=args["threshold"])
-        self.test_accuracy = torchmetrics.Accuracy(num_classes=1, threshold=args["threshold"])
-
         self.train_auroc = torchmetrics.AUROC(num_classes=1)
         self.val_auroc = torchmetrics.AUROC(num_classes=1)
         self.test_auroc = torchmetrics.AUROC(num_classes=1)
 
-        self.train_precision = torchmetrics.Precision(num_classes=1, threshold=args["threshold"])
-        self.val_precision = torchmetrics.Precision(num_classes=1, threshold=args["threshold"])
-        self.test_precision = torchmetrics.Precision(num_classes=1, threshold=args["threshold"])
+        self.train_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.hparams.threshold)
+        self.val_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.hparams.threshold)
+        self.test_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.hparams.threshold)
 
-        self.train_recall = torchmetrics.Recall(num_classes=1, threshold=args["threshold"])
-        self.val_recall = torchmetrics.Recall(num_classes=1, threshold=args["threshold"])
-        self.test_recall = torchmetrics.Recall(num_classes=1, threshold=args["threshold"])
+        self.train_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.hparams.threshold)
+        self.val_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.hparams.threshold)
+        self.test_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.hparams.threshold)
 
         #self.criterion = FocalLoss(gamma=5, alpha=6)
         self.criterion = nn.BCEWithLogitsLoss()
@@ -99,6 +98,7 @@ class WindNetPL(pl.LightningModule):
         return self.net(x)
 
     def loss(self, y_hat, y):
+        # return self.criterion(torch.squeeze(y_hat), y)
         return self.criterion(y_hat, y)
 
     def on_train_start(self):
@@ -107,7 +107,7 @@ class WindNetPL(pl.LightningModule):
 
     def model_step(self, batch):
         objs, target = batch
-        # target = torch.unsqueeze(target, dim=-1)
+        target = torch.unsqueeze(target, dim=-1)
         predictions = self(objs).float()
         loss = self.loss(predictions, target.float())
 
@@ -117,13 +117,11 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
 
         self.train_loss(loss)
-        self.train_accuracy(predictions, target)
         self.train_recall(predictions, target)
         self.train_precision(predictions, target)
         self.train_auroc(predictions, target)
 
         self.log("train/loss", self.train_loss, on_step=False, on_epoch=True)
-        self.log("train/accuracy", self.train_accuracy, on_step=False, on_epoch=True)
         self.log("train/recall", self.train_recall, on_step=False, on_epoch=True)
         self.log("train/precision", self.train_precision, on_step=False, on_epoch=True)
         self.log("train/auroc", self.train_auroc, on_step=False, on_epoch=True, prog_bar=True)
@@ -141,13 +139,11 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
 
         self.val_loss(loss)
-        self.val_accuracy(predictions, target)
         self.val_recall(predictions, target)
         self.val_precision(predictions, target)
         self.val_auroc(predictions, target)
 
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/accuracy", self.val_accuracy, on_step=False, on_epoch=True)
         self.log("val/recall", self.val_recall, on_step=False, on_epoch=True)
         self.log("val/precision", self.val_precision, on_step=False, on_epoch=True)
         self.log("val/auroc", self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
@@ -176,7 +172,6 @@ class WindNetPL(pl.LightningModule):
         self.test_auroc(predictions, target)
 
         self.log("test/loss", self.test_loss, prog_bar=True)
-        self.log("test/accuracy", self.test_accuracy, on_step=False, on_epoch=True)
         self.log("test/recall", self.test_recall, on_step=False, on_epoch=True)
         self.log("test/precision", self.test_precision, on_step=False, on_epoch=True)
         self.log("test/auroc", self.test_auroc, on_step=False, on_epoch=True)
@@ -191,10 +186,10 @@ class WindNetPL(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        lr = self.args["lr"]
-        optimizer = self.hparams.optimizer(self.net.parameters(), lr=lr,  weight_decay=0.03)
-        if self.hparams.scheduler is not None:
-            scheduler = self.hparams.scheduler(optimizer=optimizer)
+        lr = self.cfg.hparams.learning_rate
+        optimizer = self.optimizer(self.net.parameters(), lr=lr,  weight_decay=0.03)
+        if self.scheduler is not None:
+            scheduler = self.scheduler(optimizer=optimizer)
             return {
                 "optimizer": optimizer,
                 "lr_scheduler": {
