@@ -11,6 +11,7 @@ import pickle
 import xarray as xr
 from src.data_assemble.assemble_target import stations_to_data_grid
 from src.data_assemble.assemble_data import make_blocks_no_target
+from src.data_assemble.prepare_cmip5 import get_cmip5_files
 
 
 import pandas as pd
@@ -20,10 +21,11 @@ from src.utils import conf_utils
 
 def prepare_data(cfg):
 
-    climate_file_paths = [os.path.join(cfg.data_dir, var + '.nc') for var in cfg.variables]
+    files = get_cmip5_files(cfg.data_dir, cfg.variables)
+    climate_file_paths = [file.path for file in files]
+
     print(f'loading {climate_file_paths}')
-    rectangle_coords = cfg['rectangle_coords']
-  
+    rectangle_coords = cfg['rectangle_coords']  
 
     dataset_xarray = xr.open_mfdataset(climate_file_paths,  combine="by_coords", parallel=True, engine='scipy')  
 

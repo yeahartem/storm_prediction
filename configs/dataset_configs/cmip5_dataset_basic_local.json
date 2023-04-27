@@ -1,9 +1,9 @@
 {
-
+    "experiment_name": "cmip5basic", 
     "make_climate_data": true,
     "make_target": true,
-    "paths_to_climate_files_folders": ["/home/teshbek/Datasets/cmip5_orig/rcp45/",
-        "/media/teshbek/SSD1TB/datasets/historical/historical"],
+    "paths_to_climate_files_folder": "/home/teshbek/Datasets/cmip5_orig/rcp45/",
+    "path_historical_files_folder": "/media/teshbek/SSD1TB/datasets/historical/historical",
     "path_to_elevation": "./data_mounted/cmip/elevation/elevation.nc",
     
     "path_to_weather_stations_data": "./data_mounted/weather_stations/data_meteo_full.parquet",
@@ -13,6 +13,7 @@
     "path_to_prepared_data_dir": "/home/teshbek/repos/Wind/data_mounted/cmip5_basic",
     "path_to_prepared_target_data": "./data_mounted/cmip5_basic/target.parquet",
     "path_to_prepared_stations": "./data_mounted/cmip5_basic/stations.parquet",
+
 
     "min_height": -10,
     "max_height": 300,

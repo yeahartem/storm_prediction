@@ -9,7 +9,6 @@ import time
 from src.utils.data_utils import interp_timewise_xarray
 from src.utils.conf_utils import Config, Dict, timeit
 from src.data_assemble.assemble_target import get_stations, get_y, load_weatherstations_RU
-from src.data_assemble.assemble_data import make_blocks_numpy
 
 
 class CMIP5File():
@@ -17,35 +16,41 @@ class CMIP5File():
     """Parse the filename of a CMIP5 file to get the model name and experiment name.
         e.g. filename = 'pr_day_MRI-CGCM3_rcp45_r1i1p1_20560101-20651231.nc' """
 
-    def __init__(self, path):
-        self.filename = os.path.basename(path)
-        self.path = path
-        self.variable_name = self.filename.split('_')[0]
-        self.variable_table = self.filename.split('_')[1]
-        if self.variable_table != 'day':
-            raise NotImplementedError('Only daily data is supported.')
-        self.model_name = self.filename.split('_')[2]
-        self.experiment_name = self.filename.split('_')[3]
-        self.ensemble_member = self.filename.split('_')[4]
-        self.temporal_subset = self.filename.split('_')[5]
+    def __init__(self, path=None):
+        if path:
+            self.filename = os.path.basename(path)
+            self.path = path
+            self.variable_name = self.filename.split('_')[0]
+            self.variable_table = self.filename.split('_')[1]
+            if self.variable_table != 'day':
+                raise NotImplementedError('Only daily data is supported.')
+            self.model_name = self.filename.split('_')[2]
+            self.experiment_name = self.filename.split('_')[3]
+            self.ensemble_member = self.filename.split('_')[4]
+            self.temporal_subset = self.filename.split('_')[5]
 
     def __str__(self):
         return self.filename
 
     def __repr__(self):
         return self.filename
+    
+    def filename(self):
+
+        return f"{self.variable_name}_{self.variable_table}_{self.model_name}_{self.experiment_name}_{self.ensemble_member}_{self.temporal_subset}.nc"
 
 
-def get_cmip5_files(folders, variables):
+def get_cmip5_files(folder: str, variables) -> list:
     """Get all the CMIP5 files in the directories in folders list"""
+    if not isinstance(variables, list):
+        variables = [variables]
     files = []
-    for folder in folders:
-        for root, dirs, filenames in os.walk(folder):
-            for filename in filenames:
-                if filename.endswith('.nc'):
-                    file = CMIP5File(os.path.join(root, filename))
-                    if file.variable_name in variables:
-                        files.append(file)
+    for root, dirs, filenames in os.walk(folder):
+        for filename in filenames:
+            if filename.endswith('.nc'):
+                file = CMIP5File(os.path.join(root, filename))
+                if file.variable_name in variables:
+                    files.append(file)
     return files
 
 
@@ -55,13 +60,18 @@ def process_coords(ds, concat_dim='time', drop=True):
         return ds.drop_vars(coord_vars, errors="ignore")
     else:
         return ds.set_coords(coord_vars)
+    
 
-@timeit
-def climate_to_npz(files: list, variables: list, save_dir: str, time_range: list, rect_coords: list, interp_res: float):
+def climate_to_npz(files: list, var: str, save_dir: str, time_range: list, rect_coords: list, experiment_name: str):
     """Convert climate data to nc files."""
 
     file_paths = [file.path for file in files]
+    if not experiment_name:
+        experiment_name = files[0].experiment_name
+
     data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True)
+
+    # TODO add normalization data save
 
     print(f'before time cut {len(data_arr.time)}')
     if time_range:
@@ -73,21 +83,27 @@ def climate_to_npz(files: list, variables: list, save_dir: str, time_range: list
     data_arr = data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
     print(f'after leap days excl {len(data_arr.time)}')
     
-    # data_arr.time = data_arr.time.astype('datetime64[D]')
+    print(f"Saving: {var}")
+    new_file = CMIP5File(None)
+    new_file.variable_name = var
+    new_file.variable_table = 'day'
+    new_file.model_name = 'cmip5'
+    new_file.experiment_name = experiment_name
+    new_file.ensemble_member = files[0].ensemble_member
+    new_file.temporal_subset = f"{data_arr.time.values[0].astype('datetime64[D]')}-{data_arr.time.values[-1].astype('datetime64[D]')}"
+    filename = new_file.filename()
 
-    for var in variables:
-        print(f"Saving: {var}")
-        data_var = data_arr[var]
-        # data_var = interp_timewise_xarray(data_var,
-        #                     res=interp_res,
-        #                     interp_method='linear')
-
-        data_var.to_netcdf(os.path.join(save_dir, f"{var}.nc"), engine='scipy')  # TODO use faster engine
+    data_arr[var].to_netcdf(os.path.join(save_dir, filename), engine='scipy')  # TODO use faster engine
 
 
-def test_data_load(save_dir, variables):
-    
-    file_paths = [os.path.join(save_dir, var + '.nc') for var in variables]
+
+
+def test_data_load(save_dir: str, variables: list):
+    """Test if data was loaded correctly."""
+
+    files = get_cmip5_files(save_dir, variables)
+    file_paths = [file.path for file in files]
+
     logging.info(f'loading {file_paths}')
     data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy')
     for var in variables:
@@ -134,7 +150,7 @@ def make_target_data(cfg: Dict):
 def main(cfg: Dict):
 
     logging.info(f"Starting climate data processing")
-    files = get_cmip5_files(cfg.paths_to_climate_files_folders, cfg.variables)
+    
     os.makedirs(cfg.path_to_prepared_data_dir, exist_ok=True)
 
     rectangle_coords = cfg.get("rectangle_coords")
@@ -143,8 +159,11 @@ def main(cfg: Dict):
     time_limits = [np.datetime64(pd.to_datetime(t)) for t in cfg.get("time_limits")]
 
     if cfg.make_climate_data:
-        climate_to_npz(files, cfg.variables, cfg.path_to_prepared_data_dir, time_limits, rectangle_coords, cfg.get("interp_res"))
-        logging.info(f"Climate data saved to {cfg.path_to_prepared_data_dir}")
+
+        for var in cfg.variables:
+            files = get_cmip5_files(cfg.path_historical_files_folder, var)
+            climate_to_npz(files, var, cfg.path_to_prepared_data_dir, time_limits, rectangle_coords, cfg.experiment_name)
+            logging.info(f"{var} data saved to {cfg.path_to_prepared_data_dir}")
 
     if cfg.test_load:
         test_data_load(cfg.path_to_prepared_data_dir, cfg.variables)

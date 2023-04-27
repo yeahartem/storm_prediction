@@ -3,7 +3,7 @@
     "path_to_prepared_target_data": "./data_mounted/cmip5_basic/target.parquet",
     "path_to_prepared_stations": "./data_mounted/cmip5_basic/stations.parquet",
 
-    "half_side_size": 3,
+    "half_side_size": 7,
     "time_window": 28,
 
     "min_height": -10,

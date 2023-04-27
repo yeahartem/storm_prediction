@@ -37,7 +37,7 @@ class WindNet(nn.Module):
         )
 
         self.flatten = nn.Flatten()
-        self.fc = nn.Linear(784, 1)
+        self.fc = nn.Linear(3600, 1)
 
         self.net = nn.Sequential(
             self.conv1, 
