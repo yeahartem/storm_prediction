@@ -6,58 +6,7 @@ import torchmetrics
 from torchmetrics import MaxMetric, MeanMetric
 from torch.functional import F
 import torch.nn as nn
-
-
-class WindNet(nn.Module):
-    def __init__(self, cfg) -> None:
-        super(WindNet, self).__init__()
-        self.conv1 = nn.Conv3d(
-            in_channels=len(cfg.variables),
-            out_channels=32,
-            kernel_size=(28, 3, 3),
-            stride=1,
-            dilation=1,
-            padding=(1, 1, 1),
-        )
-        self.conv2 = nn.Conv3d(
-            in_channels=32,
-            out_channels=16,
-            kernel_size=(5, 3, 3),
-            stride=1,
-            dilation=1,
-            padding=(1, 1, 1,)
-        )
-        self.conv3 = nn.Conv3d(
-            in_channels=16,
-            out_channels=16,
-            kernel_size=(3, 3, 3),
-            stride=1,
-            dilation=1,
-            padding=(1, 1, 1,)
-        )
-
-        self.flatten = nn.Flatten()
-        self.fc = nn.Linear(3600, 1)
-
-        self.net = nn.Sequential(
-            self.conv1, 
-            nn.ReLU(),
-            nn.InstanceNorm3d(32),
-            self.conv2, 
-            nn.ReLU(),
-            nn.InstanceNorm3d(16),
-            self.conv3,
-            nn.ReLU(),
-            nn.InstanceNorm3d(16),
-            self.flatten,
-            self.fc
-        )
-
-    def forward(self, X) -> torch.Tensor:
-        X = X.transpose(1, 2)
-        output = self.net(X)
-        return output
-
+from models.models import WindNet
 
 class WindNetPL(pl.LightningModule):
 
@@ -91,6 +40,10 @@ class WindNetPL(pl.LightningModule):
         self.val_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.hparams.threshold)
         self.test_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.hparams.threshold)
 
+        self.train_ap = torchmetrics.AveragePrecision(num_classes=1)
+        self.val_ap = torchmetrics.AveragePrecision(num_classes=1)
+        self.test_ap = torchmetrics.AveragePrecision(num_classes=1)
+
         #self.criterion = FocalLoss(gamma=5, alpha=6)
         self.criterion = nn.BCEWithLogitsLoss()
 
@@ -120,11 +73,14 @@ class WindNetPL(pl.LightningModule):
         self.train_recall(predictions, target)
         self.train_precision(predictions, target)
         self.train_auroc(predictions, target)
+        self.train_ap(predictions, target)
 
-        self.log("train/loss", self.train_loss, on_step=False, on_epoch=True)
+        self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/recall", self.train_recall, on_step=False, on_epoch=True)
         self.log("train/precision", self.train_precision, on_step=False, on_epoch=True)
-        self.log("train/auroc", self.train_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/auroc", self.train_auroc, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("train/AP", self.train_ap, on_step=True, on_epoch=True, prog_bar=True)
+
 
         output = OrderedDict(
             {
@@ -142,11 +98,13 @@ class WindNetPL(pl.LightningModule):
         self.val_recall(predictions, target)
         self.val_precision(predictions, target)
         self.val_auroc(predictions, target)
+        self.val_ap(predictions, target)
 
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/recall", self.val_recall, on_step=False, on_epoch=True)
         self.log("val/precision", self.val_precision, on_step=False, on_epoch=True)
         self.log("val/auroc", self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/AP", self.val_ap, on_step=False, on_epoch=True, prog_bar=True)
 
         output = OrderedDict(
             {
@@ -170,12 +128,14 @@ class WindNetPL(pl.LightningModule):
         self.test_recall(predictions, target)
         self.test_precision(predictions, target)
         self.test_auroc(predictions, target)
+        self.test_ap(predictions, target)
 
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/recall", self.test_recall, on_step=False, on_epoch=True)
         self.log("test/precision", self.test_precision, on_step=False, on_epoch=True)
         self.log("test/auroc", self.test_auroc, on_step=False, on_epoch=True)
-
+        self.log("test/AP", self.val_ap, on_step=False, on_epoch=True, prog_bar=True)
+        
         output = OrderedDict(
             {
                 "loss": loss,

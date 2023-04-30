@@ -21,8 +21,7 @@ def get_stations(all_stations_data='data_mounted/weather_stations/weatherstation
                             "Долгота": "lon",
                             "Наименование станции": "station_name",
                             "Высота метеопл.": "height"
-                            })
-    
+                            })    
     
     all_stations = all_stations[["station_name", "lat", "lon", "height"]]
     result_stations = all_stations[all_stations['station_name'].isin(stations_allowed)]
@@ -40,7 +39,6 @@ def get_stations(all_stations_data='data_mounted/weather_stations/weatherstation
         result_stations = result_stations[result_stations['height'] > min_height]
     result_stations['station_name'] = result_stations['station_name'].str.casefold()
     
-
     return result_stations
 
 

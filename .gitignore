@@ -7,5 +7,8 @@ src/research/notebooks/lightning_logs
 *.npy
 *.nc
 logs/*
+outputs/*
 *pycache*
 data_mounted
+wandb
+outputs
