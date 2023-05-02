@@ -25,25 +25,16 @@ def prepare_data(cfg):
     climate_file_paths = [file.path for file in files]
 
     logging.debug(f'loading {climate_file_paths}')
-    rectangle_coords = cfg['rectangle_coords']      
-
-    dataset_xarray = xr.open_mfdataset(climate_file_paths,  combine="by_coords", parallel=True, engine='scipy')  
+    
+    dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy')  
 
     target_df = pd.read_parquet(cfg.path_to_prepared_target_data)
+    target_df["y"] = (target_df['y'] > cfg.speed_th)     
     target_df['y'] = target_df['y'].astype('int')
-    rectangle_coords = list(rectangle_coords.values()) #rect_coords = [min_lat, max_lat, min_lon, max_lon]
 
-    stations_df = pd.read_parquet(cfg.path_to_prepared_stations)
-    stations_df = stations_to_data_grid(dataset_xarray=dataset_xarray,
-                                          stations_df=stations_df)
-    target_df = target_df.merge(stations_df, on='station_name', how='left')
-    target_df = target_df.drop(columns=["height"])
-     
     dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
-    target_df['time'] = target_df['time'].astype('datetime64[D]')    
-
     target_df['y_window'] = target_df['y'].rolling(window=cfg.time_window).max()
-    target_df = target_df.drop(columns=["y"]) 
+    target_df = target_df.drop(columns=["y", "height"]) 
     dataset_as_blocks = make_blocks_no_target(dataset_xarray, cfg.half_side_size, time_stack_size=cfg.time_window)    
 
     # intersecting dataset and target_df
@@ -60,7 +51,7 @@ def prepare_data(cfg):
     return dataset_as_blocks, target_df
 
 
-def split_train_test(X, y, start_of_test):
+def split_train_test(X, y, start_of_test, test_coords):
 
     split_date = pd.to_datetime(start_of_test)
     X_train = X.sel(time=slice(None, split_date))
@@ -116,26 +107,15 @@ class WindDataModule(pl.LightningDataModule):
         self.cfg = cfg
         
         dataset_as_blocks, target_df = prepare_data(self.cfg)
-        self.X_train, self.X_test, self.y_train, self.y_test = split_train_test(dataset_as_blocks, target_df, self.cfg.start_of_test)
-        
+        self.X_train, self.X_test, self.y_train, self.y_test = split_train_test(dataset_as_blocks, target_df, self.cfg.start_of_test)        
         self.class_balance_train = self.y_train['y_window'].value_counts(normalize=True).values
         self.class_balance_test = self.y_test['y_window'].value_counts(normalize=True).values
         self.train_size = len(self.y_train)
         self.test_size = len(self.y_test)
         self.station_count = len(self.y_train['station_name'].unique())
-
-        #get normalization values
-        rectangle_coords = list(self.cfg.rectangle_coords.values())
-        norm_time_slice = slice(max(pd.to_datetime(self.cfg.time_limits[0]), pd.to_datetime(self.cfg.start_of_test)- pd.DateOffset(years=5)),
-                                 pd.to_datetime(self.cfg.start_of_test))
-        norm_lat_slice = slice(rectangle_coords[0], min(rectangle_coords[0]+30, rectangle_coords[1])) # 30 is just reasonable size
-        norm_lon_slice = slice(rectangle_coords[2], min(rectangle_coords[2]+30, rectangle_coords[3]))
-        mean_channels = self.X_train.sel(time=norm_time_slice, lat=norm_lat_slice, lon=norm_lon_slice).mean(dim=['lat', 'lon', 'time', 'time_stack', 'window_lat', 'window_lon']).data
-        std_channels = self.X_train.sel(time=norm_time_slice, lat=norm_lat_slice, lon=norm_lon_slice).std(dim=['lat', 'lon', 'time', 'time_stack', 'window_lat', 'window_lon']).data
-
-        # npz = np.load(self.cfg.path_to_normalization_values, allow_pickle=True)
-        # mean_channels = npz['vars_mean']
-        # std_channels = npz['vars_std']
+        #get normalization values   
+        mean_channels = np.load(self.cfg.path_to_means)
+        std_channels = np.load(self.cfg.path_to_std)
         
         self.transform = transforms.Compose(
              [
@@ -153,11 +133,11 @@ class WindDataModule(pl.LightningDataModule):
             self.dataset_test = XarrayDatasetBinary(self.X_test, self.y_test, transforms_data=self.transform)
 
     def train_dataloader(self):
-        return DataLoader(self.dataset_train, batch_size=self.cfg.hparams.batch_size, num_workers=4)
+        return DataLoader(self.dataset_train, batch_size=self.cfg.batch_size, num_workers=4)
 
     def val_dataloader(self):
-        return DataLoader(self.dataset_val, batch_size=self.cfg.hparams.batch_size, num_workers=4)
+        return DataLoader(self.dataset_val, batch_size=self.cfg.batch_size, num_workers=4)
 
     def test_dataloader(self):
-        return DataLoader(self.dataset_test, batch_size=self.cfg.hparams.batch_size, num_workers=4)
+        return DataLoader(self.dataset_test, batch_size=self.cfg.batch_size, num_workers=4)
     

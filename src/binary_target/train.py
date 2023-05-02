@@ -15,6 +15,7 @@ import wandb
 warnings.filterwarnings("ignore")
 torch.manual_seed(112)
 random.seed(112)
+os.environ['WANDB_MODE'] = 'offline'
 os.environ['WANDB_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
@@ -23,14 +24,13 @@ os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
 def train(cfg: DictConfig) -> None:        
 
     logging.basicConfig(level=cfg.logging_level, format='%(asctime)s-%(message)s')
-
-    wandb.init(project="Wind-speed",
+    wandb.init(project="Wind-speed-binary",
                name=cfg.experiment_name,
                config=OmegaConf.to_container(cfg, resolve=True),
                dir=os.path.join(os.getcwd(), "outputs/wandb"))
 
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "outputs/wandb"),
-                               project="Wind-speed",
+                               project="Wind-speed-binary",
                                name=cfg.experiment_name)
 
     dm = WindDataModule(cfg)
@@ -44,7 +44,7 @@ def train(cfg: DictConfig) -> None:
     logging.info(f"Train size: {dm.train_size}, test size: {dm.test_size}")
     logging.info(f"Station count: {dm.station_count}")
 
-    trainer = pl.Trainer(max_epochs=cfg.hparams.max_epoch,
+    trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
                          benchmark=True,
                          check_val_every_n_epoch=1,

@@ -32,13 +32,13 @@ class WindNetPL(pl.LightningModule):
         self.val_auroc = torchmetrics.AUROC(num_classes=1)
         self.test_auroc = torchmetrics.AUROC(num_classes=1)
 
-        self.train_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.hparams.threshold)
-        self.val_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.hparams.threshold)
-        self.test_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.hparams.threshold)
+        self.train_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.threshold)
+        self.val_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.threshold)
+        self.test_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.threshold)
 
-        self.train_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.hparams.threshold)
-        self.val_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.hparams.threshold)
-        self.test_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.hparams.threshold)
+        self.train_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.threshold)
+        self.val_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.threshold)
+        self.test_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.threshold)
 
         self.train_ap = torchmetrics.AveragePrecision(num_classes=1)
         self.val_ap = torchmetrics.AveragePrecision(num_classes=1)
@@ -124,7 +124,6 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
 
         self.test_loss(loss)
-        self.test_accuracy(predictions, target)
         self.test_recall(predictions, target)
         self.test_precision(predictions, target)
         self.test_auroc(predictions, target)
@@ -146,7 +145,7 @@ class WindNetPL(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        lr = self.cfg.hparams.learning_rate
+        lr = self.cfg.learning_rate
         optimizer = self.optimizer(self.net.parameters(), lr=lr,  weight_decay=0.03)
         if self.scheduler is not None:
             scheduler = self.scheduler(optimizer=optimizer)
