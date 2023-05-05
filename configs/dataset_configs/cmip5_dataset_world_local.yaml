@@ -1,9 +1,9 @@
 ---
 experiment_name: cmip5world
 make_climate_data: false
-test_load: true
-make_target: true
-make_normalization: true
+make_normalization: false
+make_cleaned_weather_data: false
+make_target: false
 
 paths_to_climate_files_folders: 
 - "/home/teshbek/Datasets/cmip5_orig/rcp45/"
@@ -22,20 +22,15 @@ normalization_values_name: "normalization_values" # _mean.npy, _std.npy, will be
 min_height: -10
 max_height: 300
 train_coords:
-  lat_min: 36.38
+  lat_min: -48.38
   lat_max: 80.52
-  lon_min: 32.12
-  lon_max: 181.45
+  lon_min: -179.12
+  lon_max: 180.45
 variables:
 - sfcWindmax
 - sfcWind
 - pr
 - psl
-- tasmax
-- tasmin
-bands:
-- Wind_
-- pr
 - tasmax
 - tasmin
 time_limits:
@@ -45,3 +40,4 @@ start_of_test: '2008-01-01'
 half_side_size: 7
 time_window: 28
 speed_th: 20
+target_column: 'max_speed'

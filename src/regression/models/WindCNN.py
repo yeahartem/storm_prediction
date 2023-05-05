@@ -3,10 +3,12 @@ import torch
 import pytorch_lightning as pl
 from collections import OrderedDict
 import torchmetrics
-from torchmetrics import MaxMetric, MeanMetric
+from torchmetrics import MaxMetric, MeanMetric, MinMetric
 from torch.functional import F
 import torch.nn as nn
 from models.models import WindNet
+import wandb
+import numpy as np
 
 class WindNetPL(pl.LightningModule):
 
@@ -15,6 +17,7 @@ class WindNetPL(pl.LightningModule):
                  net: torch.nn.Module,
                  optimizer,
                  scheduler,
+                 criterion,
                  ):
         
         super().__init__()
@@ -26,37 +29,27 @@ class WindNetPL(pl.LightningModule):
         self.train_loss = MeanMetric()
         self.val_loss = MeanMetric()
         self.test_loss = MeanMetric()
-        self.val_auroc_best = MaxMetric()
+        self.val_MAE_best = MinMetric()
 
-        self.train_auroc = torchmetrics.AUROC(num_classes=1)
-        self.val_auroc = torchmetrics.AUROC(num_classes=1)
-        self.test_auroc = torchmetrics.AUROC(num_classes=1)
+        self.train_MAPE = torchmetrics.MeanAbsolutePercentageError()
+        self.val_MAPE = torchmetrics.MeanAbsolutePercentageError()
+        self.test_MAPE = torchmetrics.MeanAbsolutePercentageError()
 
-        self.train_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.threshold)
-        self.val_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.threshold)
-        self.test_precision = torchmetrics.Precision(num_classes=1, threshold=cfg.threshold)
-
-        self.train_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.threshold)
-        self.val_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.threshold)
-        self.test_recall = torchmetrics.Recall(num_classes=1, threshold=cfg.threshold)
-
-        self.train_ap = torchmetrics.AveragePrecision(num_classes=1)
-        self.val_ap = torchmetrics.AveragePrecision(num_classes=1)
-        self.test_ap = torchmetrics.AveragePrecision(num_classes=1)
-
-        #self.criterion = FocalLoss(gamma=5, alpha=6)
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.train_MAE = torchmetrics.MeanAbsoluteError()
+        self.val_MAE = torchmetrics.MeanAbsoluteError()
+        self.test_MAE = torchmetrics.MeanAbsoluteError()
+        
+        self.criterion = criterion
 
     def forward(self, x):
         return self.net(x)
 
-    def loss(self, y_hat, y):
-        # return self.criterion(torch.squeeze(y_hat), y)
+    def loss(self, y_hat, y):        
         return self.criterion(y_hat, y)
 
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)
-        self.val_auroc_best.reset()
+        self.val_MAE_best.reset()
 
     def model_step(self, batch):
         objs, target = batch
@@ -64,24 +57,27 @@ class WindNetPL(pl.LightningModule):
         predictions = self(objs).float()
         loss = self.loss(predictions, target.float())
 
-        return loss, self.sigmoid(predictions), target
+        return loss, predictions, target
 
     def training_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
-
         self.train_loss(loss)
-        self.train_recall(predictions, target)
-        self.train_precision(predictions, target)
-        self.train_auroc(predictions, target)
-        self.train_ap(predictions, target)
-
+        self.train_MAPE(predictions, target)
+        self.train_MAE(predictions, target)
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
-        self.log("train/recall", self.train_recall, on_step=False, on_epoch=True)
-        self.log("train/precision", self.train_precision, on_step=False, on_epoch=True)
-        self.log("train/auroc", self.train_auroc, on_step=False, on_epoch=True, prog_bar=False)
-        self.log("train/AP", self.train_ap, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train/MAPE", self.train_MAPE, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
 
+        batch = torch.cat(tuple(batch[0]), dim=0)
+        nan_indicator = torch.isnan(batch).bool().int().sum()
+        if nan_indicator > 0:
+            print(nan_indicator)
+        wandb.log({"train/target": target, "train/prediction": predictions})
+        # wandb.log({"train/data_mean": batch.mean()})
+        # wandb.log({"train/data_std": batch.std()})
+        # wandb.log({"train/data_nans": nan_indicator})
 
+        
         output = OrderedDict(
             {
                 "loss": loss,
@@ -95,16 +91,12 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
 
         self.val_loss(loss)
-        self.val_recall(predictions, target)
-        self.val_precision(predictions, target)
-        self.val_auroc(predictions, target)
-        self.val_ap(predictions, target)
+        self.val_MAPE(predictions, target)
+        self.val_MAE(predictions, target)
 
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/recall", self.val_recall, on_step=False, on_epoch=True)
-        self.log("val/precision", self.val_precision, on_step=False, on_epoch=True)
-        self.log("val/auroc", self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/AP", self.val_ap, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/MAPE", self.val_MAPE, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("val/MAE", self.val_MAE, on_step=False, on_epoch=True, prog_bar=True)
 
         output = OrderedDict(
             {
@@ -116,24 +108,21 @@ class WindNetPL(pl.LightningModule):
         return output
 
     def validation_epoch_end(self, outputs):
-        auroc = self.val_auroc.compute()
-        self.val_auroc_best(auroc)
-        self.log("val/auroc_best", self.val_auroc_best.compute(), prog_bar=False)
+        MAPE = self.val_MAE.compute()
+        self.val_MAE_best(MAPE)
+        self.log("val/MAE_best", self.val_MAE_best.compute(), prog_bar=False)
+
 
     def test_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
 
         self.test_loss(loss)
-        self.test_recall(predictions, target)
-        self.test_precision(predictions, target)
-        self.test_auroc(predictions, target)
-        self.test_ap(predictions, target)
+        self.test_MAPE(predictions, target)
+        self.test_MAE(predictions, target)
 
         self.log("test/loss", self.test_loss, prog_bar=True)
-        self.log("test/recall", self.test_recall, on_step=False, on_epoch=True)
-        self.log("test/precision", self.test_precision, on_step=False, on_epoch=True)
-        self.log("test/auroc", self.test_auroc, on_step=False, on_epoch=True)
-        self.log("test/AP", self.test_ap, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/MAPE", self.test_MAPE, on_step=False, on_epoch=True, prog_bar=False)
+        self.log("test/MAE", self.test_MAE, on_step=False, on_epoch=True, prog_bar=True)
         
         output = OrderedDict(
             {
@@ -145,8 +134,10 @@ class WindNetPL(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        lr = self.cfg.learning_rate
-        optimizer = self.optimizer(self.net.parameters(), lr=lr,  weight_decay=0.03)
+        optimizer = self.optimizer(self.net.parameters(),
+                                   lr=self.cfg.learning_rate,
+                                   weight_decay=self.cfg.weight_decay)
+        
         if self.scheduler is not None:
             scheduler = self.scheduler(optimizer=optimizer)
             return {

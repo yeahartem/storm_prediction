@@ -42,3 +42,4 @@ start_of_test: '2008-01-01'
 half_side_size: 7
 time_window: 28
 speed_th: 20
+target_column: 'max_speed'

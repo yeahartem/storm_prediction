@@ -5,16 +5,13 @@ import xarray as xr
 import pandas as pd
 import logging
 import dask
-import time
-from src.utils.conf_utils import timeit
-from src.data_assemble.assemble_target import get_stations_RU, get_y, load_weatherstations_RU, load_weatherstations_WORLD
 import hydra
 from omegaconf import DictConfig, OmegaConf, ListConfig
-from src.data_assemble.assemble_target import stations_to_data_grid, target_to_data_grid
+from src.data_assemble.assemble_target import make_target
+
 
 
 class CMIP5File():
-
     """Parse the filename of a CMIP5 file to get the model name and experiment name.
         e.g. filename = 'pr_day_MRI-CGCM3_rcp45_r1i1p1_20560101-20651231.nc' """
 
@@ -66,12 +63,14 @@ def get_cmip5_files(folder: str, variables) -> list:
     return files
 
 
+
 def process_coords(ds, concat_dim='time', drop=True):    
     coord_vars = ['height']
     if drop:
         return ds.drop_vars(coord_vars, errors="ignore")
     else:
         return ds.set_coords(coord_vars)    
+
 
 
 def climate_to_netcdf(files: list, var: str, save_dir: str, time_range: list, rect_coords: list, experiment_name: str):
@@ -95,8 +94,10 @@ def climate_to_netcdf(files: list, var: str, save_dir: str, time_range: list, re
     new_file.experiment_name = experiment_name
     new_file.ensemble_member = files[0].ensemble_member
     new_file.temporal_subset = f"{data_arr.time.values[0].astype('datetime64[D]')}-{data_arr.time.values[-1].astype('datetime64[D]')}"
-    filename = new_file.filename()
-
+    filename = new_file.filename()    
+    i = data_arr[var].isnull().sum().compute().data
+    print(f"Number of NaNs: {i}")
+    data_arr[var].encoding.clear()
     data_arr[var].to_netcdf(os.path.join(save_dir, filename), engine='scipy')  # TODO use faster engine
 
 
@@ -107,20 +108,11 @@ def make_normalization_values(cfg: DictConfig):
     file_paths = [file.path for file in files]
     data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords)
 
-    train_coords = cfg.train_coords
-    train_coords = list(train_coords.values())
-
     norm_time_slice = slice(max(pd.to_datetime(cfg.time_limits[0]), pd.to_datetime(cfg.start_of_test)- pd.DateOffset(years=16)),
                                  pd.to_datetime(cfg.start_of_test))
-    print(norm_time_slice)
-    norm_lat_slice = slice(train_coords[0], min(train_coords[0]+80, train_coords[1])) # 80 is just reasonable size
-    print(norm_lat_slice)
 
-    norm_lon_slice = slice(train_coords[2], min(train_coords[2]+80, train_coords[3]))
-    print(norm_lon_slice)
-
-    mean_channels = data_arr.sel(time=norm_time_slice, lat=norm_lat_slice, lon=norm_lon_slice).mean(dim=['lat', 'lon', 'time']).to_array().compute().data
-    std_channels = data_arr.sel(time=norm_time_slice, lat=norm_lat_slice, lon=norm_lon_slice).std(dim=['lat', 'lon', 'time']).to_array().compute().data
+    mean_channels = data_arr.sel(time=norm_time_slice).mean(dim=['lat', 'lon', 'time']).to_array().compute().data
+    std_channels = data_arr.sel(time=norm_time_slice).std(dim=['lat', 'lon', 'time']).to_array().compute().data
     for i in zip(mean_channels, std_channels):
         print(f" mean: {i[0]}, std:  {i[1]}")
 
@@ -134,7 +126,7 @@ def load_dataset(cfg: DictConfig):
     """Load climate data from folder in cfg.paths_to_climate_files_folders"""
     files = get_cmip5_files(cfg.paths_to_climate_files_folders, cfg.variables)
     file_paths = [file.path for file in files]
-    logging.debug(f'loading {file_paths}')
+    logging.info(f'loading {file_paths}')
     data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords) 
     return data_arr
 
@@ -143,74 +135,17 @@ def load_dataset(cfg: DictConfig):
 def test_data_load(cfg: DictConfig):
     """Test if data was loaded correctly."""
     data_arr = load_dataset(cfg)
+    i = data_arr.isnull().sum().compute()
+    print(f"Number of NaNs total: {i}")
 
     for var in cfg.variables:
         data_var = data_arr[var]
+        i = data_var.isnull().sum().compute().data
         print(f"Opening: {var}")
+        print(f"Number of NaNs: {i}")
         print(data_var.shape)
         print(f"""min: {dask.array.min(data_var).compute()}, max: {dask.array.max(data_var).compute()}, std: {dask.array.std(data_var).compute()}""")     
     logging.info(f'OK')
-
-
-
-def pre_prepare_target1(cfg: DictConfig):
-
-    df_ru = load_weatherstations_RU(cfg.path_to_weather_stations_data)
-    target_df_ru = get_y(weather_stations_data=df_ru,
-                    start=cfg.time_limits[0],
-                    end=cfg.time_limits[1])
-    
-    stations_df_ru = get_stations_RU(cfg)          
-
-    dataset_xarray = load_dataset(cfg)
-    stations_df_ru = stations_to_data_grid(dataset_xarray=dataset_xarray,
-                                          stations_df=stations_df_ru)    
-    target_df_ru = target_df_ru.merge(stations_df_ru, on='station_name', how='left')
-    target_df_ru['time'] = target_df_ru['time'].astype('datetime64[D]')
-
-    target_df_ru.to_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name + '.pp'))
-
-    
-
-def pre_prepare_target2(cfg: DictConfig):
-
-    df_world = load_weatherstations_WORLD(cfg.path_to_world_weather_stations_data)
-    dict_stations_world = {name: {'lon': df_world[df_world['station_name'] == name].iloc[0]['lon'],
-                                  'lat': df_world[df_world['station_name'] == name].iloc[0]['lat'],
-                                  'height': df_world[df_world['station_name'] == name].iloc[0]['height']}
-                                   for name in df_world['station_name'].unique()}
-    
-    1 == 1
-
-
-@timeit
-def make_target_data(cfg: DictConfig):    
-
-    dataset_xarray = load_dataset(cfg)
-
-    
-    df_ru = load_weatherstations_RU(cfg.path_to_weather_stations_data)
-    target_df_ru = get_y(weather_stations_data=df_ru,
-                    start=cfg.time_limits[0],
-                    end=cfg.time_limits[1])
-    
-    stations_df_ru = stations_to_data_grid(dataset_xarray=dataset_xarray,
-                                          stations_df=stations_df_ru)    
-    target_df_ru = target_df_ru.merge(stations_df_ru, on='station_name', how='left')
-    target_df_ru['time'] = target_df_ru['time'].astype('datetime64[D]')
-
-    df_world = load_weatherstations_WORLD(cfg.path_to_world_weather_stations_data)
-    target_df_world = get_y(weather_stations_data=df_world,
-                            start=cfg.time_limits[0],
-                            end=cfg.time_limits[1])
-    
-    target_df_world = target_to_data_grid(dataset_xarray=dataset_xarray,
-                                          target_df=target_df_world)    
-    
-    target_df_world['time'] = target_df_world['time'].astype('datetime64[D]')
-    target_df = pd.concat([target_df_ru, target_df_world], ignore_index=True)
-    target_df.to_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name))
-
 
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_local")
@@ -230,19 +165,20 @@ def main(cfg: DictConfig):
                 climate_to_netcdf(files, var, cfg.path_to_prepared_data_dir, time_limits, train_coords, cfg.experiment_name)
                 logging.info(f"{var} data saved to {cfg.path_to_prepared_data_dir}")
 
-
-    if cfg.make_target:
-        pre_prepare_target1(cfg)
-        pre_prepare_target2(cfg)
-        make_target_data(cfg)        
-        logging.info(f"Target data saved to {cfg.path_to_prepared_data_dir} as {cfg.prepared_target_data_name}")
-
     if cfg.make_normalization:
         make_normalization_values(cfg)
         logging.info(f"Normalization values saved to {cfg.path_to_prepared_data_dir} as {cfg.normalization_values_name}")
+        
+    if cfg.make_target:
+        make_target(cfg, load_dataset(cfg))        
+        logging.info(f"Target data saved to {cfg.path_to_prepared_data_dir} as {cfg.prepared_target_data_name}")
+
+
+    test_data_load(cfg)
 
     with open(os.path.join(cfg.path_to_prepared_data_dir, 'dataset_config.yaml'), 'w') as file:
         OmegaConf.save(cfg, file)
+
 
 if __name__ == "__main__":
 
