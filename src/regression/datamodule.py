@@ -29,7 +29,7 @@ def prepare_data(cfg):
     dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
     target_df['y_window'] = target_df['y'].rolling(window=cfg.time_window).max()
     target_df = target_df.drop(columns=["y", "height"]) 
-    dataset_as_blocks = make_blocks_no_target(dataset_xarray, cfg.half_side_size, time_stack_size=cfg.time_window)    
+    dataset_as_blocks = make_blocks_no_target(dataset_xarray, cfg.half_side_size, time_stack_size=cfg.time_window, time_freq=cfg.time_freq)    
 
     # intersecting dataset and target_df    
     lat_intersection = np.intersect1d(dataset_as_blocks['lat'].data, target_df['lat'])

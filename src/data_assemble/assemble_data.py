@@ -12,7 +12,8 @@ warnings.filterwarnings("ignore")
 def make_blocks_no_target(
         dataset_as_xarray: dict,
         half_side_size: int = 4,
-        time_stack_size=1,  # only 1 for dataset with target
+        time_stack_size=1,
+        time_freq=1,
 ) -> xarray.DataArray:
 
     start_time = time.process_time()
@@ -31,9 +32,9 @@ def make_blocks_no_target(
                                                        (time_stack_size, n_channels, 2 * half_side_size + 1,
                                                         2 * half_side_size + 1))
     windows = np.squeeze(windows)
-    windows = windows[::time_stack_size]
+    windows = windows[::time_freq]
     windows = np.moveaxis(windows, 0, 2)
-    time_coords = dataset_as_xarray[example_key].time.data[:-time_stack_size:time_stack_size]
+    time_coords = dataset_as_xarray[example_key].time.data[:-time_stack_size:time_freq]
     lat_coords = dataset_as_xarray[example_key].lat.data[half_side_size:-half_side_size]
     lon_coords = dataset_as_xarray[example_key].lon.data[half_side_size:-half_side_size]
     

@@ -21,7 +21,7 @@ os.environ['WANDB_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
-
+torch.set_float32_matmul_precision('medium')
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
 def train(cfg: DictConfig) -> None:        
