@@ -1,5 +1,5 @@
 ---
-experiment_name: "cmip5_reg_w_naivemodel_max"
+experiment_name: "cmip5_reg_w_naivemodel2_max"
 project_name: "Wind-speed-regression"
 
 data_dir: "./data_mounted/cmip5_world"

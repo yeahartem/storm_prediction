@@ -6,29 +6,18 @@ From repo folder run:
 * `docker build -t wind_dev .`
 * `docker run -it  -v  <CODE FOLDER>:/wind -v <DATA FOLDER>:/wind/data_mounted -m 32000m  --cpus=8  --gpus '"device=2"' -w="/wind" wind_dev`
 
+Example:
+* `docker run -it  -v  $(pwd)/wind:/wind -v $(pwd)/data:/wind/data_mounted -m 64000m  --cpus=16  --gpus '"device=0,1"' -w="/wind" wind_dev`
+
 May need more than 64 Gb of RAM
 
+# Configs 
+
+Configs handeled by [hydra](https://hydra.cc/docs/intro/) library. Configs are located in `configs` folder.
+
+
 # Data, NN
-Expected data folder structure:
-``` bash
-wind_data
-├── cmip
-│   ├── elevation
-│   │   └── elevation.nc
-│   ├── pr_day_inmcm4_rcp45_r1i1p1_20060101-20151231.nc
-│   ├── pr_day_inmcm4_rcp45_r1i1p1_20160101-20251231.nc
-│   ├── sfcWind_day_inmcm4_rcp45_r1i1p1_20060101-20151231.nc
-│   ├── sfcWind_day_inmcm4_rcp45_r1i1p1_20160101-20251231.nc
-│   ├── tasmax_day_inmcm4_rcp45_r1i1p1_20060101-20151231.nc
-│   ├── tasmax_day_inmcm4_rcp45_r1i1p1_20160101-20251231.nc
-│   ├── tasmin_day_inmcm4_rcp45_r1i1p1_20060101-20151231.nc
-│   └── tasmin_day_inmcm4_rcp45_r1i1p1_20160101-20251231.nc
-└── weather_stations
-    ├── data_meteo_full.csv
-    ├── data_meteo_full.parquet
-    ├── weatherstation_list.csv
-    └── weatherstation_list.json
-```
+
 * `data_meteo_full.parquet` may be created from `data_meteo_full.csv` using `src/data_utils/parquet.py` script
 * `weatherstation_list.json` and `weatherstation_list.csv` different from the version used before!
 

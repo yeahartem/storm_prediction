@@ -1,0 +1,35 @@
+name: wind_env
+channels:
+  - anaconda
+  - conda-forge
+  - defaults
+  - nvidia
+  - nodefaults
+dependencies:
+  - python=3.10.9
+  - pip=23.1.2
+  - pytorch::pytorch=2.0.0
+  - pytorch::pytorch-cuda=11.8
+  - scipy=1.10.1
+  - pytorch::torchvision=0.15.0
+  - tqdm=4.65.0
+  - wandb
+  - hydra
+  - ipykernel
+  - jupyter
+  - fastparquet
+  - pyarrow
+  - dask
+  - xarray
+  - debugpy
+  - geopy
+  - pandas
+  - numpy
+  - pytorch-lightning
+  - scikit-learn
+  - tensorboard
+  - torchmetrics==0.11.4
+  - shapely==2.0.1
+  - matplotlib==3.7.1
+  - omegaconf==2.3.0
+

@@ -21,11 +21,9 @@ def prepare_data(cfg):
 
     files = get_cmip5_files(cfg.data_dir, cfg.variables)
     climate_file_paths = [file.path for file in files]
-
     logging.debug(f'loading {climate_file_paths}')
     
     dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy')  
-
     target_df = pd.read_parquet(cfg.path_to_prepared_target_data)
 
     dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
@@ -115,16 +113,13 @@ class WindDataModule(pl.LightningDataModule):
         self.train_size = len(self.y_train)
         self.test_size = len(self.y_test)
         self.station_count = len(self.y_train['station_name'].unique())
-        self.max_wind_speed = self.y_train['y_window'].max()
-        self.min_wind_speed = self.y_train['y_window'].min()
-        self.min_lat_train = self.X_train.lat.min()
-        self.max_lat_train = self.X_train.lat.max()
-        self.min_lon_train = self.X_train.lon.min()
-        self.max_lon_train = self.X_train.lon.max()
-        self.min_lat_test = self.X_test.lat.min()
-        self.max_lat_test = self.X_test.lat.max()
-        self.min_lon_test = self.X_test.lon.min()
-        self.max_lon_test = self.X_test.lon.max()
+        self.max_target = self.y_train['y_window'].max()
+        self.min_target = self.y_train['y_window'].min()
+        self.mean_target = self.y_train['y_window'].mean()
+        self.std_target = self.y_train['y_window'].std()
+ 
+        self.result_train_rectangle = (self.X_train.lat.min().data, self.X_train.lat.max().data, self.X_train.lon.min().data, self.X_train.lon.max().data)
+        self.result_test_rectangle = (self.X_test.lat.min().data, self.X_test.lat.max().data, self.X_test.lon.min().data, self.X_test.lon.max().data)
 
         mean_channels = np.load(self.cfg.path_to_means)
         std_channels = np.load(self.cfg.path_to_std)

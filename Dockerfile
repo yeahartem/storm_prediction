@@ -1,17 +1,15 @@
-ARG PYTORCH="1.13.1"
-ARG CUDA="11.6"
-ARG CUDNN="8"
+FROM anibali/pytorch:2.0.0-cuda11.8-ubuntu22.04
 
-FROM pytorch/pytorch:${PYTORCH}-cuda${CUDA}-cudnn${CUDNN}-devel
+ENV TZ=UTC
+RUN sudo ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
 
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
-RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
+RUN sudo apt-get update \
+ && sudo apt-get install -y libgl1-mesa-glx libgtk2.0-0 libsm6 libxext6 \
+ && sudo rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install -y git wget ninja-build libglib2.0-0 libsm6 libxrender-dev libxext6 libgl1-mesa-glx \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN conda clean --all
-
-COPY environments/requirements.txt ./requirements.txt
-RUN pip install --default-timeout=100 -r requirements.txt
+RUN pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+COPY environments/requirements.txt /app/requirements.txt
+RUN pip install -r /app/requirements.txt \
+ && rm /app/requirements.txt
+ 
+CMD ["bash"]

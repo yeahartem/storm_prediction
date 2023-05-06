@@ -107,7 +107,8 @@ class WindNetPL(pl.LightningModule):
         )
         return output
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self):
+
         MAPE = self.val_MAE.compute()
         self.val_MAE_best(MAPE)
         self.log("val/MAE_best", self.val_MAE_best.compute(), prog_bar=False)
