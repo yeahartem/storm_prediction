@@ -7,14 +7,11 @@ import pytorch_lightning as pl
 from torchvision import transforms
 from torch.utils.data import DataLoader, Dataset
 import torch
-import pickle
 import xarray as xr
 from src.data_assemble.assemble_data import make_blocks_no_target
 from src.data_assemble.prepare_cmip5 import get_cmip5_files
 from omegaconf import DictConfig
-
 import pandas as pd
-from src.utils import conf_utils
 
 
 def prepare_data(cfg):
@@ -109,7 +106,6 @@ class WindDataModule(pl.LightningDataModule):
                                                                                 target_df,
                                                                                 self.cfg.start_of_test,
                                                                                 self.cfg.test_coords)  
-              
         self.train_size = len(self.y_train)
         self.test_size = len(self.y_test)
         self.station_count = len(self.y_train['station_name'].unique())
@@ -130,7 +126,6 @@ class WindDataModule(pl.LightningDataModule):
              ]
         )
 
-
     def setup(self, stage=None):
         if stage == "fit" or stage is None:
             self.dataset_train = XarrayDatasetBinary(self.X_train, self.y_train, transforms_data=self.transform)
@@ -140,11 +135,14 @@ class WindDataModule(pl.LightningDataModule):
             self.dataset_test = XarrayDatasetBinary(self.X_test, self.y_test, transforms_data=self.transform)
 
     def train_dataloader(self):
-        return DataLoader(self.dataset_train, batch_size=self.cfg.batch_size, num_workers=4)
+        return DataLoader(self.dataset_train, batch_size=self.cfg.batch_size, num_workers=0)
 
     def val_dataloader(self):
-        return DataLoader(self.dataset_val, batch_size=self.cfg.batch_size, num_workers=4)
+        return DataLoader(self.dataset_val, batch_size=self.cfg.batch_size, num_workers=0)
 
     def test_dataloader(self):
-        return DataLoader(self.dataset_test, batch_size=self.cfg.batch_size, num_workers=4)
+        return DataLoader(self.dataset_test, batch_size=self.cfg.batch_size, num_workers=0)
     
+
+if __name__ == '__main__':
+    pass

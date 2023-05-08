@@ -9,6 +9,9 @@ From repo folder run:
 Example:
 * `docker run -it  -v  $(pwd)/wind:/wind -v $(pwd)/data:/wind/data_mounted -m 64000m  --cpus=16  --gpus '"device=0,1"' -w="/wind" wind_dev`
 
+* `mkdir /tmp/www`
+* `chown 101:101 /tmp/www`
+
 May need more than 64 Gb of RAM
 
 # Configs 

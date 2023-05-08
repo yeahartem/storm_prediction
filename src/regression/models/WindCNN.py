@@ -68,14 +68,8 @@ class WindNetPL(pl.LightningModule):
         self.log("train/MAPE", self.train_MAPE, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
 
-        batch = torch.cat(tuple(batch[0]), dim=0)
-        nan_indicator = torch.isnan(batch).bool().int().sum()
-        if nan_indicator > 0:
-            print(nan_indicator)
         wandb.log({"train/target": target, "train/prediction": predictions})
-        # wandb.log({"train/data_mean": batch.mean()})
-        # wandb.log({"train/data_std": batch.std()})
-        # wandb.log({"train/data_nans": nan_indicator})
+
 
         
         output = OrderedDict(
