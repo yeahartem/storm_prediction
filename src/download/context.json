@@ -1,9 +1,0 @@
-{
-    "project": "CMIP5", 
-    "model": "INM-CM4", 
-    "experiment": "rcp45",   
-    "time_frequency": "day",
-    "realm": "atmos",
-    "ensemble": "r1i1p1", 
-    "version": 20110323
-}

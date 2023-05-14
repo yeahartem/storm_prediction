@@ -67,9 +67,9 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
     columns = ["Название метеостанции",
                "Максимальная скорость",
                'Средняя скорость ветра',
-               'Температура поверхности почвы',
+               'Температура воздуха по сухому терм-ру',
                'Температура точки росы',
-               'Парциальное давление водяного пара',
+               'Атмосферное давление на уровне станции',
                'Атмосферное давление на уровне моря',
                "Дата"] # Add more columns if needed
     
@@ -86,18 +86,23 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
     df = df.rename(columns={"Дата": "time",
                             "Название метеостанции": "station_name",
                             "Максимальная скорость": "max_speed",
+                            'Средняя скорость ветра': 'avg_speed',
+                            'Температура воздуха по сухому терм-ру': 'avg_temp',
+                            'Температура точки росы': 'dew_point_temp',
+                            'Атмосферное давление на уровне станции': 'station_level_pressure',
+                            'Атмосферное давление на уровне моря': 'sea_level_pressure'
                             })        
     df.to_parquet(path_to_weather_stations.replace(".parquet", "_cleaned.parquet"))
 
 
 
-def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame: # TODO add target colums argument
+def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
     """ To load weather stations data from all world 
         Features: ['DATE', 'STATION', 'NAME', 'MXWDSP', 'WDSP', 'TEMP', 'STP', 'SLP',
        'PRCP', 'DEWP', 'LATITUDE', 'LONGITUDE', 'ELEVATION'] 
     """  
 
-    columns = ["STATION", "MXWDSP", "LATITUDE",  "LONGITUDE", "ELEVATION", 'TEMP',  'DEWP', 'PRCP', "DATE"] 
+    columns = ["STATION", "LATITUDE",  "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP', 'DEWP', 'SLP', 'STP'] 
     start_time = time.process_time()
     df = pd.read_parquet(path_to_weather_stations, columns=columns)
     logging.info(f"Time to open world parquet {time.process_time() - start_time} seconds")
@@ -111,6 +116,11 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame: # T
     df = df.rename(columns={"DATE": "time",
                             "STATION": "station_name",
                             "MXWDSP": "max_speed",
+                            "WDSP": "avg_speed",
+                            "TEMP": "avg_temp",
+                            "SLP": "sea_level_pressure",
+                            "STP": "station_level_pressure",
+                            'DEWP': 'dew_point_temp',
                             "LATITUDE": "lat",
                             "LONGITUDE": "lon",
                             "ELEVATION": "height"

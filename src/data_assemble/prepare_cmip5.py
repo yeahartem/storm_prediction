@@ -73,10 +73,14 @@ def process_coords(ds, concat_dim='time', drop=True):
 
 
 
-def climate_to_netcdf(files: list, var: str, save_dir: str, time_range: list, rect_coords: list, experiment_name: str):
+def climate_to_netcdf(files: list, var: str, cfg):
     """Convert climate data to nc files."""
-
+    experiment_name = cfg.experiment_name
+    train_coords = cfg.train_coords
+    rect_coords = list(train_coords.values()) #rect_coords = [min_lat, max_lat, min_lon, max_lon]    
+    time_range = [np.datetime64(pd.to_datetime(t)) for t in cfg.get("time_limits")]
     file_paths = [file.path for file in files]
+
     if not experiment_name:
         experiment_name = files[0].experiment_name
     data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True)
@@ -98,7 +102,7 @@ def climate_to_netcdf(files: list, var: str, save_dir: str, time_range: list, re
     i = data_arr[var].isnull().sum().compute().data
     print(f"Number of NaNs: {i}")
     data_arr[var].encoding.clear()
-    data_arr[var].to_netcdf(os.path.join(save_dir, filename), engine='scipy')  # TODO use faster engine
+    data_arr[var].to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')  # TODO use faster engine
 
 
 def make_normalization_values(cfg: DictConfig):
@@ -153,16 +157,14 @@ def main(cfg: DictConfig):
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
     os.makedirs(cfg.path_to_prepared_data_dir, exist_ok=True)
-    train_coords = cfg.train_coords
-    train_coords = list(train_coords.values()) #rect_coords = [min_lat, max_lat, min_lon, max_lon]
+    
 
-    time_limits = [np.datetime64(pd.to_datetime(t)) for t in cfg.get("time_limits")]
     if cfg.make_climate_data:
         for folder in cfg.paths_to_climate_files_folders:
             for var in cfg.variables:
                 logging.info(f"{var} in work")
                 files = get_cmip5_files(folder, var)
-                climate_to_netcdf(files, var, cfg.path_to_prepared_data_dir, time_limits, train_coords, cfg.experiment_name)
+                climate_to_netcdf(files, var, cfg)
                 logging.info(f"{var} data saved to {cfg.path_to_prepared_data_dir}")
 
     if cfg.make_normalization:

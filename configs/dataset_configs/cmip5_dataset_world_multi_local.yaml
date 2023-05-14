@@ -42,3 +42,8 @@ time_window: 28
 speed_th: 20
 target_column: 
 - "max_speed"
+- "avg_speed"
+- "avg_temp"
+- "sea_level_pressure"
+- "station_level_pressure"
+- 'dew_point_temp'

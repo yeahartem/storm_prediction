@@ -52,7 +52,7 @@ def train(cfg: DictConfig) -> None:
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
                          benchmark=True,
-                         devices=2,
+                         devices=1,
                          check_val_every_n_epoch=1,
                          default_root_dir=os.path.join(os.getcwd(), "outputs"),
                          logger=wandb_logger)       
@@ -62,12 +62,5 @@ def train(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":      
 
-    cfg = OmegaConf.load(os.path.join(os.getcwd(),"configs/train_configs/train_world_reg.yaml"))    
-
-    wandb.init(reinit=True,
-               project=cfg.project_name,
-               name=cfg.experiment_name,
-               config=OmegaConf.to_container(cfg, resolve=True),
-               dir=os.path.join(os.getcwd(), "outputs/wandb"))
     train()
     wandb.finish()
