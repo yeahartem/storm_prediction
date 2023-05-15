@@ -152,7 +152,7 @@ def test_data_load(cfg: DictConfig):
     logging.info(f'OK')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_local")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_temp_local")
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    

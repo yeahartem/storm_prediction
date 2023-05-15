@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 
 torch.manual_seed(112)
 random.seed(112)
-os.environ['WANDB_MODE'] = 'online'
+os.environ['WANDB_MODE'] = 'offline'
 os.environ['WANDB_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
@@ -66,7 +66,7 @@ def main(cfg: DictConfig):
                config=OmegaConf.to_container(cfg, resolve=True),
                dir=os.path.join(os.getcwd(), "outputs/wandb"))
     train(cfg)
-    logging.INFO('Train finished!')
+    logging.info('Train finished!')
 
 if __name__ == "__main__":      
 

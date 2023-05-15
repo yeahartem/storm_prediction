@@ -24,6 +24,9 @@ def prepare_data(cfg):
     target_df = pd.read_parquet(cfg.path_to_prepared_target_data)
 
     dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
+    if cfg.target_type == 'temperature_celsius': #temp fix
+        target_df['y'] =  target_df['y'] + 273.15
+
     target_df['y_window'] = target_df['y'].rolling(window=cfg.time_window).max()
     target_df = target_df.drop(columns=["y", "height"]) 
     dataset_as_blocks = make_blocks_no_target(dataset_xarray, cfg.half_side_size, time_stack_size=cfg.time_window, time_freq=cfg.time_freq)    
@@ -38,6 +41,7 @@ def prepare_data(cfg):
     time_intersection = np.intersect1d(dataset_as_blocks['time'].data, target_df['time'])
     target_df = target_df.loc[target_df.time.isin(time_intersection)]
 
+    
     return dataset_as_blocks, target_df
 
 
@@ -125,6 +129,7 @@ class WindDataModule(pl.LightningDataModule):
                  transforms.Normalize(mean=mean_channels, std=std_channels),
              ]
         )
+        
 
     def setup(self, stage=None):
         if stage == "fit" or stage is None:

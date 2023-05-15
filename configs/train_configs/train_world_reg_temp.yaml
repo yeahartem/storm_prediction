@@ -1,18 +1,17 @@
 ---
-experiment_name: "cmip5_newmetrcis_reg_w_naivemode20x42_max"
+experiment_name: "cmip5_reg_w_naivemodel3_max"
 project_name: "Wind-speed-regression"
-target_type: "wind_ms"
+target_type: "temperature_celsius"
 
 data_dir: "./data_mounted/cmip5_world"
-path_to_prepared_target_data: "./data_mounted/cmip5_world/target.parquet"
-path_to_prepared_stations: "./data_mounted/cmip5_world/stations.parquet"
+path_to_prepared_target_data: "./data_mounted/cmip5_world/target_temp.parquet"
 path_to_means: "./data_mounted/cmip5_world/normalization_values_mean.npy"
 path_to_std: "./data_mounted/cmip5_world/normalization_values_std.npy"
 
 half_side_size: 20
 time_window: 42
 time_freq: 21
-target_threshold: 15
+target_threshold: 300 # Kelvin
 
 min_height: -10
 max_height: 800
@@ -43,5 +42,5 @@ learning_rate: 0.0004
 weight_decay: 0.0001
 max_epoch: 40
 
-num_workers: 4
+num_workers: 6
 gpu_num: 1

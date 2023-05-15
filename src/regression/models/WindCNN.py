@@ -1,3 +1,5 @@
+import sys,os
+sys.path.append(os.getcwd())
 from typing import List, Any
 import torch
 import pytorch_lightning as pl
@@ -9,6 +11,7 @@ import torch.nn as nn
 from models.models import WindNet
 import wandb
 import numpy as np
+from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
 
 class WindNetPL(pl.LightningModule):
 
@@ -31,14 +34,21 @@ class WindNetPL(pl.LightningModule):
         self.test_loss = MeanMetric()
         self.val_MAE_best = MinMetric()
 
-        self.train_MAPE = torchmetrics.MeanAbsolutePercentageError()
-        self.val_MAPE = torchmetrics.MeanAbsolutePercentageError()
-        self.test_MAPE = torchmetrics.MeanAbsolutePercentageError()
+        self.train_AP = torchmetrics.AveragePrecision(num_classes=1, task='binary')
+        self.val_AP = torchmetrics.AveragePrecision(num_classes=1, task='binary')
+        self.test_AP = torchmetrics.AveragePrecision(num_classes=1, task='binary')
 
         self.train_MAE = torchmetrics.MeanAbsoluteError()
         self.val_MAE = torchmetrics.MeanAbsoluteError()
         self.test_MAE = torchmetrics.MeanAbsoluteError()
         
+        self.train_MAE_OS = torchmetrics.MeanAbsoluteError() # MAE outliers based on station measure
+        self.val_MAE_OS = torchmetrics.MeanAbsoluteError() 
+        self.test_MAE_OS = torchmetrics.MeanAbsoluteError() 
+        self.train_MAE_OP = torchmetrics.MeanAbsoluteError() # MAE outliers based on prediction
+        self.val_MAE_OP = torchmetrics.MeanAbsoluteError()
+        self.test_MAE_OP = torchmetrics.MeanAbsoluteError()
+
         self.criterion = criterion
 
     def forward(self, x):
@@ -56,22 +66,25 @@ class WindNetPL(pl.LightningModule):
         target = torch.unsqueeze(target, dim=-1)
         predictions = self(objs).float()
         loss = self.loss(predictions, target.float())
-
         return loss, predictions, target
-
+    
+    
     def training_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
         self.train_loss(loss)
-        self.train_MAPE(predictions, target)
         self.train_MAE(predictions, target)
+        self.train_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
+        self.train_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
+        self.train_AP(float_to_score(predictions, thresh=self.cfg.target_threshold), float_to_binary(target, thresh=self.cfg.target_threshold))
+
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
-        self.log("train/MAPE", self.train_MAPE, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("train/MAE_OP", self.train_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
 
         wandb.log({"train/target": target, "train/prediction": predictions})
 
-
-        
         output = OrderedDict(
             {
                 "loss": loss,
@@ -80,17 +93,22 @@ class WindNetPL(pl.LightningModule):
             }
         )
         return output
+        
 
     def validation_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
 
         self.val_loss(loss)
-        self.val_MAPE(predictions, target)
         self.val_MAE(predictions, target)
+        self.val_AP(float_to_score(predictions, thresh=self.cfg.target_threshold), float_to_binary(target, thresh=self.cfg.target_threshold))
+        self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
+        self.val_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
 
         self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/MAPE", self.val_MAPE, on_step=False, on_epoch=True, prog_bar=False)
-        self.log("val/MAE", self.val_MAE, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("val/MAE_OP", self.val_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
 
         output = OrderedDict(
             {
@@ -112,12 +130,16 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
 
         self.test_loss(loss)
-        self.test_MAPE(predictions, target)
         self.test_MAE(predictions, target)
+        self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
+        self.test_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
+        self.test_AP(float_to_score(predictions, thresh=self.cfg.target_threshold), float_to_binary(target, thresh=self.cfg.target_threshold))
 
         self.log("test/loss", self.test_loss, prog_bar=True)
-        self.log("test/MAPE", self.test_MAPE, on_step=False, on_epoch=True, prog_bar=False)
         self.log("test/MAE", self.test_MAE, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("test/MAE_OP", self.test_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("test/AP", self.test_AP, on_step=False, on_epoch=True, prog_bar=True)
         
         output = OrderedDict(
             {
@@ -127,6 +149,7 @@ class WindNetPL(pl.LightningModule):
             }
         )
         return output
+    
 
     def configure_optimizers(self):
         optimizer = self.optimizer(self.net.parameters(),
@@ -149,35 +172,3 @@ class WindNetPL(pl.LightningModule):
                 },
             }
         return {"optimizer": optimizer}
-
-
-class FocalLoss(nn.Module):
-
-    def __init__(self,
-                 alpha=0.25,
-                 gamma=2,
-                 reduction='mean',):
-        super(FocalLoss, self).__init__()
-        self.alpha = alpha
-        self.gamma = gamma
-        self.reduction = reduction
-        self.crit = nn.BCEWithLogitsLoss(reduction='none')
-
-    def forward(self, logits, label):
-
-        probs = torch.sigmoid(logits)
-        coeff = torch.abs(label - probs).pow(self.gamma).neg()
-        log_probs = torch.where(logits >= 0,
-                F.softplus(logits, -1, 50),
-                logits - F.softplus(logits, 1, 50))
-        log_1_probs = torch.where(logits >= 0,
-                -logits + F.softplus(logits, -1, 50),
-                -F.softplus(logits, 1, 50))
-        loss = label * self.alpha * log_probs + (1. - label) * (1. - self.alpha) * log_1_probs
-        loss = loss * coeff
-
-        if self.reduction == 'mean':
-            loss = loss.mean()
-        if self.reduction == 'sum':
-            loss = loss.sum()
-        return loss
