@@ -3,24 +3,40 @@
 # Run train:
 
 Train regression:
-
-* `python src/regression/train.py --config-path <CONFIG>`
-
+```
+python src/regression/train.py --config-path <CONFIG>
+```
 # Docker:
 
 From repo folder run:
-* `docker build -t wind_dev .`
-* `docker run -it  -v  <CODE FOLDER>:/wind -v <DATA FOLDER>:/wind/data_mounted -m 32000m  --cpus=8  --gpus '"device=2"' -w="/wind" wind_dev`
 
+```
+docker build -t wind_dev116 environments/pytorch1.13.1_cuda116
+
+export WANDB_API_KEY=<key>
+
+docker run -it  -v  <CODE FOLDER>:/wind -v <DATA FOLDER>:/wind/data_mounted -m 32000m  --cpus=8  --gpus '"device=2"' -w="/wind" wind_dev
+```
 Example:
-* `docker run -it  -v  $(pwd)/Wind:/wind -v $(pwd)/data:/wind/data_mounted -m 64000m  --cpus=16  --gpus '"device=0,1"' -w="/wind" wind_dev`
-
-* `mkdir $(pwd)/wind`
-* `chown 101:101 $(pwd)/Wind`
 
 
+```
+   docker run -it --rm \
+   -v $(pwd)/docker_repos/Wind:/app/wind \
+   -v $(pwd)/data:/app/wind/data_mounted \
+   -m 64000m --cpus=16 --gpus '"device=0,1"' \
+   --ipc=host \
+   --user="$(id -u):$(id -g)" \
+   -w="/app/wind" \
+   -e "WANDB_API_KEY=$WANDB_API_KEY" \
+   -e "WANDB_DATA_DIR=/app/wind/outputs" \
+   -e "WANDB_DIR=/app/wind/outputs" \
+   -e "WANDB_CACHE_DIR=/app/wind/outputs" \
+   wind_dev116 python3 /app/wind/src/regression/train.py
 
+```
 May need more than 64 Gb of RAM
+
 
 # Configs 
 

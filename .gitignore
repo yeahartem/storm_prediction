@@ -12,3 +12,4 @@ outputs/*
 data_mounted
 wandb
 outputs
+.hydra

@@ -26,7 +26,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 torch.set_float32_matmul_precision('high')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
 def train(cfg: DictConfig) -> None:        
     start_time = time.process_time()   
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "outputs/wandb"),
@@ -52,15 +51,24 @@ def train(cfg: DictConfig) -> None:
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
                          benchmark=True,
-                         devices=1,
+                         devices=cfg.gpu_num,
                          check_val_every_n_epoch=1,
                          default_root_dir=os.path.join(os.getcwd(), "outputs"),
                          logger=wandb_logger)       
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
 
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
+def main(cfg: DictConfig):
+    wandb.init(reinit=True,
+               project=cfg.project_name,
+               name=cfg.experiment_name,
+               config=OmegaConf.to_container(cfg, resolve=True),
+               dir=os.path.join(os.getcwd(), "outputs/wandb"))
+    train(cfg)
+    logging.INFO('Train finished!')
 
 if __name__ == "__main__":      
 
-    train()
+    main()
     wandb.finish()

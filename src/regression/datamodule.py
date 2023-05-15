@@ -135,13 +135,13 @@ class WindDataModule(pl.LightningDataModule):
             self.dataset_test = XarrayDatasetBinary(self.X_test, self.y_test, transforms_data=self.transform)
 
     def train_dataloader(self):
-        return DataLoader(self.dataset_train, batch_size=self.cfg.batch_size, num_workers=0)
+        return DataLoader(self.dataset_train, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers)
 
     def val_dataloader(self):
-        return DataLoader(self.dataset_val, batch_size=self.cfg.batch_size, num_workers=0)
+        return DataLoader(self.dataset_val, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers)
 
     def test_dataloader(self):
-        return DataLoader(self.dataset_test, batch_size=self.cfg.batch_size, num_workers=0)
+        return DataLoader(self.dataset_test, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers)
     
 
 if __name__ == '__main__':
