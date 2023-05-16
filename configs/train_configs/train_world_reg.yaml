@@ -1,5 +1,5 @@
 ---
-experiment_name: "cmip5_newmetrcis_reg_w_naivemode20x42_max"
+experiment_name: "cmip5_normtarget_reg_w_naivemode20x42_max"
 project_name: "Wind-speed-regression"
 target_type: "wind_ms"
 
@@ -11,8 +11,10 @@ path_to_std: "./data_mounted/cmip5_world/normalization_values_std.npy"
 
 half_side_size: 20
 time_window: 42
-time_freq: 21
-target_threshold: 15
+time_freq: 7
+target_threshold: 20
+target_max: 68.94
+target_min: 0.0
 
 min_height: -10
 max_height: 800
@@ -21,6 +23,7 @@ train_coords:
   lat_max: 80.52
   lon_min: -179.12
   lon_max: 180.45
+
 test_coords:
   lat_min: 43.62
   lat_max: 62.23
@@ -38,10 +41,12 @@ time_limits:
 - '2020-11-14'
 start_of_test: '2008-01-01'
 
-batch_size: 140
+batch_size: 180
 learning_rate: 0.0004
 weight_decay: 0.0001
 max_epoch: 40
+scheduler_steps: 200
 
-num_workers: 4
-gpu_num: 1
+num_workers: 8
+gpu_num: 4
+data_in_ram: true

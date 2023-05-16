@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 
 torch.manual_seed(112)
 random.seed(112)
-os.environ['WANDB_MODE'] = 'offline'
+os.environ['WANDB_MODE'] = 'online'
 os.environ['WANDB_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
@@ -35,6 +35,7 @@ def train(cfg: DictConfig) -> None:
     net = WindNet(cfg)
     optimizer = torch.optim.Adam
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
     criterion = torch.nn.MSELoss()
 
     model = WindNetPL(cfg, net=net, optimizer=optimizer, scheduler=scheduler, criterion=criterion)
@@ -60,11 +61,11 @@ def train(cfg: DictConfig) -> None:
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
 def main(cfg: DictConfig):
-    wandb.init(reinit=True,
-               project=cfg.project_name,
-               name=cfg.experiment_name,
-               config=OmegaConf.to_container(cfg, resolve=True),
-               dir=os.path.join(os.getcwd(), "outputs/wandb"))
+    # wandb.init(reinit=True,
+    #            project=cfg.project_name,
+    #            name=cfg.experiment_name,
+    #            config=OmegaConf.to_container(cfg, resolve=True),
+    #            dir=os.path.join(os.getcwd(), "outputs/wandb"))
     train(cfg)
     logging.info('Train finished!')
 

@@ -19,8 +19,11 @@ def prepare_data(cfg):
     files = get_cmip5_files(cfg.data_dir, cfg.variables)
     climate_file_paths = [file.path for file in files]
     logging.debug(f'loading {climate_file_paths}')
-    
-    dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy')  
+
+    if cfg.data_in_ram:
+        dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy').compute()
+    else:
+        dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy')
     target_df = pd.read_parquet(cfg.path_to_prepared_target_data)
 
     dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
@@ -67,7 +70,7 @@ def split_train_test(X, y, start_of_test, test_coords):
 
 class XarrayDatasetBinary(Dataset):
 
-    def __init__(self, dataset_as_blocks, target_df, dtype=torch.float32, transforms_data=None):   
+    def __init__(self, dataset_as_blocks, target_df, dtype=torch.float32, transforms_data=None, target_max=1, target_min=0):   
 
         self.target_df = target_df.dropna() 
         self.time_idxs = dataset_as_blocks['time'].data.searchsorted(self.target_df['time'].values )
@@ -79,7 +82,8 @@ class XarrayDatasetBinary(Dataset):
         assert len(self.time_idxs) == len(self.lat_idxs) == len(self.lon_idxs)
         assert len(self.time_idxs) == len(self.target_df), f'len(self.time_idxs)={len(self.time_idxs)}, len(self.target_df)={len(self.target_df)}'
         self.indexes = np.array((self.lat_idxs, self.lon_idxs , self.time_idxs))
-
+        self.target_max = target_max
+        self.target_min = target_min
         self.dataset_as_blocks = dataset_as_blocks        
         self.dtype = dtype
         self.transforms_data = transforms_data
@@ -91,6 +95,7 @@ class XarrayDatasetBinary(Dataset):
         target_index = idx
         target = self.target_df['y_window'].iloc[target_index]
         y = torch.tensor(target, dtype=self.dtype)
+        y = torch.add(torch.div(y, self.target_max), -1.0 * self.target_min)  
         x_index = self.indexes[:, idx]
         X = self.dataset_as_blocks[x_index[0],x_index[1],x_index[2]].data
         X = torch.tensor(X, dtype=self.dtype)
@@ -133,11 +138,20 @@ class WindDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         if stage == "fit" or stage is None:
-            self.dataset_train = XarrayDatasetBinary(self.X_train, self.y_train, transforms_data=self.transform)
-            self.dataset_val = XarrayDatasetBinary(self.X_test, self.y_test, transforms_data=self.transform)
+            self.dataset_train = XarrayDatasetBinary(self.X_train, self.y_train,
+                                                     transforms_data=self.transform,
+                                                     target_max=self.cfg.target_max,
+                                                     target_min=self.cfg.target_min)
+            self.dataset_val = XarrayDatasetBinary(self.X_test, self.y_test,
+                                                   transforms_data=self.transform,
+                                                   target_max=self.cfg.target_max,
+                                                   target_min=self.cfg.target_min)
 
         if stage == "test" or stage is None:
-            self.dataset_test = XarrayDatasetBinary(self.X_test, self.y_test, transforms_data=self.transform)
+            self.dataset_test = XarrayDatasetBinary(self.X_test, self.y_test,
+                                                    transforms_data=self.transform,
+                                                    target_max=self.cfg.target_max,
+                                                    target_min=self.cfg.target_min)
 
     def train_dataloader(self):
         return DataLoader(self.dataset_train, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers)

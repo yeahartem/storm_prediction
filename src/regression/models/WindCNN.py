@@ -28,6 +28,8 @@ class WindNetPL(pl.LightningModule):
         self.net = net
         self.optimizer = optimizer
         self.scheduler = scheduler
+        self.criterion = criterion
+
         self.sigmoid = nn.Sigmoid()
         self.train_loss = MeanMetric()
         self.val_loss = MeanMetric()
@@ -49,7 +51,8 @@ class WindNetPL(pl.LightningModule):
         self.val_MAE_OP = torchmetrics.MeanAbsoluteError()
         self.test_MAE_OP = torchmetrics.MeanAbsoluteError()
 
-        self.criterion = criterion
+        self.cfg.target_threshold = self.cfg.target_threshold/self.cfg.target_max
+
 
     def forward(self, x):
         return self.net(x)
@@ -73,17 +76,17 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
         self.train_loss(loss)
         self.train_MAE(predictions, target)
-        self.train_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
-        self.train_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
-        self.train_AP(float_to_score(predictions, thresh=self.cfg.target_threshold), float_to_binary(target, thresh=self.cfg.target_threshold))
+        self.train_MAE_OS(*get_outliers_s(predictions, target , thresh=self.cfg.target_threshold ))
+        self.train_MAE_OP(*get_outliers_p(predictions , target , thresh=self.cfg.target_threshold ))
+        self.train_AP(float_to_score(predictions , thresh=self.cfg.target_threshold ),
+                       float_to_binary(target , thresh=self.cfg.target_threshold))
 
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/MAE_OP", self.train_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
-
-        wandb.log({"train/target": target, "train/prediction": predictions})
+        self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
 
         output = OrderedDict(
             {
@@ -100,7 +103,8 @@ class WindNetPL(pl.LightningModule):
 
         self.val_loss(loss)
         self.val_MAE(predictions, target)
-        self.val_AP(float_to_score(predictions, thresh=self.cfg.target_threshold), float_to_binary(target, thresh=self.cfg.target_threshold))
+        self.val_AP(float_to_score(predictions, thresh=self.cfg.target_threshold),
+                     float_to_binary(target, thresh=self.cfg.target_threshold))
         self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
         self.val_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
 
@@ -109,6 +113,7 @@ class WindNetPL(pl.LightningModule):
         self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/MAE_OP", self.val_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
+        self.logger.experiment.log({"val/target": target, "val/prediction": predictions})
 
         output = OrderedDict(
             {
@@ -133,7 +138,8 @@ class WindNetPL(pl.LightningModule):
         self.test_MAE(predictions, target)
         self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
         self.test_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
-        self.test_AP(float_to_score(predictions, thresh=self.cfg.target_threshold), float_to_binary(target, thresh=self.cfg.target_threshold))
+        self.test_AP(float_to_score(predictions, thresh=self.cfg.target_threshold),
+                      float_to_binary(target, thresh=self.cfg.target_threshold))
 
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/MAE", self.test_MAE, on_step=False, on_epoch=True, prog_bar=True)
