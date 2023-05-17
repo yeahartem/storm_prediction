@@ -128,7 +128,7 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
         logging.info(f"World data clean took {time.process_time() - start_time} seconds")
 
     # pre_prepare_target_RU(cfg, dataset_xarray)
-    pre_prepare_target_WORLD(cfg, dataset_xarray)
+    # pre_prepare_target_WORLD(cfg, dataset_xarray)
 
     df_ru = pd.read_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name + '.pp1'))
     logging.info(f'RU len: {len(df_ru)}')
@@ -138,6 +138,7 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
     df_world.drop(columns=['height'], inplace=True)
     start_time = time.process_time()
     target_df = pd.concat([df_ru.dropna(), df_world.dropna()], ignore_index=True)
+
     logging.info(f"Concat took {time.process_time() - start_time} seconds")
     logging.info(f'TOTAL len: {len(target_df)}')
     target_df.to_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name))

@@ -95,7 +95,7 @@ class XarrayDatasetBinary(Dataset):
         target_index = idx
         target = self.target_df['y_window'].iloc[target_index]
         y = torch.tensor(target, dtype=self.dtype)
-        y = torch.add(torch.div(y, self.target_max), -1.0 * self.target_min)  
+        # y = torch.add(torch.div(y, self.target_max), -1.0 * self.target_min)  
         x_index = self.indexes[:, idx]
         X = self.dataset_as_blocks[x_index[0],x_index[1],x_index[2]].data
         X = torch.tensor(X, dtype=self.dtype)
@@ -125,6 +125,9 @@ class WindDataModule(pl.LightningDataModule):
  
         self.result_train_rectangle = (self.X_train.lat.min().data, self.X_train.lat.max().data, self.X_train.lon.min().data, self.X_train.lon.max().data)
         self.result_test_rectangle = (self.X_test.lat.min().data, self.X_test.lat.max().data, self.X_test.lon.min().data, self.X_test.lon.max().data)
+
+        self.extreme_stations_train = (self.y_train.lat.min(), self.y_train.lat.max(), self.y_train.lon.min(), self.y_train.lon.max())
+        self.extreme_stations_test= (self.y_test.lat.min(), self.y_test.lat.max(), self.y_test.lon.min(), self.y_test.lon.max())
 
         mean_channels = np.load(self.cfg.path_to_means)
         std_channels = np.load(self.cfg.path_to_std)

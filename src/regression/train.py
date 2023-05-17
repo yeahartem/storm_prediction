@@ -14,6 +14,8 @@ import wandb
 import time
 from hydra import compose, initialize
 from omegaconf import OmegaConf
+from pytorch_lightning.callbacks import LearningRateMonitor
+
 warnings.filterwarnings("ignore")
 
 torch.manual_seed(112)
@@ -27,49 +29,44 @@ torch.set_float32_matmul_precision('high')
 
 
 def train(cfg: DictConfig) -> None:        
-    start_time = time.process_time()   
+    start_time = time.process_time()  
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "outputs/wandb"),
                                project=cfg.project_name,
                                name=cfg.experiment_name)
     dm = WindDataModule(cfg)
     net = WindNet(cfg)
-    optimizer = torch.optim.Adam
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
-    criterion = torch.nn.MSELoss()
 
-    model = WindNetPL(cfg, net=net, optimizer=optimizer, scheduler=scheduler, criterion=criterion)
+    model = WindNetPL(cfg, net=net, optimizer_name=cfg.optimizer_name, scheduler_name=cfg.scheduler_name, loss_name=cfg.loss_name)
     wandb_logger.watch(model, log='all', log_freq=100)
-
+    
     logging.info(f"Train size: {dm.train_size}, test size: {dm.test_size}")
     logging.info(f"Station count: {dm.station_count}")
     logging.info(f"Station count: {dm.station_count}")
     logging.info(f"Train rectangle: {dm.result_train_rectangle}")
     logging.info(f"Test rectangle: {dm.result_test_rectangle}")
+    logging.info(f"Extreme stations train: {dm.extreme_stations_train}")
+    logging.info(f"Extreme stations test: {dm.extreme_stations_test}")
     logging.info(f"Target min: {dm.min_target}, target max: {dm.max_target}")
     logging.info(f"Target mean: {dm.mean_target}, target std: {dm.std_target}")
-
+    lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
                          benchmark=True,
                          devices=cfg.gpu_num,
                          check_val_every_n_epoch=1,
                          default_root_dir=os.path.join(os.getcwd(), "outputs"),
-                         logger=wandb_logger)       
+                         logger=wandb_logger,
+                         callbacks=[lr_monitor],)       
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
 
+
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
-def main(cfg: DictConfig):
-    # wandb.init(reinit=True,
-    #            project=cfg.project_name,
-    #            name=cfg.experiment_name,
-    #            config=OmegaConf.to_container(cfg, resolve=True),
-    #            dir=os.path.join(os.getcwd(), "outputs/wandb"))
+def main(cfg: DictConfig):    
     train(cfg)
     logging.info('Train finished!')
 
-if __name__ == "__main__":      
 
+if __name__ == "__main__":      
     main()
     wandb.finish()

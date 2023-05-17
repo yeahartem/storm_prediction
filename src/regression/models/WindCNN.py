@@ -18,18 +18,32 @@ class WindNetPL(pl.LightningModule):
     def __init__(self,
                  cfg,
                  net: torch.nn.Module,
-                 optimizer,
-                 scheduler,
-                 criterion,
+                 optimizer_name,
+                 scheduler_name,
+                 loss_name,
                  ):
         
         super().__init__()
         self.cfg = cfg
         self.net = net
-        self.optimizer = optimizer
-        self.scheduler = scheduler
-        self.criterion = criterion
+        self.scheduler_name = scheduler_name
 
+        if optimizer_name=='Adam':
+            self.optimizer = torch.optim.Adam
+        elif optimizer_name=='RAdam':
+            self.optimizer = torch.optim.RAdam
+        elif optimizer_name=='SGD':
+            self.optimizer = torch.optim.SGD
+        else:
+            raise NotImplementedError(f'Optimizer {optimizer_name} not found')
+        
+        if loss_name=='MSELoss':
+            self.criterion = torch.nn.MSELoss()
+        elif loss_name=='L1Loss':
+            self.criterion = torch.nn.L1Loss()
+        else:
+            raise NotImplementedError(f'Criterion {loss_name} not found')
+        
         self.sigmoid = nn.Sigmoid()
         self.train_loss = MeanMetric()
         self.val_loss = MeanMetric()
@@ -51,7 +65,7 @@ class WindNetPL(pl.LightningModule):
         self.val_MAE_OP = torchmetrics.MeanAbsoluteError()
         self.test_MAE_OP = torchmetrics.MeanAbsoluteError()
 
-        self.cfg.target_threshold = self.cfg.target_threshold/self.cfg.target_max
+        # self.cfg.target_threshold = self.cfg.target_threshold/self.cfg.target_max
 
 
     def forward(self, x):
@@ -69,8 +83,7 @@ class WindNetPL(pl.LightningModule):
         target = torch.unsqueeze(target, dim=-1)
         predictions = self(objs).float()
         loss = self.loss(predictions, target.float())
-        return loss, predictions, target
-    
+        return loss, predictions, target    
     
     def training_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
@@ -96,7 +109,7 @@ class WindNetPL(pl.LightningModule):
             }
         )
         return output
-        
+            
 
     def validation_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
@@ -123,6 +136,7 @@ class WindNetPL(pl.LightningModule):
             }
         )
         return output
+    
 
     def on_validation_epoch_end(self):
 
@@ -158,23 +172,40 @@ class WindNetPL(pl.LightningModule):
     
 
     def configure_optimizers(self):
+
         optimizer = self.optimizer(self.net.parameters(),
                                    lr=self.cfg.learning_rate,
                                    weight_decay=self.cfg.weight_decay)
         
-        if self.scheduler is not None:
-            scheduler = self.scheduler(optimizer=optimizer)
-            return {
-                "optimizer": optimizer,
-                "lr_scheduler": {
-                    "scheduler": scheduler,
-                    "monitor": "val/loss",
-                    "patience": 2,
-                    "mode": "min",
-                    "factor": 0.5,
-                    "verbose": True,
-                    "min_lr": 1e-8,
-                    'frequency': 1
-                },
-            }
-        return {"optimizer": optimizer}
+        if self.scheduler_name is not None:
+            if self.scheduler_name == "ReduceLROnPlateau":
+                scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode="min", factor=0.7, patience=300, verbose=True, interval="step", frequency=1)
+                return {
+                    'optimizer': optimizer,
+                    'lr_scheduler': {
+                        "monitor": "train/loss",
+                        "patience": 300,
+                        "mode": "min",
+                        "factor": 0.7,
+                        "verbose": True,
+                        'name': 'train/lr',
+                        'scheduler': scheduler,
+                        'interval': 'step', 
+                        'frequency': 1,
+                    }
+                }
+            
+            elif self.scheduler_name == "OneCycleLR":
+                scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=1e-3, total_steps=self.trainer.estimated_stepping_batches)
+                return {
+                    'optimizer': optimizer,
+                    'lr_scheduler': {
+                        'name': 'train/lr',  # put lr inside train group in tensorboard
+                        'scheduler': scheduler,
+                        'interval': 'step', 
+                        'frequency': 1,
+                    }
+                }
+
+        else:
+            return optimizer

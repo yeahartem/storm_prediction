@@ -37,7 +37,6 @@ time_limits:
 - '2020-11-14'
 start_of_test: '2008-01-01'
 half_side_size: 7
-time_window: 28
-speed_th: 20
+pad_data: false
 target_column: 
 - "avg_temp"

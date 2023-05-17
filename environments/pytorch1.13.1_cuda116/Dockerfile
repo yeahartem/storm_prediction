@@ -22,7 +22,7 @@ ENV HOME=/home/user
 RUN mkdir $HOME/.cache $HOME/.config \
  && chmod -R 777 $HOME
 
-COPY environments/pytorch1.13.1_cuda116/requirements.txt /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
 
 ENV WANDB_API_KEY="SECRET"

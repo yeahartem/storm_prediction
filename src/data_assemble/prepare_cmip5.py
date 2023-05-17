@@ -86,10 +86,14 @@ def climate_to_netcdf(files: list, var: str, cfg):
     data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True)
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
-    if rect_coords:
-        data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
-    data_arr = data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
 
+    data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
+    data_arr = data_arr.sortby(data_arr.lon)
+    
+    if cfg.spatial_crop:
+        data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
+    # Remove leap days
+    data_arr = data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
     print(f"Saving: {var}")
     new_file = CMIP5File(None)
     new_file.variable_name = var
@@ -102,7 +106,20 @@ def climate_to_netcdf(files: list, var: str, cfg):
     i = data_arr[var].isnull().sum().compute().data
     print(f"Number of NaNs: {i}")
     data_arr[var].encoding.clear()
-    data_arr[var].to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')  # TODO use faster engine
+
+    if cfg.pad_data:
+        data_padded = dask.array.pad(data_arr[var].data, pad_width = 
+                                        ((0,0),(0,0),(cfg.half_side_size, cfg.half_side_size)),
+                                        mode='wrap')        
+        dataset_var = xr.DataArray(
+            data_padded,
+            dims=["time", "lat", "lon"],
+            coords={"lat": data_arr[var].lat.data,
+                    "lon": np.pad(data_arr[var].lon.data,pad_width = cfg.half_side_size, mode='wrap'),
+                    "time": data_arr[var].time.data})    
+        dataset_var.to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')  
+    else:
+        data_arr[var].to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')
 
 
 def make_normalization_values(cfg: DictConfig):
@@ -152,7 +169,7 @@ def test_data_load(cfg: DictConfig):
     logging.info(f'OK')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_temp_local")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_local")
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
