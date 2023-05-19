@@ -127,8 +127,8 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
         clean_weather_data_WORLD(cfg.path_to_world_weather_stations_data)
         logging.info(f"World data clean took {time.process_time() - start_time} seconds")
 
-    # pre_prepare_target_RU(cfg, dataset_xarray)
-    # pre_prepare_target_WORLD(cfg, dataset_xarray)
+    pre_prepare_target_RU(cfg, dataset_xarray)
+    pre_prepare_target_WORLD(cfg, dataset_xarray)
 
     df_ru = pd.read_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name + '.pp1'))
     logging.info(f'RU len: {len(df_ru)}')

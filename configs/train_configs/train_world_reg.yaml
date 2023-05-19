@@ -53,6 +53,6 @@ optimizer_name: "Adam"
 scheduler_name: "OneCycleLR"
 loss_name: "MSELoss"
 
-num_workers: 0
+num_workers: 4
 gpu_num: 1
 data_in_ram: false
