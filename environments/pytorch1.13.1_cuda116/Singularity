@@ -1,0 +1,19 @@
+Bootstrap: docker
+
+From: continuumio/miniconda3:22.11.1
+
+%files
+    requirements.txt /opt
+
+%post
+export PATH=/opt/conda/bin:$PATH
+
+#update
+apt-get update
+apt-get install -y tree
+conda update conda 
+
+
+pip install --upgrade pip
+conda install pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 -c pytorch
+pip install -r /opt/requirements.txt
