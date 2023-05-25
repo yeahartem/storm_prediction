@@ -174,7 +174,6 @@ def main(cfg: DictConfig):
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
     os.makedirs(cfg.path_to_prepared_data_dir, exist_ok=True)
-    
 
     if cfg.make_climate_data:
         for folder in cfg.paths_to_climate_files_folders:

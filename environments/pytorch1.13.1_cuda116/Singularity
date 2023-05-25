@@ -8,12 +8,9 @@ From: continuumio/miniconda3:22.11.1
 %post
 export PATH=/opt/conda/bin:$PATH
 
-#update
 apt-get update
 apt-get install -y tree
-conda update conda 
-
-
 pip install --upgrade pip
-conda install pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 -c pytorch
+pip install torch torchvision
 pip install -r /opt/requirements.txt
+conda install -c rapidsai -c conda-forge -c nvidia cudf=23.04

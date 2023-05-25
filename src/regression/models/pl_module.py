@@ -8,41 +8,40 @@ import torchmetrics
 from torchmetrics import MaxMetric, MeanMetric, MinMetric
 from torch.functional import F
 import torch.nn as nn
-from models.models import WindNet
-import wandb
 import numpy as np
+from models.models import WindNet20x42, WindNet5x28
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
+
 
 class WindNetPL(pl.LightningModule):
 
-    def __init__(self,
-                 cfg,
-                 net: torch.nn.Module,
-                 optimizer_name,
-                 scheduler_name,
-                 loss_name,
-                 ):
-        
+    def __init__(self, cfg):        
         super().__init__()
-        self.cfg = cfg
-        self.net = net
-        self.scheduler_name = scheduler_name
+        self.cfg = cfg        
 
-        if optimizer_name=='Adam':
+        if cfg.model_name=='WindNet20x42':
+            self.net = WindNet20x42
+        elif cfg.model_name=='WindNet5x28':
+            self.net = WindNet5x28
+        else:
+            raise NotImplementedError(f'Model {cfg.model_name} not found')
+        
+        self.scheduler_name = cfg.scheduler_name
+        if cfg.optimizer_name=='Adam':
             self.optimizer = torch.optim.Adam
-        elif optimizer_name=='RAdam':
+        elif cfg.optimizer_name=='RAdam':
             self.optimizer = torch.optim.RAdam
-        elif optimizer_name=='SGD':
+        elif cfg.optimizer_name=='SGD':
             self.optimizer = torch.optim.SGD
         else:
-            raise NotImplementedError(f'Optimizer {optimizer_name} not found')
+            raise NotImplementedError(f'Optimizer {cfg.optimizer_name} not found')
         
-        if loss_name=='MSELoss':
+        if cfg.loss_name=='MSELoss':
             self.criterion = torch.nn.MSELoss()
-        elif loss_name=='L1Loss':
+        elif cfg.loss_name=='L1Loss':
             self.criterion = torch.nn.L1Loss()
         else:
-            raise NotImplementedError(f'Criterion {loss_name} not found')
+            raise NotImplementedError(f'Criterion {cfg.loss_name} not found')
         
         self.sigmoid = nn.Sigmoid()
         self.train_loss = MeanMetric()

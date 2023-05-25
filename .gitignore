@@ -13,3 +13,5 @@ data_mounted
 wandb
 outputs
 .hydra
+*.html
+*.simg

@@ -8,6 +8,7 @@ path_to_prepared_target_data: "./data_mounted/cmip5_world/target_temp.parquet"
 path_to_means: "./data_mounted/cmip5_world/normalization_values_mean.npy"
 path_to_std: "./data_mounted/cmip5_world/normalization_values_std.npy"
 
+model_name: WindNet20x42
 half_side_size: 20
 time_window: 42
 time_freq: 21

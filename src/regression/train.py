@@ -5,22 +5,19 @@ import torch
 import random
 import logging
 import pytorch_lightning as pl
-from models.WindCNN import WindNet, WindNetPL
+from src.regression.models.pl_module import WindNetPL
 from datamodule import WindDataModule
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 import time
-from hydra import compose, initialize
-from omegaconf import OmegaConf
 from pytorch_lightning.callbacks import LearningRateMonitor
 
 warnings.filterwarnings("ignore")
-
 torch.manual_seed(112)
 random.seed(112)
-os.environ['WANDB_MODE'] = 'online'
+os.environ['WANDB_MODE'] = 'offline'
 os.environ['WANDB_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
@@ -34,11 +31,14 @@ def train(cfg: DictConfig) -> None:
                                project=cfg.project_name,
                                name=cfg.experiment_name)
     dm = WindDataModule(cfg)
-    net = WindNet(cfg)
+    model = WindNetPL(cfg)
 
-    model = WindNetPL(cfg, net=net, optimizer_name=cfg.optimizer_name, scheduler_name=cfg.scheduler_name, loss_name=cfg.loss_name)
-    wandb_logger.watch(model, log='all', log_freq=100)
-    
+    # if torch.__version__ >= "2.0.0":
+    #     model = torch.compile(model)
+    # else:
+    #     print("PyTorch version is smaller than 2.0, compilation is not supported")
+        
+    wandb_logger.watch(model, log='all', log_freq=100)    
     logging.info(f"Train size: {dm.train_size}, test size: {dm.test_size}")
     logging.info(f"Station count: {dm.station_count}")
     logging.info(f"Station count: {dm.station_count}")
@@ -61,7 +61,7 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg_toy")
 def main(cfg: DictConfig):    
     train(cfg)
     logging.info('Train finished!')
