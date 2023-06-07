@@ -1,0 +1,18 @@
+[2023-06-07 13:20:05,023][root][INFO] - tmp file not found, processing
+[2023-06-07 13:21:05,404][root][INFO] - Numpy block preparation took 57.416718272 seconds
+[2023-06-07 13:21:05,417][root][INFO] - Time to load and prep climate data 69.614775055 seconds
+[2023-06-07 13:23:58,075][root][INFO] - Time to prepare target 187.05902041299998 seconds
+[2023-06-07 13:25:01,597][root][INFO] - Target start 2020-08-27 00:00:00
+[2023-06-07 13:25:01,609][root][INFO] - Target start 2020-08-27 00:00:00
+[2023-06-07 13:25:02,077][root][INFO] - Train size: 2735312, test size: 2530527
+[2023-06-07 13:25:02,078][root][INFO] - Train rectangle: (array(-66.72833), array(66.72833), array(-157.5), array(156.375))
+[2023-06-07 13:25:02,078][root][INFO] - Test rectangle: (array(-66.72833), array(66.72833), array(-157.5), array(156.375))
+[2023-06-07 13:25:02,078][root][INFO] - Extreme stations train: (-66.72833, 66.72833, -157.5, 156.375)
+[2023-06-07 13:25:02,078][root][INFO] - Extreme stations test: (-66.72833, 66.72833, -157.5, 63.0)
+[2023-06-07 13:25:02,078][root][INFO] - Target min: 0.0, target max: 69.0
+[2023-06-07 13:25:02,079][root][INFO] - Target mean: 14.118771094485748, target std: 5.9317344248470985
+[2023-06-07 13:25:02,255][root][INFO] - Time to start train 320.788222534 seconds
+[2023-06-07 13:25:02,321][torch.distributed.distributed_c10d][INFO] - Added key: store_based_barrier_key:1 to store for rank: 1
+[2023-06-07 13:25:02,321][torch.distributed.distributed_c10d][INFO] - Rank 1: Completed store-based barrier for key:store_based_barrier_key:1 with 2 nodes.
+[2023-06-07 13:25:47,208][torch.nn.parallel.distributed][INFO] - Reducer buckets have been rebuilt in this iteration.
+[2023-06-07 13:28:13,661][root][INFO] - Train finished!

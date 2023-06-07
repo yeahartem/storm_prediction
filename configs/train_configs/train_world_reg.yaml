@@ -3,16 +3,16 @@ experiment_name: "cmip5_lrsch_reg_w_naivemode20x42_max"
 project_name: "Wind-speed-regression"
 target_type: "wind_ms"
 
-data_dir: "./data_mounted/cmip5_world"
-path_to_prepared_target_data: "./data_mounted/cmip5_world/target.parquet"
-path_to_prepared_stations: "./data_mounted/cmip5_world/stations.parquet"
-path_to_means: "./data_mounted/cmip5_world/normalization_values_mean.npy"
-path_to_std: "./data_mounted/cmip5_world/normalization_values_std.npy"
+data_dir: "./data_mounted/cmip5_world3"
+path_to_prepared_target_data: "./data_mounted/cmip5_world3/target.parquet"
+path_to_prepared_stations: "./data_mounted/cmip5_world3/stations.parquet"
+path_to_means: "./data_mounted/cmip5_world3/normalization_values_mean.npy"
+path_to_std: "./data_mounted/cmip5_world3/normalization_values_std.npy"
 
 model_name: WindNet20x42
 half_side_size: 20
 time_window: 42
-time_freq: 7
+time_freq: 42
 target_threshold: 20
 target_max: 68.94
 target_min: 0.0
@@ -55,5 +55,5 @@ scheduler_name: "OneCycleLR"
 loss_name: "MSELoss"
 
 num_workers: 4
-gpu_num: 1
-data_in_ram: false
+gpu_num: 2
+data_in_ram: true

@@ -24,6 +24,16 @@ os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 torch.set_float32_matmul_precision('high')
 
+def log_data(dm):
+
+    logging.info(f"Train size: {dm.train_size}, test size: {dm.test_size}")
+    # logging.info(f"Station count: {dm.station_count}")
+    logging.info(f"Train rectangle: {dm.result_train_rectangle}")
+    logging.info(f"Test rectangle: {dm.result_test_rectangle}")
+    logging.info(f"Extreme stations train: {dm.extreme_stations_train}")
+    logging.info(f"Extreme stations test: {dm.extreme_stations_test}")
+    logging.info(f"Target min: {dm.min_target}, target max: {dm.max_target}")
+    logging.info(f"Target mean: {dm.mean_target}, target std: {dm.std_target}")
 
 def train(cfg: DictConfig) -> None:        
     start_time = time.process_time()  
@@ -33,21 +43,13 @@ def train(cfg: DictConfig) -> None:
     dm = WindDataModule(cfg)
     model = WindNetPL(cfg)
 
-    # if torch.__version__ >= "2.0.0":
-    #     model = torch.compile(model)
-    # else:
-    #     print("PyTorch version is smaller than 2.0, compilation is not supported")
+    if torch.__version__ >= "2.0.0":
+        model = torch.compile(model)
+    else:
+        print("PyTorch version is smaller than 2.0, compilation is not supported")
         
-    wandb_logger.watch(model, log='all', log_freq=100)    
-    logging.info(f"Train size: {dm.train_size}, test size: {dm.test_size}")
-    logging.info(f"Station count: {dm.station_count}")
-    logging.info(f"Station count: {dm.station_count}")
-    logging.info(f"Train rectangle: {dm.result_train_rectangle}")
-    logging.info(f"Test rectangle: {dm.result_test_rectangle}")
-    logging.info(f"Extreme stations train: {dm.extreme_stations_train}")
-    logging.info(f"Extreme stations test: {dm.extreme_stations_test}")
-    logging.info(f"Target min: {dm.min_target}, target max: {dm.max_target}")
-    logging.info(f"Target mean: {dm.mean_target}, target std: {dm.std_target}")
+    wandb_logger.watch(model, log='all', log_freq=100)   
+    log_data(dm)   
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
@@ -61,7 +63,7 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg_toy")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
 def main(cfg: DictConfig):    
     train(cfg)
     logging.info('Train finished!')

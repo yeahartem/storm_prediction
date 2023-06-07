@@ -15,17 +15,17 @@ from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, g
 
 class WindNetPL(pl.LightningModule):
 
-    def __init__(self, cfg):        
-        super().__init__()
-        self.cfg = cfg        
+    def __init__(self, cfg):   
 
-        if cfg.model_name=='WindNet20x42':
-            self.net = WindNet20x42
-        elif cfg.model_name=='WindNet5x28':
-            self.net = WindNet5x28
-        else:
-            raise NotImplementedError(f'Model {cfg.model_name} not found')
         
+        super().__init__()     
+        self.cfg = cfg        
+        if cfg.model_name=='WindNet20x42':
+            self.net = WindNet20x42()
+        elif cfg.model_name=='WindNet5x28':
+            self.net = WindNet5x28()
+        else:
+            raise NotImplementedError(f'Model {cfg.model_name} not found')     
         self.scheduler_name = cfg.scheduler_name
         if cfg.optimizer_name=='Adam':
             self.optimizer = torch.optim.Adam

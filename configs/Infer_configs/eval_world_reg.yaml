@@ -1,17 +1,18 @@
 ---
-experiment_name: "cmip5_toy_reg_w_naivemode20x42_max"
+experiment_name: "cmip5_lrsch_reg_w_naivemode20x42_max"
 project_name: "Wind-speed-regression"
 target_type: "wind_ms"
 
-data_dir: "./data_mounted/cmip5_toy"
-path_to_prepared_target_data: "/app/wind/data_mounted/cmip5_world2/target.parquet"
-path_to_means: "./data_mounted/cmip5_toy/normalization_values_mean.npy"
-path_to_std: "./data_mounted/cmip5_toy/normalization_values_std.npy"
+data_dir: "./data_mounted/cmip5_world3"
+path_to_prepared_target_data: "./data_mounted/cmip5_world3/target.parquet"
+path_to_prepared_stations: "./data_mounted/cmip5_world3/stations.parquet"
+path_to_means: "./data_mounted/cmip5_world3/normalization_values_mean.npy"
+path_to_std: "./data_mounted/cmip5_world3/normalization_values_std.npy"
 
-model_name: WindNet5x28
-half_side_size: 5
-time_window: 28
-time_freq: 7
+model_name: WindNet20x42
+half_side_size: 20
+time_window: 42
+time_freq: 42
 target_threshold: 20
 target_max: 68.94
 target_min: 0.0
@@ -19,10 +20,10 @@ target_min: 0.0
 min_height: -10
 max_height: 800
 train_coords:
-  lat_min: 43.62
-  lat_max: 62.23
-  lon_min: 36.68
-  lon_max: 63.20
+  lat_min: -88.0
+  lat_max: 88.0
+  lon_min: -179.0
+  lon_max: 180.45
 
 test_coords:
   lat_min: 43.62
@@ -38,7 +39,7 @@ variables:
 - tasmax
 - tasmin
 time_limits:
-- '2000-01-01'
+- '1950-01-01'
 - '2020-11-14'
 start_of_test: '2008-01-01'
 
@@ -53,6 +54,6 @@ optimizer_name: "Adam"
 scheduler_name: "OneCycleLR"
 loss_name: "MSELoss"
 
-num_workers: 0
+num_workers: 4
 gpu_num: 1
 data_in_ram: false

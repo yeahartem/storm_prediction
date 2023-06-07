@@ -11,41 +11,49 @@ import xarray as xr
 from src.data_assemble.assemble_data import make_blocks_no_target
 from src.data_assemble.prepare_cmip5 import get_cmip5_files
 from omegaconf import DictConfig
-import pandas as pd
-from datatable import Frame
-import pyarrow.parquet as pq
-import cudf
-cudf.set_allocator("managed")
+import dask
+import dask.dataframe as dd
+from dask.array.lib.stride_tricks import sliding_window_view
+from datetime import datetime
+import time
+import polars
 
 
 def prepare_data(cfg):
 
+
+    logging.info('tmp file not found, processing')
+    start_time = time.process_time()  
     files = get_cmip5_files(cfg.data_dir, cfg.variables)
     climate_file_paths = [file.path for file in files]
-    logging.debug(f'loading {climate_file_paths}')
-    print(cfg.path_to_prepared_target_data)
-    
-    target_df = pd.read_parquet(cfg.path_to_prepared_target_data)
-
-    # dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
-    print(type(target_df['y'][0]))
-    target_df['y_window'] = target_df['y'].rolling(window=cfg.time_window).max()
-    target_df = target_df.drop(columns=["y", "height"]) 
-
+    logging.debug(f'loading {climate_file_paths}')   
     if cfg.data_in_ram:
         dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy').compute()
     else:
         dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy')
-
+    dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
     dataset_as_blocks = make_blocks_no_target(dataset_xarray, cfg.half_side_size, time_stack_size=cfg.time_window, time_freq=cfg.time_freq)    
+    logging.info(f"Time to load and prep climate data {time.process_time() - start_time} seconds")
 
-    # intersecting dataset and target_df    
+    start_time = time.process_time()  
+
+    target_df = polars.read_parquet(cfg.path_to_prepared_target_data).to_pandas()
+    logging.debug(type(target_df['y'][0]))
+
+    target_df['y_window'] = target_df['y'].rolling(cfg.time_window, center=True).max() 
+    target_df = target_df.dropna()
+    target_df = target_df.drop(columns=["y"])
+    logging.info(f"Time to prepare target {time.process_time() - start_time} seconds")
+    target_df.info()     
+
+    # to indexes
     lat_intersection = np.intersect1d(dataset_as_blocks['lat'].data, target_df['lat'])
-    target_df = target_df.loc[target_df.lat.isin(lat_intersection)]
     lon_intersection = np.intersect1d(dataset_as_blocks['lon'].data, target_df['lon'])
-    target_df = target_df.loc[target_df.lon.isin(lon_intersection)]
     time_intersection = np.intersect1d(dataset_as_blocks['time'].data, target_df['time'])
+
+    target_df = target_df.loc[target_df.lat.isin(lat_intersection)]
     target_df = target_df.loc[target_df.time.isin(time_intersection)]
+    target_df = target_df.loc[target_df.lon.isin(lon_intersection)]
 
     return dataset_as_blocks, target_df
 
@@ -53,9 +61,11 @@ def prepare_data(cfg):
 
 def split_train_test(X, y, start_of_test, test_coords):
 
-    split_date = pd.to_datetime(start_of_test)
+    split_date = datetime.strptime(start_of_test, '%Y-%m-%d')
     X_train = X.sel(time=slice(None, split_date))
     X_test = X.sel(time=slice(split_date, None))
+    logging.info(f'Target start {y.time.max()}')
+    logging.info(f'Target start {y.time.max()}')
     y_train = y.loc[y['time'] < split_date]
     y_test = y.loc[y['time'] >= split_date]
     y_test = y.loc[y['lat'] >= test_coords.lat_min]
@@ -120,7 +130,7 @@ class WindDataModule(pl.LightningDataModule):
                                                                                 self.cfg.test_coords)  
         self.train_size = len(self.y_train)
         self.test_size = len(self.y_test)
-        self.station_count = len(self.y_train['station_name'].unique())
+        # self.station_count = len(self.y_train['station_name'].unique())
         self.max_target = self.y_train['y_window'].max()
         self.min_target = self.y_train['y_window'].min()
         self.mean_target = self.y_train['y_window'].mean()
