@@ -10,7 +10,7 @@ from omegaconf import DictConfig, OmegaConf, ListConfig
 from src.data_assemble.assemble_target import make_target
 from src.data_assemble.prepare_target import get_stations_RU, clean_weather_data_RU, clean_weather_data_WORLD
 import time
-
+dask.config.set(scheduler='single-threaded')
 
 class CMIP5File():
     """Parse the filename of a CMIP5 file to get the model name and experiment name.
@@ -84,7 +84,7 @@ def climate_to_netcdf(files: list, var: str, cfg):
 
     if not experiment_name:
         experiment_name = files[0].experiment_name
-    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy')
+    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', chunks=100)
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
 
@@ -109,7 +109,8 @@ def climate_to_netcdf(files: list, var: str, cfg):
     data_arr[var].encoding.clear()
     
     xr.set_options(file_cache_maxsize=10)
-
+    logging.info(cfg.path_to_prepared_data_dir)
+    
     if cfg.pad_data:
         data_padded = dask.array.pad(data_arr[var].data, pad_width = 
                                        ((0,0),(0,0),(cfg.half_side_size, cfg.half_side_size)),
@@ -122,7 +123,7 @@ def climate_to_netcdf(files: list, var: str, cfg):
                     "time": data_arr[var].time.data})    
         dataset_var.to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')  
     else:
-        data_arr[var].to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')
+        data_arr[var].to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')  
 
 
 def make_normalization_values(cfg: DictConfig):

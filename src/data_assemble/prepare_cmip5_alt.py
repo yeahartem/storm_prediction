@@ -8,7 +8,8 @@ import dask
 import hydra
 from omegaconf import DictConfig, OmegaConf, ListConfig
 from src.data_assemble.assemble_target import make_target
-
+from src.data_assemble.prepare_target import get_stations_RU, clean_weather_data_RU, clean_weather_data_WORLD
+import time
 
 
 class CMIP5File():
@@ -56,7 +57,7 @@ def get_cmip5_files(folder: str, variables) -> list:
     print(folder)
     for root, dirs, filenames in os.walk(folder):
         for filename in filenames:
-            if filename.endswith('.nc'):
+            if filename.endswith('.nc'):                
                 file = CMIP5File(os.path.join(root, filename))
                 if file.variable_name in variables:
                     files.append(file)
@@ -83,7 +84,7 @@ def climate_to_netcdf(files: list, var: str, cfg):
 
     if not experiment_name:
         experiment_name = files[0].experiment_name
-    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True)
+    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', chunks=10)
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
 
@@ -106,12 +107,22 @@ def climate_to_netcdf(files: list, var: str, cfg):
     i = data_arr[var].isnull().sum().compute().data
     print(f"Number of NaNs: {i}")
     data_arr[var].encoding.clear()
+    
+    xr.set_options(file_cache_maxsize=10)
 
-    # data_padded = dask.array.pad(data_arr[var].data, pad_width = 
-    #                                 ((0,0),(0,0),(cfg.half_side_size, cfg.half_side_size)),
-    #                                 mode='wrap')        
-  
-    np_array = data_arr[var].to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')
+    if cfg.pad_data:
+        data_padded = dask.array.pad(data_arr[var].data, pad_width = 
+                                       ((0,0),(0,0),(cfg.half_side_size, cfg.half_side_size)),
+                                        mode='wrap')        
+        dataset_var = xr.DataArray(
+            data_padded,
+            dims=["time", "lat", "lon"],
+            coords={"lat": data_arr[var].lat.data,
+                    "lon": np.pad(data_arr[var].lon.data,pad_width = cfg.half_side_size, mode='wrap'),
+                    "time": data_arr[var].time.data})    
+        dataset_var.to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')  
+    else:
+        data_arr[var].to_zarr(cfg.path_to_prepared_data_dir)
 
 
 def make_normalization_values(cfg: DictConfig):
@@ -119,7 +130,7 @@ def make_normalization_values(cfg: DictConfig):
 
     files = get_cmip5_files(cfg.path_to_prepared_data_dir, cfg.variables)
     file_paths = [file.path for file in files]
-    data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords)
+    data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='zarr', preprocess=process_coords)
 
     norm_time_slice = slice(max(pd.to_datetime(cfg.time_limits[0]), pd.to_datetime(cfg.start_of_test)- pd.DateOffset(years=16)),
                                  pd.to_datetime(cfg.start_of_test))
@@ -129,6 +140,8 @@ def make_normalization_values(cfg: DictConfig):
     for i in zip(mean_channels, std_channels):
         print(f" mean: {i[0]}, std:  {i[1]}")
 
+    print(f"Mean: {mean_channels}")
+    print(f"Std: {std_channels}")
     np.save(os.path.join(cfg.path_to_prepared_data_dir, cfg.normalization_values_name + "_mean.npy"), mean_channels)
     np.save(os.path.join(cfg.path_to_prepared_data_dir, cfg.normalization_values_name + "_std.npy"), std_channels)
     
@@ -161,12 +174,11 @@ def test_data_load(cfg: DictConfig):
     logging.info(f'OK')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_toy_dataset")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_prometeus")
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
     os.makedirs(cfg.path_to_prepared_data_dir, exist_ok=True)
-    
 
     if cfg.make_climate_data:
         for folder in cfg.paths_to_climate_files_folders:
@@ -179,14 +191,20 @@ def main(cfg: DictConfig):
     if cfg.make_normalization:
         make_normalization_values(cfg)
         logging.info(f"Normalization values saved to {cfg.path_to_prepared_data_dir} as {cfg.normalization_values_name}")
+
+    if cfg.make_cleaned_weather_data:
+        start_time = time.process_time()
+        clean_weather_data_RU(cfg.path_to_weather_stations_data)
+        logging.info(f"Ru data clean took {time.process_time() - start_time} seconds")
+
+        start_time = time.process_time()
+        clean_weather_data_WORLD(cfg.path_to_world_weather_stations_data)
+        logging.info(f"World data clean took {time.process_time() - start_time} seconds")
         
     if cfg.make_target:
         make_target(cfg, load_dataset(cfg))        
         logging.info(f"Target data saved to {cfg.path_to_prepared_data_dir} as {cfg.prepared_target_data_name}")
-
-
-    test_data_load(cfg)
-
+    # test_data_load(cfg)
     with open(os.path.join(cfg.path_to_prepared_data_dir, 'dataset_config.yaml'), 'w') as file:
         OmegaConf.save(cfg, file)
 

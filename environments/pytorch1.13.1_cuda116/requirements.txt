@@ -23,3 +23,6 @@ dask
 timm
 polars
 netCDF4
+zarr
+numba
+torchdata
