@@ -1,7 +1,6 @@
 logs/lightning_logs
 src/research/notebooks/lightning_logs
 .idea
-.vscode
 *ipynb_checkpoints
 *.csv
 *.npy
@@ -15,3 +14,4 @@ outputs
 .hydra
 *.html
 *.simg
+tmp*

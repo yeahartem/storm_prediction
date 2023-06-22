@@ -43,22 +43,24 @@ def train(cfg: DictConfig) -> None:
     dm = WindDataModule(cfg)
     model = WindNetPL(cfg)
 
-    if torch.__version__ >= "2.0.0":
-        model = torch.compile(model)
-    else:
-        print("PyTorch version is smaller than 2.0, compilation is not supported")
+    # if torch.__version__ >= "2.0.0":
+    #     model = torch.compile(model)
+    # else:
+    #     print("PyTorch version is smaller than 2.0, compilation is not supported")
         
     wandb_logger.watch(model, log='all', log_freq=100)   
-    log_data(dm)   
+    # log_data(dm)   
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
+                         precision=cfg.precision,
                          benchmark=True,
-                         devices=cfg.gpu_num,
+                         devices=[2],
                          check_val_every_n_epoch=1,
                          default_root_dir=os.path.join(os.getcwd(), "outputs"),
                          logger=wandb_logger,
-                         callbacks=[lr_monitor],)       
+                         callbacks=[lr_monitor],) 
+          
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
 

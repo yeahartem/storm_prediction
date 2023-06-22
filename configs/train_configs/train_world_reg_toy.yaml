@@ -10,7 +10,7 @@ path_to_std: "./data_mounted/cmip5_toy/normalization_values_std.npy"
 
 model_name: WindNet5x28
 half_side_size: 5
-time_window: 28
+time_window: 29 # odd only 
 time_freq: 7
 target_threshold: 20
 target_max: 68.94

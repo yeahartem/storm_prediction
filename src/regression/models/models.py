@@ -32,7 +32,7 @@ class WindNet20x42(nn.Module):
             nn.BatchNorm1d(100),
             nn.Linear(100, 1)
         )
-
+        
     def forward(self, X) -> torch.Tensor:
         X = X.transpose(1, 2)
         output = self.net(X)

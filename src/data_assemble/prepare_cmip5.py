@@ -10,7 +10,7 @@ from omegaconf import DictConfig, OmegaConf, ListConfig
 from src.data_assemble.assemble_target import make_target
 from src.data_assemble.prepare_target import get_stations_RU, clean_weather_data_RU, clean_weather_data_WORLD
 import time
-dask.config.set(scheduler='single-threaded')
+
 
 class CMIP5File():
     """Parse the filename of a CMIP5 file to get the model name and experiment name.
@@ -84,67 +84,62 @@ def climate_to_netcdf(files: list, var: str, cfg):
 
     if not experiment_name:
         experiment_name = files[0].experiment_name
-    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', chunks=100)
+    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', chunks=10)
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
-
     data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
     data_arr = data_arr.sortby(data_arr.lon)
-    
+
     if cfg.spatial_crop:
         data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
     # Remove leap days
     data_arr = data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
-    print(f"Saving: {var}")
-    new_file = CMIP5File(None)
-    new_file.variable_name = var
-    new_file.variable_table = 'day'
-    new_file.model_name = 'cmip5'
-    new_file.experiment_name = experiment_name
-    new_file.ensemble_member = files[0].ensemble_member
-    new_file.temporal_subset = f"{data_arr.time.values[0].astype('datetime64[D]')}-{data_arr.time.values[-1].astype('datetime64[D]')}"
-    filename = new_file.filename()    
-    i = data_arr[var].isnull().sum().compute().data
-    print(f"Number of NaNs: {i}")
-    data_arr[var].encoding.clear()
-    
-    xr.set_options(file_cache_maxsize=10)
-    logging.info(cfg.path_to_prepared_data_dir)
-    
-    if cfg.pad_data:
-        data_padded = dask.array.pad(data_arr[var].data, pad_width = 
-                                       ((0,0),(0,0),(cfg.half_side_size, cfg.half_side_size)),
-                                        mode='wrap')        
-        dataset_var = xr.DataArray(
-            data_padded,
-            dims=["time", "lat", "lon"],
-            coords={"lat": data_arr[var].lat.data,
-                    "lon": np.pad(data_arr[var].lon.data,pad_width = cfg.half_side_size, mode='wrap'),
-                    "time": data_arr[var].time.data})    
-        dataset_var.to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')  
+    logging.info(f"Saving: {var}")
+
+    if cfg.precision == 16:
+        dtype = np.float16
+    elif cfg.precision == 32:
+        dtype = np.float32
     else:
-        data_arr[var].to_netcdf(os.path.join(cfg.path_to_prepared_data_dir, filename), engine='scipy')  
+        raise NotImplementedError
+    
+    if cfg.saved_normalized:
+        data = data_arr[var].data
+        data = np.divide((data - data.mean()), data.std())
+        np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data)
+    else:
+        np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
+
+    if not os.path.isfile(os.path.join(cfg.data_dir, "lat.npy")): 
+        time = data_arr[var]["time"].to_numpy()       
+        lat = data_arr[var]["lat"].to_numpy()
+        lon = data_arr[var]["lon"].to_numpy()
+        np.save(os.path.join(cfg.data_dir, "time.npy"), time)
+        np.save(os.path.join(cfg.data_dir, "lat.npy"), lat)
+        np.save(os.path.join(cfg.data_dir, "lon.npy"), lon)
+        logging.info(f"Coords saved: time {time.min()}-{time.max()}, lat {lat.min()}-{lat.max()} step {lat[1]-lat[0]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
 
 
 def make_normalization_values(cfg: DictConfig):
     """Get normalization values for the climate data in given folder"""
+    time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
+    lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
+    lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
+    var_data = np.empty((len(cfg.variables), len(time_coords), len(lat_coords), len(lon_coords)), dtype=np.float32)
 
-    files = get_cmip5_files(cfg.path_to_prepared_data_dir, cfg.variables)
-    file_paths = [file.path for file in files]
-    data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords)
+    for i, var in enumerate(cfg.variables):
+        var_data[i] = np.load(os.path.join(cfg.data_dir, var + '.npy'))
 
-    norm_time_slice = slice(max(pd.to_datetime(cfg.time_limits[0]), pd.to_datetime(cfg.start_of_test)- pd.DateOffset(years=16)),
-                                 pd.to_datetime(cfg.start_of_test))
+    mean_channels = var_data.mean(axis=(1,2,3))
+    std_channels = var_data.std(axis=(1,2,3))
 
-    mean_channels = data_arr.sel(time=norm_time_slice).mean(dim=['lat', 'lon', 'time']).to_array().compute().data
-    std_channels = data_arr.sel(time=norm_time_slice).std(dim=['lat', 'lon', 'time']).to_array().compute().data
     for i in zip(mean_channels, std_channels):
         print(f" mean: {i[0]}, std:  {i[1]}")
 
     print(f"Mean: {mean_channels}")
     print(f"Std: {std_channels}")
-    np.save(os.path.join(cfg.path_to_prepared_data_dir, cfg.normalization_values_name + "_mean.npy"), mean_channels)
-    np.save(os.path.join(cfg.path_to_prepared_data_dir, cfg.normalization_values_name + "_std.npy"), std_channels)
+    np.save(os.path.join(cfg.data_dir, cfg.normalization_values_name + "_mean.npy"), mean_channels)
+    np.save(os.path.join(cfg.data_dir, cfg.normalization_values_name + "_std.npy"), std_channels)
     
 
 
@@ -179,7 +174,7 @@ def test_data_load(cfg: DictConfig):
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
-    os.makedirs(cfg.path_to_prepared_data_dir, exist_ok=True)
+    os.makedirs(cfg.data_dir, exist_ok=True)
 
     if cfg.make_climate_data:
         for folder in cfg.paths_to_climate_files_folders:
@@ -187,11 +182,11 @@ def main(cfg: DictConfig):
                 logging.info(f"{var} in work")
                 files = get_cmip5_files(folder, var)
                 climate_to_netcdf(files, var, cfg)
-                logging.info(f"{var} data saved to {cfg.path_to_prepared_data_dir}")
+                logging.info(f"{var} data saved to {cfg.data_dir}")
 
     if cfg.make_normalization:
         make_normalization_values(cfg)
-        logging.info(f"Normalization values saved to {cfg.path_to_prepared_data_dir} as {cfg.normalization_values_name}")
+        logging.info(f"Normalization values saved to {cfg.data_dir} as {cfg.normalization_values_name}")
 
     if cfg.make_cleaned_weather_data:
         start_time = time.process_time()
@@ -204,9 +199,9 @@ def main(cfg: DictConfig):
         
     if cfg.make_target:
         make_target(cfg, load_dataset(cfg))        
-        logging.info(f"Target data saved to {cfg.path_to_prepared_data_dir} as {cfg.prepared_target_data_name}")
+        logging.info(f"Target data saved to {cfg.data_dir} as {cfg.prepared_target_data_name}")
     # test_data_load(cfg)
-    with open(os.path.join(cfg.path_to_prepared_data_dir, 'dataset_config.yaml'), 'w') as file:
+    with open(os.path.join(cfg.data_dir, 'dataset_config.yaml'), 'w') as file:
         OmegaConf.save(cfg, file)
 
 

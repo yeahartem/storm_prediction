@@ -15,7 +15,7 @@ path_to_allowed_stations: "configs/splits/allowed_stations.txt"
 
 path_to_world_weather_stations_data: "data_mounted/weather_stations/world_stations_25_days_6_months.parquet"
 
-path_to_prepared_data_dir: "data_mounted/cmip5toy/" # the resw will be saved in this directory
+data_dir: "data_mounted/cmip5toy/" # the resw will be saved in this directory
 prepared_target_data_name: "target.parquet"
 prepared_stations_name: "stations.parquet"
 normalization_values_name: "normalization_values" # _mean.npy, _std.npy, will be added to the name

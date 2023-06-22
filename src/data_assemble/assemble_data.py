@@ -8,6 +8,25 @@ import logging
 import warnings
 warnings.filterwarnings("ignore")
 
+def make_blocks_numpy(
+        var_data: np.array,
+        half_side_size: int = 4,
+        time_stack_size=1,
+        time_freq=1,
+) -> xarray.DataArray:
+
+    start_time = time.process_time()
+    n_channels = var_data.shape[1]
+  
+    var_data_windows = np.lib.stride_tricks.sliding_window_view(var_data,
+                                                       (time_stack_size, n_channels, 2 * half_side_size + 1,
+                                                        2 * half_side_size + 1))
+    var_data_windows = np.squeeze(var_data_windows)
+    var_data_windows = var_data_windows[::time_freq]
+    var_data_windows = np.moveaxis(var_data_windows, 0, 2)
+    logging.info(f"Numpy block preparation took {time.process_time() - start_time} seconds")
+    return var_data_windows
+
 
 def make_blocks_no_target(
         dataset_as_xarray: xarray.DataArray,
@@ -32,7 +51,7 @@ def make_blocks_no_target(
                                                        (time_stack_size, n_channels, 2 * half_side_size + 1,
                                                         2 * half_side_size + 1))
     windows = np.squeeze(windows)
-    windows = windows[::time_freq]
+    # windows = windows[::time_freq]
     windows = np.moveaxis(windows, 0, 2)
     time_coords = dataset_as_xarray[example_key].time.data[:-time_stack_size:time_freq]
     lat_coords = dataset_as_xarray[example_key].lat.data[half_side_size:-half_side_size]
