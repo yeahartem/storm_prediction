@@ -27,7 +27,7 @@ class CMIP5File():
             self.model_name = self.filename.split('_')[2]
             self.experiment_name = self.filename.split('_')[3]
             self.ensemble_member = self.filename.split('_')[4]
-            self.temporal_subset = self.filename.split('_')[5]
+            self.temporal_subset = self.filename.split('_')[-1]
             self.start_date = self.temporal_subset.split('-')[0]
             self.end_date = self.temporal_subset.split('-')[1].split('.')[0]
             self.start_year = int(self.start_date[:4])
@@ -57,7 +57,7 @@ def get_cmip5_files(folder: str, variables) -> list:
     print(folder)
     for root, dirs, filenames in os.walk(folder):
         for filename in filenames:
-            if filename.endswith('.nc'):                
+            if filename.endswith('.nc') and ('elevation' not in filename):                
                 file = CMIP5File(os.path.join(root, filename))
                 if file.variable_name in variables:
                     files.append(file)
@@ -84,7 +84,10 @@ def climate_to_netcdf(files: list, var: str, cfg):
 
     if not experiment_name:
         experiment_name = files[0].experiment_name
-    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', chunks=10)
+    try:
+        data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, drop_variables=['height'], engine='scipy', chunks=100)
+    except TypeError:
+        data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, drop_variables=['height'], chunks=100)
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
     data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
@@ -149,7 +152,10 @@ def load_dataset(cfg: DictConfig):
     files = get_cmip5_files(cfg.paths_to_climate_files_folders, cfg.variables)
     file_paths = [file.path for file in files]
     logging.info(f'loading {file_paths}')
-    data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords) 
+    try:
+        data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, drop_variables=['height'], engine='scipy', preprocess=process_coords) 
+    except TypeError:
+        data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, drop_variables=['height'], preprocess=process_coords) 
     return data_arr
 
 
@@ -170,7 +176,7 @@ def test_data_load(cfg: DictConfig):
     logging.info(f'OK')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_local")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip6_dataset_world_test")
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    

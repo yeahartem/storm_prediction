@@ -93,19 +93,29 @@ def stations_to_data_grid(
 
     return stations_df   
 
+def filter_lat_lon(stations_df, cfg):
+    lat_min, lat_max, lon_min, lon_max = cfg.train_coords.lat_min, cfg.train_coords.lat_max, cfg.train_coords.lon_min, cfg.train_coords.lon_max
+    return stations_df.filter(pl.any((pl.col('lat') >= lat_min) & (pl.col('lat') <= lat_max) & (pl.col('lon') <= lon_max) & (pl.col('lon') >= lon_min)))
 
 
 def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
+    # pl.toggle_string_cache(True) 
+    with pl.StringCache():
+        start_time = time.process_time()
+        df = pl.read_parquet(cfg.path_to_weather_stations_data.replace(".parquet", "_cleaned.parquet"), use_pyarrow=True)
+        logging.info(f"Time to open ru parquet {time.process_time() - start_time} seconds")
+
+        start = cfg.time_limits[0]
+        end = cfg.time_limits[1]
         
-    start_time = time.process_time()
-    df = pl.read_parquet(cfg.path_to_weather_stations_data.replace(".parquet", "_cleaned.parquet"), use_pyarrow=True)
-    logging.info(f"Time to open ru parquet {time.process_time() - start_time} seconds")
+        stations_df_ru = pl.from_pandas(get_stations_RU(cfg))     
+        stations_df_ru = filter_lat_lon(stations_df_ru, cfg)
+        stations_df_ru = stations_to_data_grid(dataset_xarray=dataset_xarray,
+                                            stations_df=stations_df_ru)
 
-    start = cfg.time_limits[0]
-    end = cfg.time_limits[1]
-
-    df = df.filter(pl.any(pl.col('time') >= pd.to_datetime(start)))
-    df = df.filter(pl.any(pl.col('time') <= pd.to_datetime(end)))
+        df = df.filter(pl.any(pl.col('time') >= pd.to_datetime(start)))
+        df = df.filter(pl.any(pl.col('time') <= pd.to_datetime(end)))
+        df = df.filter(pl.any(df.select(pl.col('station_name').is_in(stations_df_ru['station_name']))))
 
     if len(cfg.target_column)>1:
         target_cols = [df[col] for col in cfg.target_column]
@@ -117,11 +127,7 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
 
     df = df.select(pl.col(["time", "station_name", "y" ]))
     gc.collect()
-
-    stations_df_ru = pl.from_pandas(get_stations_RU(cfg))      
-    stations_df_ru = stations_to_data_grid(dataset_xarray=dataset_xarray,
-                                           stations_df=stations_df_ru)
-          
+ 
     df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()])   
     print(stations_df_ru)
 
@@ -132,7 +138,7 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
 
     # df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(pl.Categorical).keep_name()])
 
-    df.write_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name + '.pp1'))
+    df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name + '.pp1'))
 
     
 
@@ -146,6 +152,7 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
     end = cfg.time_limits[1]
     df = df.filter(pl.any(pl.col('time') >= pd.to_datetime(start)))
     df = df.filter(pl.any(pl.col('time') <= pd.to_datetime(end)))
+    df = filter_lat_lon(df, cfg)
 
     if len(cfg.target_column)>1:
         target_cols = [df[col] for col in cfg.target_column]
@@ -161,7 +168,7 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
     df = stations_to_data_grid(dataset_xarray=dataset_xarray, stations_df=df)
     df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()])
     # df = df.select([pl.all().exclude("station_name")])
-    df.write_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name + '.pp2'))
+    df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name + '.pp2'))
 
 
 
@@ -170,9 +177,9 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
     pre_prepare_target_RU(cfg, dataset_xarray)
     pre_prepare_target_WORLD(cfg, dataset_xarray)
 
-    df_ru = pl.read_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name + '.pp1'), use_pyarrow=True)
+    df_ru = pl.read_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name + '.pp1'), use_pyarrow=True)
     logging.info(f'RU len: {len(df_ru)}')
-    df_world = pl.read_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name + '.pp2'), use_pyarrow=True)
+    df_world = pl.read_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name + '.pp2'), use_pyarrow=True)
     logging.info(f'WORLD len: {len(df_world)}')
 
     start_time = time.process_time()
@@ -189,4 +196,4 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
     logging.info(f"Concat took {time.process_time() - start_time} seconds")
     logging.info(f'TOTAL len: {len(target_df)}')
     target_df = target_df.drop_nulls()
-    target_df.write_parquet(os.path.join(cfg.path_to_prepared_data_dir, cfg.prepared_target_data_name))
+    target_df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name))

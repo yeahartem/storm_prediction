@@ -55,7 +55,7 @@ def train(cfg: DictConfig) -> None:
                          accelerator="gpu",
                          precision=cfg.precision,
                          benchmark=True,
-                         devices=[2],
+                         devices=[0],
                          check_val_every_n_epoch=1,
                          default_root_dir=os.path.join(os.getcwd(), "outputs"),
                          logger=wandb_logger,
@@ -65,7 +65,7 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg_test")
 def main(cfg: DictConfig):    
     train(cfg)
     logging.info('Train finished!')

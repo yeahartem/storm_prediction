@@ -29,9 +29,15 @@ def prepare_data(cfg):
         climate_file_paths = [file.path for file in files]
         logging.debug(f'loading {climate_file_paths}')   
         if cfg.data_in_ram:
-            dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy').compute()
+            try:
+                dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy', drop_variables=['height']).compute()
+            except TypeError:
+                dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, drop_variables=['height']).compute()
         else:
-            dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy')
+            try:
+                dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy', drop_variables=['height'])
+            except TypeError:
+                dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, drop_variables=['height'])
         # dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
         dataset_as_blocks = make_blocks_no_target(dataset_xarray, cfg.half_side_size, time_stack_size=cfg.time_window, time_freq=cfg.time_freq)    
         logging.info(f"Time to load and prep climate data {time.process_time() - start_time} seconds")
@@ -63,7 +69,10 @@ def prepare_data(cfg):
         files = get_cmip5_files(cfg.data_dir, cfg.variables)
         climate_file_paths = [file.path for file in files]
         target_df = dd.read_parquet('tmp_target.parquet')
-        dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy')
+        try:
+            dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy', drop_variables=['height'])
+        except TypeError:
+            dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, drop_variables=['height'])
         # dataset_xarray['time'] = dataset_xarray['time'].astype('datetime64[D]')
         dataset_as_blocks = make_blocks_no_target(dataset_xarray, cfg.half_side_size, time_stack_size=cfg.time_window, time_freq=cfg.time_freq)
 

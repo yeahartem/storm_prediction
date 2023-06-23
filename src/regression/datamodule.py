@@ -28,10 +28,11 @@ def prepare_data(cfg):
     var_data = np.empty((len(cfg.variables), len(time_coords), len(lat_coords), len(lon_coords)), dtype=np.float32)
 
     for i, var in enumerate(cfg.variables):
-        var_data[i] = np.load(os.path.join(cfg.data_dir, var + '.npy'))
+        var_data[i] = np.load(os.path.join(cfg.data_dir, var + '_' + str(cfg.precision) + '.npy'))
 
     var_data = np.moveaxis(var_data, 0, 1)
     dataset_as_blocks = make_blocks_numpy(var_data, cfg.half_side_size, time_stack_size=cfg.time_window, time_freq=cfg.time_freq)  
+
     logging.info(f"Time to load and prep climate data {time.process_time() - start_time} seconds")
 
     def max_window(values):

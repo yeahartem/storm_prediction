@@ -24,7 +24,10 @@ def prepare_data(cfg):
     climate_file_paths = [file.path for file in files]
 
     logging.debug(f'loading {climate_file_paths}')    
-    dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy')  
+    try:
+        dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, engine='scipy', drop_variables=['height'])  
+    except TypeError:
+        dataset_xarray = xr.open_mfdataset(climate_file_paths, combine="by_coords", parallel=True, drop_variables=['height'])  
 
     target_df = polars.read_parquet(cfg.path_to_prepared_target_data).to_pandas()
     target_df["y"] = (target_df['y'] > cfg.speed_th)     
