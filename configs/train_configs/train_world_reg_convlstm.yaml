@@ -1,5 +1,5 @@
 ---
-experiment_name: "cmip5_reg_w_naivemodel3_max"
+experiment_name: "cmip5_reg_w_ConvLSTM"
 project_name: "Wind-speed-regression"
 
 data_dir: "./data_mounted/cmip5_world"
@@ -9,7 +9,7 @@ path_to_means: "./data_mounted/cmip5_world/normalization_values_mean.npy"
 path_to_std: "./data_mounted/cmip5_world/normalization_values_std.npy"
 
 half_side_size: 20
-time_window: 42
+time_window: 6
 time_freq: 4
 
 min_height: -10
@@ -35,21 +35,21 @@ time_limits:
 - '2000-01-01'
 - '2020-11-14'
 start_of_test: '2008-01-01'
- 
-hidden_dim: 64
-kernel_size: 
-- 7 
+
+# stride: 1
+hidden_dim: 100
+kernel_size:  
 - 5 
 - 5
-num_layers: 1
+num_layers: 3
 batch_first: True
 bias: True
 return_all_layers: False
 
-batch_size: 140
+batch_size: 80
 learning_rate: 0.0004
 weight_decay: 0.0001
 max_epoch: 40
 
 num_workers: 4
-gpu_num: 1
+gpu_num: 3

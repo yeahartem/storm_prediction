@@ -33,7 +33,8 @@ def train(cfg: DictConfig) -> None:
                                project=cfg.project_name,
                                name=cfg.experiment_name)
     dm = WindDataModule(cfg)
-    net = ConvLSTM(cfg)
+    net = ConvLSTM(len(cfg.variables), cfg.hidden_dim, tuple(cfg.kernel_size), cfg.num_layers,
+                 batch_first=False, bias=True, return_all_layers=False)
     optimizer = torch.optim.Adam
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau
     criterion = torch.nn.MSELoss()
@@ -50,9 +51,9 @@ def train(cfg: DictConfig) -> None:
     logging.info(f"Target mean: {dm.mean_target}, target std: {dm.std_target}")
 
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
-                         accelerator="cpu",
+                         accelerator="gpu",
                          benchmark=True,
-                         devices=cfg.gpu_num,
+                         devices=[cfg.gpu_num],
                          check_val_every_n_epoch=1,
                          default_root_dir=os.path.join(os.getcwd(), "outputs"),
                          logger=wandb_logger)       
