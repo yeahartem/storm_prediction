@@ -130,10 +130,8 @@ class WindDataModule(pl.LightningDataModule):
 
     def __init__(self, cfg: DictConfig):
         super().__init__()
-        self.cfg = cfg
-        
+        self.cfg = cfg        
         self.dataset_as_blocks, self.train_data_idxs, self.test_data_idxs = prepare_data(self.cfg)
-
         self.train_size = len(self.train_data_idxs)
         self.test_size = len(self.test_data_idxs)
         # self.station_count = len(self.y_train['station_name'].unique())
@@ -147,8 +145,8 @@ class WindDataModule(pl.LightningDataModule):
         # self.extreme_stations_test= (self.y_test.lat.min(), self.y_test.lat.max(), self.y_test.lon.min(), self.y_test.lon.max())
         
         if self.cfg.normalize:
-            mean_channels = np.load(self.cfg.path_to_means)
-            std_channels = np.load(self.cfg.path_to_std)
+            mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
+            std_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
             self.transform = torchvision.transforms.Compose(
                 [
                     torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),

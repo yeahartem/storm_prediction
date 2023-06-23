@@ -128,7 +128,7 @@ def make_normalization_values(cfg: DictConfig):
     var_data = np.empty((len(cfg.variables), len(time_coords), len(lat_coords), len(lon_coords)), dtype=np.float32)
 
     for i, var in enumerate(cfg.variables):
-        var_data[i] = np.load(os.path.join(cfg.data_dir, var + '.npy'))
+        var_data[i] = np.load(os.path.join(cfg.data_dir, var + f'_{cfg.precision}.npy'))
 
     mean_channels = var_data.mean(axis=(1,2,3))
     std_channels = var_data.std(axis=(1,2,3))
@@ -138,8 +138,8 @@ def make_normalization_values(cfg: DictConfig):
 
     print(f"Mean: {mean_channels}")
     print(f"Std: {std_channels}")
-    np.save(os.path.join(cfg.data_dir, cfg.normalization_values_name + "_mean.npy"), mean_channels)
-    np.save(os.path.join(cfg.data_dir, cfg.normalization_values_name + "_std.npy"), std_channels)
+    np.save(os.path.join(cfg.data_dir, f"mean_{cfg.precision}.npy"), mean_channels)
+    np.save(os.path.join(cfg.data_dir, f"std_{cfg.precision}.npy"), std_channels)
     
 
 
@@ -170,7 +170,7 @@ def test_data_load(cfg: DictConfig):
     logging.info(f'OK')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_prometeus")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_local")
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
@@ -218,5 +218,4 @@ if __name__ == "__main__":
     console.setFormatter(formatter)
     logging.getLogger('').addHandler(console)
     logger = logging.getLogger(__name__)
-
     main()

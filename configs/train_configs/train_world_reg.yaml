@@ -6,8 +6,6 @@ target_type: "wind_ms"
 data_dir: "./data_mounted/cmip5_world3"
 path_to_prepared_target_data: "./data_mounted/cmip5_world3/target.parquet"
 path_to_prepared_stations: "./data_mounted/cmip5_world3/stations.parquet"
-path_to_means: "./data_mounted/cmip5_world3/normalization_values_mean.npy"
-path_to_std: "./data_mounted/cmip5_world3/normalization_values_std.npy"
 
 model_name: WindNet20x42
 normalize: true
