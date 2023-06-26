@@ -16,10 +16,7 @@ def nc2np(path, variables, years, save_dir, partition, num_shards_per_year):
         normalize_std = {}
     climatology = {}
 
-    try:
-        constants = xr.open_mfdataset(os.path.join(path, "constants.nc"), combine="by_coords", engine='scipy', parallel=True, drop_variables=['height'])
-    except TypeError:
-        constants = xr.open_mfdataset(os.path.join(path, "constants.nc"), combine="by_coords", parallel=True, drop_variables=['height'])
+    constants = xr.open_mfdataset(os.path.join(path, "constants.nc"), combine="by_coords", parallel=True)
     constant_fields = ["land_sea_mask", "orography", "lattitude"]
     constant_values = {}
     for f in constant_fields:

@@ -86,7 +86,7 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
                 pl.col("Название метеостанции").apply(cleanup_ms_name).cast(pl.Categorical).alias("station_name"),
                 pl.col("Максимальная скорость").round().cast(pl.UInt8).alias("max_speed"),
                 pl.col("Средняя скорость ветра").round().cast(pl.UInt8).alias("avg_speed"),
-                pl.col("Дата").str.strptime(pl.Date, fmt="%Y-%m-%d", strict=False).alias("time"),#.cast(pl.Date).alias("time"),                
+                pl.col("Дата").cast(pl.Date).alias("time"),                
                 pl.col("Температура воздуха по сухому терм-ру").round().cast(pl.Int16).alias("avg_temp"),
                 pl.col("Температура точки росы").round().cast(pl.Int16).alias("dew_point_temp"),
                 pl.col("Атмосферное давление на уровне станции").round().cast(pl.Int16).alias("station_level_pressure"),

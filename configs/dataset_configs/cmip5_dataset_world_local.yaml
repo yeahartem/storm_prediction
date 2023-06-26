@@ -1,25 +1,25 @@
 ---
 experiment_name: cmip5world
 make_climate_data: false
-make_normalization: true
+make_normalization: false
 make_cleaned_weather_data: true
 make_target: true
 
 paths_to_climate_files_folders: 
-- "/home/teshbek/Datasets/cmip5_orig/rcp45/"
+- /home/teshbek/Datasets/cmip5_orig/rcp45/
 
-path_to_elevation: "data_mounted/cmip/elevation/elevation.nc"
-path_to_weather_stations_data: "data_mounted/weather_stations/data_meteo_full.parquet"
-path_to_weather_station_list: "data_mounted/weather_stations/weatherstation_list.json"
-path_to_allowed_stations: "configs/splits/allowed_stations.txt"
-path_to_world_weather_stations_data: "data_mounted/weather_stations/world_stations_25_days_6_months.parquet"
+path_to_elevation: data_mounted/cmip/elevation/elevation.nc
+path_to_weather_stations_data: data_mounted/weather_stations/data_meteo_full.parquet
+path_to_weather_station_list: data_mounted/weather_stations/weatherstation_list.json
+path_to_allowed_stations: configs/splits/allowed_stations.txt
+path_to_world_weather_stations_data: data_mounted/weather_stations/world_stations_25_days_6_months.parquet
 
-data_dir: "data_mounted/cmip5_world3/" # the resw will be saved in this directory
-prepared_target_data_name: "target.parquet"
-prepared_stations_name: "stations.parquet"
-normalization_values_name: "normalization_values" # _mean.npy, _std.npy, will be added to the name
+data_dir: data_mounted/cmip5_world3/ # the rest will be saved in this directory
+prepared_target_data_name: target.parquet
+prepared_stations_name: stations.parquet
+normalization_values_name: normalization_values # _mean.npy, _std.npy, will be added to the name
 
-saved_normalized: false
+saved_normalized: true
 precision: 16 # 32
 
 min_height: -10
@@ -46,4 +46,4 @@ start_of_test: '2008-01-01'
 half_side_size: 20
 pad_data: false
 target_column: 
-- "max_speed"
+- max_speed

@@ -4,6 +4,7 @@ omegaconf
 wandb
 hydra-core
 tensorboard
+torch
 torchmetrics
 torchvision
 xarray
@@ -18,4 +19,9 @@ fastparquet
 pyarrow
 swifter
 tqdm
-dask
+timm
+polars
+netCDF4
+zarr
+numba
+torchdata
