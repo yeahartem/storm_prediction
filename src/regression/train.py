@@ -46,15 +46,15 @@ def train(cfg: DictConfig) -> None:
                          benchmark=True,
                          devices=[0],
                          check_val_every_n_epoch=1,
-                         default_root_dir=os.path.join(os.getcwd(), "outputs"),
+                         default_root_dir="outputs",
                          logger=wandb_logger,
-                         callbacks=[lr_monitor],) 
+                         callbacks=[lr_monitor])    
           
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
+    
 
-
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="linear_world_reg")
 def main(cfg: DictConfig):    
     train(cfg)
     logging.info('Train finished!')

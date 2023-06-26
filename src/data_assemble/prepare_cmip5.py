@@ -103,7 +103,7 @@ def climate_to_netcdf(files: list, var: str, cfg):
     if cfg.saved_normalized:
         data = data_arr[var].data
         data = np.divide((data - data.mean()), data.std())
-        np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data)
+        np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data).astype(dtype)
     else:
         np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
 

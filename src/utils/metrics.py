@@ -2,7 +2,7 @@ import torch
 
 
 def float_to_score(float_tensor, thresh=20):
-    float_tensor = torch.div(float_tensor, thresh)
+    float_tensor = torch.div(float_tensor, thresh+5)
     clipped_tensor = torch.clip(float_tensor, min=0, max=0.999)
     return clipped_tensor
 

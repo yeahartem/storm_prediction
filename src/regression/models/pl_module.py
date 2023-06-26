@@ -9,21 +9,19 @@ from torchmetrics import MaxMetric, MeanMetric, MinMetric
 from torch.functional import F
 import torch.nn as nn
 import numpy as np
-from models.models import WindNet20x42, WindNet5x28
+from models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
 
 
 class WindNetPL(pl.LightningModule):
 
-    def __init__(self, cfg):   
-
-        
+    def __init__(self, cfg): 
         super().__init__()     
         self.cfg = cfg        
-        if cfg.model_name=='WindNet20x42':
-            self.net = WindNet20x42()
-        elif cfg.model_name=='WindNet5x28':
-            self.net = WindNet5x28()
+        if cfg.model_name=='WindNet20x41':
+            self.net = WindNet20x41()
+        elif cfg.model_name=='Linear10x51':
+            self.net = Linear10x51()
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
         self.scheduler_name = cfg.scheduler_name
