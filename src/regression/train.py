@@ -4,6 +4,7 @@ import warnings
 import torch
 import random
 import logging
+import datetime
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
 from datamodule import WindDataModule
@@ -40,15 +41,20 @@ def train(cfg: DictConfig) -> None:
         
     wandb_logger.watch(model, log='all', log_freq=100)       
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)
+    default_root_dir = os.path.join(os.getcwd(), "outputs")#os.path.join(os.getcwd(), "outputs")
+    checkpoint_loc = os.path.join(default_root_dir, datetime.today().strftime('%Y-%m-%d'))
+    existing_subfolders = next(os.walk(os.path.join(default_root_dir, datetime.today().strftime('%Y-%m-%d'))))[1]
+    existing_subfolders.sort()
+    checkpoint_loc = os.path.join(checkpoint_loc, existing_subfolders[-1])
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
-                         precision="16-mixed",
+                         precision=cfg.precision,
                          benchmark=True,
                          devices=[0],
                          check_val_every_n_epoch=1,
-                         default_root_dir="outputs",
+                         default_root_dir=default_root_dir,
                          logger=wandb_logger,
-                         callbacks=[lr_monitor])    
+                         callbacks=[lr_monitor, OnExceptionCheckpoint(checkpoint_loc)],) 
           
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
