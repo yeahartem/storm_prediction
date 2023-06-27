@@ -13,7 +13,7 @@ from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 import time
-from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
 
 warnings.filterwarnings("ignore")
 torch.manual_seed(112)
@@ -40,27 +40,31 @@ def train(cfg: DictConfig) -> None:
     #     print("PyTorch version is smaller than 2.0, compilation is not supported")
         
     wandb_logger.watch(model, log='all', log_freq=100)       
-    lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)
-    default_root_dir = os.path.join(os.getcwd(), "outputs")#os.path.join(os.getcwd(), "outputs")
+    default_root_dir = os.path.join(os.getcwd(), "outputs")
     checkpoint_loc = os.path.join(default_root_dir, datetime.today().strftime('%Y-%m-%d'))
     existing_subfolders = next(os.walk(os.path.join(default_root_dir, datetime.today().strftime('%Y-%m-%d'))))[1]
     existing_subfolders.sort()
-    checkpoint_loc = os.path.join(checkpoint_loc, existing_subfolders[-1])
+    checkpoint_loc = os.path.join(checkpoint_loc, existing_subfolders[-1])    
+
+    checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
+    exception_checkpoint_callback = OnExceptionCheckpoint(checkpoint_loc)
+    lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
+    
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
-                         precision=cfg.precision,
+                         precision="16-mixed",
                          benchmark=True,
-                         devices=[0],
+                         devices=cfg.gpu_num,
                          check_val_every_n_epoch=1,
                          default_root_dir=default_root_dir,
                          logger=wandb_logger,
-                         callbacks=[lr_monitor, OnExceptionCheckpoint(checkpoint_loc)],) 
+                         callbacks=[lr_monitor, checkpoint_callback, exception_checkpoint_callback],) 
           
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="linear_world_reg")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="conv_w_reg")
 def main(cfg: DictConfig):    
     train(cfg)
     logging.info('Train finished!')

@@ -1,0 +1,59 @@
+---
+experiment_name: cmip5_lrsch_reg_w_naivemode21x41_max
+project_name: Wind-speed-regression
+target_type: wind_ms
+
+data_dir: ./data_mounted/cmip5_world3
+path_to_prepared_target_data: ./data_mounted/cmip5_world3/target.parquet
+path_to_prepared_stations: ./data_mounted/cmip5_world3/stations.parquet
+
+model_name: WindNet20x41
+normalize: false
+precision: 16 #  16 32 "16-mixed" "bf16-mixed"
+half_side_size: 21
+time_window: 41  # odd only
+time_freq: 1
+target_threshold: 20
+target_max: 68.94
+target_min: 0.0
+
+min_height: -10
+max_height: 800
+train_coords:
+  lat_min: -88.0
+  lat_max: 88.0
+  lon_min: -179.0
+  lon_max: 180.45
+
+test_coords:
+  lat_min: 43.62
+  lat_max: 62.23
+  lon_min: 36.68
+  lon_max: 63.20
+  
+variables:
+- sfcWindmax
+- sfcWind
+- pr
+- psl
+- tasmax
+- tasmin
+time_limits:
+- '1950-01-01'
+- '2020-11-14'
+start_of_test: '2008-01-01'
+
+batch_size: 256
+learning_rate: 0.0003
+weight_decay: 0.0001
+max_epoch: 5
+#Annealing steps
+warmup_steps: 200
+
+optimizer_name: 'Adam'
+scheduler_name: 'OneCycleLR'
+loss_name: 'MSELoss'
+
+num_workers: 4
+gpu_num: '1,'
+data_in_ram: true

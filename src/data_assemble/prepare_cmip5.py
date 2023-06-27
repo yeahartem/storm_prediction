@@ -81,7 +81,7 @@ def climate_to_netcdf(files: list, var: str, cfg):
 
     if not experiment_name:
         experiment_name = files[0].experiment_name
-    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', chunks=10)
+    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy')
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
     data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
@@ -100,14 +100,14 @@ def climate_to_netcdf(files: list, var: str, cfg):
     else:
         raise NotImplementedError
     
-    if cfg.saved_normalized:
-        data = data_arr[var].data
-        data = np.divide((data - data.mean()), data.std())
-        np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data).astype(dtype)
-    else:
-        np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
+    #if cfg.saved_normalized:
+        #data = data_arr[var].data
+        #data = np.divide((data - data.mean()), data.std())
+        # np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data).astype(dtype)
+    #else:
+        # np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
 
-    if not os.path.isfile(os.path.join(cfg.data_dir, "lat.npy")): 
+    if not os.path.isfile(os.path.join(cfg.data_dir, "time.npy")): 
         time = data_arr[var]["time"].to_numpy()       
         lat = data_arr[var]["lat"].to_numpy()
         lon = data_arr[var]["lon"].to_numpy()
@@ -167,7 +167,7 @@ def test_data_load(cfg: DictConfig):
     logging.info(f'OK')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_local")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_prometeus")
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    

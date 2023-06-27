@@ -118,8 +118,8 @@ class WindNetPL(pl.LightningModule):
         self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
         self.val_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
 
-        self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/MAE_OP", self.val_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
