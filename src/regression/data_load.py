@@ -167,3 +167,36 @@ class DataPreLoader:
 
         # logging.info(f"Data min: {self.dataset_as_blocks.min(axis=(1,2,3))}, data max: {self.dataset_as_blocks.max(axis=(1,2,3))}")
         # logging.info(f"Data mean: {self.dataset_as_blocks.mean(axis=(1,2,3))}, data std: {self.dataset_as_blocks.std(axis=(1,2,3))}")
+
+class DataInferPreLoader(DataPreLoader):
+    def __init__(self, cfg: DictConfig):
+        self.cfg = cfg    
+        self.generate_hash()       
+        self.time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
+        self.lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
+        self.lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
+        if self.data_exists():
+            self.load_data()
+
+        self.dataset_as_blocks = self.load_climate_data()
+        lat_idxs = np.arange(self.dataset_as_blocks.shape[0])
+        lon_idxs = np.arange(self.dataset_as_blocks.shape[1])
+        tim_idxs = np.arange(self.dataset_as_blocks.shape[2])
+        idxs_mesh = np.meshgrid(lat_idxs, lon_idxs, tim_idxs)
+        self.train_data_idxs = None
+        self.test_data_idxs = np.vstack((idxs_mesh[0].flatten(), idxs_mesh[1].flatten(), idxs_mesh[2].flatten())) # walk order: time -> lat -> lon (2 -> 0 -> 1)
+        # self.test_data_idxs = np.vstack((self.test_data_idxs, (-1) * np.ones(self.test_data_idxs[-1], dtype=int)))
+        # self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
+        # self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
+        # logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
+        logging.info(f'Records prepared infer {self.test_data_idxs.shape[1]}')
+
+        if self.cfg.normalize:
+            mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
+            std_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
+            self.transform = torchvision.transforms.Compose(
+                [
+                    torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),
+                ]
+            )
+        else: self.transform = None

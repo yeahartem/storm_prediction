@@ -4,10 +4,10 @@ import warnings
 import torch
 import random
 import logging
-import datetime
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
-from datamodule import WindDataModule
+from datamodule import WindDataInferModule
+from datetime import datetime
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
@@ -26,26 +26,23 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 torch.set_float32_matmul_precision('high')
 
 
-def train(cfg: DictConfig) -> None:        
+def test(cfg: DictConfig) -> None:        
     start_time = time.process_time()  
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "outputs/wandb"),
                                project=cfg.project_name,
                                name=cfg.experiment_name)
-    dm = WindDataModule(cfg)
-    model = WindNetPL(cfg)
+    dm = WindDataInferModule(cfg)
+    model = WindNetPL.load_from_checkpoint(os.path.join(os.getcwd(), "outputs", cfg.path_to_checkpoint), cfg=cfg)
+
 
     # if torch.__version__ >= "2.0.0":
     #     model = torch.compile(model)
     # else:
     #     print("PyTorch version is smaller than 2.0, compilation is not supported")
-        
+
     wandb_logger.watch(model, log='all', log_freq=100)       
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)
     default_root_dir = os.path.join(os.getcwd(), "outputs")#os.path.join(os.getcwd(), "outputs")
-    checkpoint_loc = os.path.join(default_root_dir, datetime.today().strftime('%Y-%m-%d'))
-    existing_subfolders = next(os.walk(os.path.join(default_root_dir, datetime.today().strftime('%Y-%m-%d'))))[1]
-    existing_subfolders.sort()
-    checkpoint_loc = os.path.join(checkpoint_loc, existing_subfolders[-1])
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
                          precision=cfg.precision,
@@ -54,16 +51,18 @@ def train(cfg: DictConfig) -> None:
                          check_val_every_n_epoch=1,
                          default_root_dir=default_root_dir,
                          logger=wandb_logger,
-                         callbacks=[lr_monitor, OnExceptionCheckpoint(checkpoint_loc)],) 
-          
-    logging.info(f"Time to start train {time.process_time() - start_time} seconds")
-    trainer.fit(model, dm)
-    
+                         callbacks=[lr_monitor],) 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="linear_world_reg")
+    dm.setup()
+    logging.info(f"Time to start infer {time.process_time() - start_time} seconds")
+
+    prediction = trainer.predict(model, dataloaders=dm.test_dataloader())
+
+
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="infer_world_reg_test")
 def main(cfg: DictConfig):    
-    train(cfg)
-    logging.info('Train finished!')
+    test(cfg)
+    logging.info('Test finished!')
 
 
 if __name__ == "__main__":      

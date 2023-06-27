@@ -7,6 +7,7 @@ import logging
 import dask
 import hydra
 from omegaconf import DictConfig, OmegaConf, ListConfig
+from omegaconf.errors import ConfigAttributeError
 from src.data_assemble.assemble_target import make_target
 from src.data_assemble.prepare_target import get_stations_RU, clean_weather_data_RU, clean_weather_data_WORLD
 import time
@@ -81,7 +82,11 @@ def climate_to_netcdf(files: list, var: str, cfg):
 
     if not experiment_name:
         experiment_name = files[0].experiment_name
-    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', chunks=10)
+    try:
+        data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', drop_variables=['height'])
+    except TypeError:
+        data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, drop_variables=['height'])
+    
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
     data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
@@ -167,7 +172,7 @@ def test_data_load(cfg: DictConfig):
     logging.info(f'OK')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_local")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip6_dataset_world_infer_test.yaml")
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
@@ -180,6 +185,14 @@ def main(cfg: DictConfig):
                 files = get_cmip5_files(folder, var)
                 climate_to_netcdf(files, var, cfg)
                 logging.info(f"{var} data saved to {cfg.data_dir}")
+
+    try:
+        source_mean_path = os.path.join(os.getcwd(), cfg.path_to_folder_with_norm_for_infer, 'mean_' + f"{cfg.precision}.npy")
+        source_stds_path = os.path.join(os.getcwd(), cfg.path_to_folder_with_norm_for_infer, 'std_' + f"{cfg.precision}.npy")
+        os.popen(f'cp {source_mean_path} {cfg.data_dir}')
+        os.popen(f'cp {source_stds_path} {cfg.data_dir}')
+    except ConfigAttributeError:
+        pass
 
     if cfg.make_normalization:
         make_normalization_values(cfg)

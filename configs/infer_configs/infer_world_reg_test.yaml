@@ -1,11 +1,11 @@
 ---
-experiment_name: "cmip6_highres_test"
+experiment_name: "cmip6_highres_infer"
 project_name: "Wind-speed-regression"
 target_type: "wind_ms"
 
-data_dir: "./data_mounted/cmip6_highres_test"
-path_to_prepared_target_data: "./data_mounted/cmip6_highres_test/target.parquet"
-path_to_prepared_stations: "./data_mounted/cmip6_highres_test/stations.parquet"
+data_dir: "./data_mounted/cmip6_highres_infer_test"
+path_to_prepared_target_data: "./data_mounted/cmip6_highres_infer_test/target.parquet"
+path_to_prepared_stations: "./data_mounted/cmip6_highres_infer_test/stations.parquet"
 
 model_name: WindNet20x41
 normalize: true
@@ -39,9 +39,9 @@ variables:
 - tasmax
 - tasmin
 time_limits:
-- '2000-01-01'
-- '2020-11-14'
-start_of_test: '2008-01-01'
+- '2024-01-01'
+- '2035-11-14'
+start_of_test: '2025-01-01'
 
 batch_size: 180
 learning_rate: 0.0003
