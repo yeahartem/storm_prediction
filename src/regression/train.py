@@ -4,7 +4,7 @@ import warnings
 import torch
 import random
 import logging
-import datetime
+from datetime import datetime 
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
 from datamodule import WindDataModule
@@ -48,7 +48,7 @@ def train(cfg: DictConfig) -> None:
     checkpoint_loc = os.path.join(checkpoint_loc, existing_subfolders[-1])
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
-                         precision=cfg.precision,
+                         precision="16-mixed",
                          benchmark=True,
                          devices=[0],
                          check_val_every_n_epoch=1,
@@ -60,7 +60,7 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="linear_world_reg")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg_test")
 def main(cfg: DictConfig):    
     train(cfg)
     logging.info('Train finished!')

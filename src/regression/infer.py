@@ -3,6 +3,7 @@ sys.path.append(os.getcwd())
 import warnings
 import torch
 import random
+from tqdm import tqdm
 import logging
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
@@ -45,7 +46,7 @@ def test(cfg: DictConfig) -> None:
     default_root_dir = os.path.join(os.getcwd(), "outputs")#os.path.join(os.getcwd(), "outputs")
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
-                         precision=cfg.precision,
+                         precision="16-mixed",#cfg.precision,
                          benchmark=True,
                          devices=[0],
                          check_val_every_n_epoch=1,
@@ -56,7 +57,11 @@ def test(cfg: DictConfig) -> None:
     dm.setup()
     logging.info(f"Time to start infer {time.process_time() - start_time} seconds")
 
+    start_time = time.process_time()
     prediction = trainer.predict(model, dataloaders=dm.test_dataloader())
+    logging.info(f"Prediction has taken {time.process_time() - start_time} seconds")
+    pass
+
 
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="infer_world_reg_test")
