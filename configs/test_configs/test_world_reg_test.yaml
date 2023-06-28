@@ -53,7 +53,7 @@ warmup_steps: 200
 optimizer_name: "Adam"
 scheduler_name: "OneCycleLR"
 loss_name: "MSELoss"
-path_to_checkpoint: "2023-06-26/13-21-17/on_exception.ckpt" #will be searched within `outputs` folder
+path_to_checkpoint: "2023-06-28/15-42-36/on_exception.ckpt" #will be searched within `outputs` folder
 
 num_workers: 4
 gpu_num: 2

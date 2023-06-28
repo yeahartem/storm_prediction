@@ -1,9 +1,9 @@
 ---
 experiment_name: "cmip6_highres_test"
 make_climate_data: true
-make_normalization: true
-make_cleaned_weather_data: false
-make_target: false
+make_normalization: false
+make_cleaned_weather_data: true
+make_target: true
 
 paths_to_climate_files_folders: 
 - "./data_mounted/cmip/MRI-highres_H"
@@ -18,17 +18,17 @@ data_dir: "data_mounted/cmip6_highres_test/" # the resw will be saved in this di
 prepared_target_data_name: "target.parquet"
 prepared_stations_name: "stations.parquet"
 normalization_values_name: "normalization_values" # _mean.npy, _std.npy, will be added to the name
-saved_normalized: false
+saved_normalized: true
 precision: 32
 
 min_height: -10
 max_height: 800
 spatial_crop: False
 train_coords:
-  lat_min: 43.62
-  lat_max: 62.23
-  lon_min: 36.68
-  lon_max: 63.20
+  lat_min: 66.27
+  lat_max: 69.67
+  lon_min: 28.83
+  lon_max: 41.02
 
 variables:
 - sfcWindmax

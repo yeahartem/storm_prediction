@@ -19,17 +19,17 @@ prepared_target_data_name: "target.parquet"
 prepared_stations_name: "stations.parquet"
 path_to_folder_with_norm_for_infer: "data_mounted/cmip6_highres_test" # channel-wise normalization values (mean and std) will be copied from this folder)
 normalization_values_name: "normalization_values" # _mean.npy, _std.npy, will be added to the name
-saved_normalized: false
+saved_normalized: true
 precision: 32
 
 min_height: -10
 max_height: 800
 spatial_crop: False
 train_coords:
-  lat_min: 43.62
-  lat_max: 62.23
-  lon_min: 36.68
-  lon_max: 63.20
+  lat_min: 66.27
+  lat_max: 69.67
+  lon_min: 28.83
+  lon_max: 41.02
 
 variables:
 - sfcWindmax
@@ -40,7 +40,7 @@ variables:
 - tasmin
 time_limits:
 - '2024-01-01'
-- '2025-11-14'
+- '2024-06-01'
 start_of_test: '2024-03-01'
 
 half_side_size: 20
