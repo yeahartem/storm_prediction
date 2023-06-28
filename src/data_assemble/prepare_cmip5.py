@@ -107,8 +107,21 @@ def climate_to_netcdf(files: list, var: str, cfg):
     
     if cfg.saved_normalized:
         data = data_arr[var].data
-        data = np.divide((data - data.mean()), data.std())
-        np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data).astype(dtype)
+        try:
+            source_mean_path = os.path.join(os.getcwd(), cfg.path_to_folder_with_norm_for_infer, "normalization_mean_" + var + f"_{cfg.precision}.npy")
+            source_stds_path = os.path.join(os.getcwd(), cfg.path_to_folder_with_norm_for_infer, "normalization_std_" + var + f"_{cfg.precision}.npy")
+            os.popen(f'cp {source_mean_path} {cfg.data_dir}')
+            os.popen(f'cp {source_stds_path} {cfg.data_dir}')
+            mean_norm = np.load(source_mean_path)
+            std_norm  = np.load(source_stds_path)
+            logging.info("Copied " + var + " mean and std from " + os.path.join(os.getcwd(), cfg.path_to_folder_with_norm_for_infer) + f"\n mean={mean_norm}; std={std_norm}")
+        except ConfigAttributeError:
+            mean_norm = data_arr[var].sel(time=slice(None, cfg.start_of_test)).data.mean()
+            std_norm  = data_arr[var].sel(time=slice(None, cfg.start_of_test)).data.std()
+        data = np.divide((data - mean_norm), std_norm)
+        np.save(os.path.join(cfg.data_dir, "normalization_mean_" + var + f"_{cfg.precision}.npy"), mean_norm.astype(dtype))
+        np.save(os.path.join(cfg.data_dir, "normalization_std_" + var + f"_{cfg.precision}.npy"), std_norm.astype(dtype))
+        np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data.astype(dtype))
     else:
         np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
 
@@ -151,7 +164,10 @@ def load_dataset(cfg: DictConfig):
     files = get_cmip5_files(cfg.paths_to_climate_files_folders, cfg.variables)
     file_paths = [file.path for file in files]
     logging.info(f'loading {file_paths}')
-    data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords) 
+    try:
+        data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords, drop_variables=['height']) 
+    except TypeError:
+        data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, preprocess=process_coords, drop_variables=['height']) 
     return data_arr
 
 
@@ -172,7 +188,7 @@ def test_data_load(cfg: DictConfig):
     logging.info(f'OK')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip6_dataset_world_infer_test.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip6_dataset_world_infer_test")
 def main(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
@@ -185,14 +201,6 @@ def main(cfg: DictConfig):
                 files = get_cmip5_files(folder, var)
                 climate_to_netcdf(files, var, cfg)
                 logging.info(f"{var} data saved to {cfg.data_dir}")
-
-    try:
-        source_mean_path = os.path.join(os.getcwd(), cfg.path_to_folder_with_norm_for_infer, 'mean_' + f"{cfg.precision}.npy")
-        source_stds_path = os.path.join(os.getcwd(), cfg.path_to_folder_with_norm_for_infer, 'std_' + f"{cfg.precision}.npy")
-        os.popen(f'cp {source_mean_path} {cfg.data_dir}')
-        os.popen(f'cp {source_stds_path} {cfg.data_dir}')
-    except ConfigAttributeError:
-        pass
 
     if cfg.make_normalization:
         make_normalization_values(cfg)
