@@ -172,19 +172,23 @@ class DataInferPreLoader(DataPreLoader):
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg    
         self.generate_hash()       
+        lat_min, lat_max, lon_min, lon_max = cfg.test_coords['lat_min'], cfg.test_coords['lat_max'], cfg.test_coords['lon_min'], cfg.test_coords['lon_max']
         self.time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
         self.lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
+        self.lat_idxs = np.where(np.logical_and((self.lat_coords <= lat_max), (self.lat_coords >= lat_min)))
         self.lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
+        self.lon_idxs = np.where(np.logical_and((self.lon_coords <= lon_max), (self.lon_coords >= lon_min)))
+        
         if self.data_exists():
             self.load_data()
 
         self.dataset_as_blocks = self.load_climate_data()
-        lat_idxs = np.arange(self.dataset_as_blocks.shape[0])
-        lon_idxs = np.arange(self.dataset_as_blocks.shape[1])
+        # lat_idxs = np.arange(self.dataset_as_blocks.shape[0])
+        # lon_idxs = np.arange(self.dataset_as_blocks.shape[1])
         tim_idxs = np.arange(self.dataset_as_blocks.shape[2])
-        idxs_mesh = np.meshgrid(lat_idxs, lon_idxs, tim_idxs)
+        idxs_mesh = np.meshgrid(self.lat_idxs, self.lon_idxs, tim_idxs)
         self.train_data_idxs = None
-        self.test_data_idxs = np.vstack((idxs_mesh[0].flatten(), idxs_mesh[1].flatten(), idxs_mesh[2].flatten())) # walk order: time -> lat -> lon (2 -> 0 -> 1)
+        self.test_data_idxs = np.vstack((idxs_mesh[0].flatten(), idxs_mesh[1].flatten(), idxs_mesh[2].flatten(), np.empty(len(idxs_mesh[2].flatten())))) # walk order: time -> lat -> lon (2 -> 0 -> 1)
         # self.test_data_idxs = np.vstack((self.test_data_idxs, (-1) * np.ones(self.test_data_idxs[-1], dtype=int)))
         # self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
         # self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
