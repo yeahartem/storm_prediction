@@ -90,15 +90,15 @@ class XarrayDataset(Dataset):
         return self.data_idxs.shape[1]
 
     def __getitem__(self, idx):
-        
-        lat, lon, date = self.data_idxs[:, idx]
+
+        lat, lon, date, y = self.data_idxs[:, idx]
         X = self.dataset_as_blocks[lat, lon, date]
-        # y = torch.tensor(y, dtype=self.dtype)
+        y = torch.tensor(y, dtype=self.dtype)
         # y = torch.add(torch.div(y, self.target_max), -1.0 * self.target_min)  
         X = torch.tensor(X, dtype=self.dtype)
         if self.transforms:
             X = self.transforms(X)
-        return X#, y
+        return X, y
     
 if __name__ == '__main__':
     pass
