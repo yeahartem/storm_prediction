@@ -43,8 +43,8 @@ time_limits:
 - '2020-11-14'
 start_of_test: '2008-01-01'
 
-batch_size: 256
-learning_rate: 0.0003
+batch_size: 2548
+learning_rate: 0.004
 weight_decay: 0.0001
 max_epoch: 5
 #Annealing steps
@@ -55,5 +55,5 @@ scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 
 num_workers: 4
-gpu_num: '1,'
+gpu_num: 4
 data_in_ram: true

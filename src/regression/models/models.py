@@ -28,10 +28,10 @@ class WindNet20x41(nn.Module):
             nn.ReLU(),
             nn.InstanceNorm3d(16),
             nn.Flatten(start_dim=1),
-            nn.Linear(256, 100),
+            nn.Linear(400, 256),
             nn.ReLU(),  
-            nn.BatchNorm1d(100),
-            nn.Linear(100, 1)
+            nn.BatchNorm1d(256),
+            nn.Linear(256, 1)
         )
         
     def forward(self, X) -> torch.Tensor:
