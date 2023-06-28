@@ -45,7 +45,7 @@ def test(cfg: DictConfig) -> None:
     default_root_dir = os.path.join(os.getcwd(), "outputs")#os.path.join(os.getcwd(), "outputs")
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,
                          accelerator="gpu",
-                         precision=cfg.precision,
+                         precision="16-mixed",
                          benchmark=True,
                          devices=[0],
                          check_val_every_n_epoch=1,
