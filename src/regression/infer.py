@@ -6,6 +6,7 @@ import random
 from tqdm import tqdm
 import logging
 import pytorch_lightning as pl
+import pandas as pd
 from src.regression.models.pl_module import WindNetPL
 from datamodule import WindDataInferModule
 from datetime import datetime
@@ -59,15 +60,30 @@ def test(cfg: DictConfig) -> None:
 
     start_time = time.process_time()
     prediction = trainer.predict(model, dataloaders=dm.test_dataloader())
+    prediction = torch.concat(prediction)
     logging.info(f"Prediction has taken {time.process_time() - start_time} seconds")
-    pass
+    logging.info(f"Starting saving into .kml")
+    start_time = time.process_time()
+    time_axis  = dm.DPL.time_coords[dm.DPL.test_data_idxs[2,:] + dm.DPL.cfg.time_window//2]
+    lat_axis   = dm.DPL.lat_coords[dm.DPL.test_data_idxs[0, :]]
+    lon_axis   = dm.DPL.lon_coords[dm.DPL.test_data_idxs[1, :]]
+
+    df_infer = pd.DataFrame({'m/s': prediction.numpy().squeeze(), 'date': time_axis, 'lat': lat_axis, 'lon': lon_axis})
+    df_infer.to_csv(os.path.join(cfg.data_dir, 'inference_raw.csv'))
+    logging.info(f"Saved raw day-wise inference to " + os.path.join(cfg.data_dir, 'inference_raw.csv'))
+    logging.info(f"You may estimate whatever risks, quantiles using this dataframe, using risk_esimation.py")
+    # df_grpby = df_infer.groupby(['lat', 'lon', df_infer.date.dt.year, df_infer.date.dt.month])
+    # df_risks = df_grpby.agg(lambda x: (x > cfg.wind_risk_threshold).mean())
+    # df_risks
+    # logging.info("Estimated risks for {cfg.wind_risk_threshold} m/s, saved into")
+    logging.info(f"Saving into .csv has taken {time.process_time() - start_time} seconds")
 
 
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="infer_world_reg_test")
 def main(cfg: DictConfig):    
     test(cfg)
-    logging.info('Test finished!')
+    logging.info('Inference finished!')
 
 
 if __name__ == "__main__":      
