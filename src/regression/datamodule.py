@@ -18,7 +18,7 @@ class WindDataModule(pl.LightningDataModule):
         
         if self.cfg.normalize:
             mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
-            std_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
+            std_channels = np.load(os.path.join(self.cfg.data_dir, f"std_{cfg.precision}.npy"))
             self.transform = torchvision.transforms.Compose(
                 [
                     torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),
@@ -67,7 +67,7 @@ class WindDataInferModule(pl.LightningDataModule):
             self.dataset_val = None#XarrayDataset(self.DPL.test_data_idxs, self.DPL.dataset_as_blocks,
                                #                    transforms=self.DPL.transform)
         if stage == "test" or stage is None:
-            self.dataset_test = XarrayDataset(self.DPL.test_data_idxs, self.DPL.dataset_as_blocks,
+            self.dataset_test = XarrayInferDataset(self.DPL.test_data_idxs, self.DPL.dataset_as_blocks,
                                                     transforms=self.DPL.transform)
 
     # def train_dataloader(self):
@@ -99,6 +99,21 @@ class XarrayDataset(Dataset):
         if self.transforms:
             X = self.transforms(X)
         return X, y
-    
+
+class XarrayInferDataset(XarrayDataset):
+    def __init__(self, data_idxs, dataset_as_blocks, dtype=torch.float16, transforms=None):
+        super().__init__(data_idxs, dataset_as_blocks, dtype=dtype, transforms=transforms)
+
+    def __getitem__(self, idx):
+
+        lat, lon, date, y = self.data_idxs[:, idx]
+        X = self.dataset_as_blocks[lat, lon, date]
+        # y = torch.tensor(y, dtype=self.dtype)
+        # y = torch.add(torch.div(y, self.target_max), -1.0 * self.target_min)  
+        X = torch.tensor(X, dtype=self.dtype)
+        if self.transforms:
+            X = self.transforms(X)
+        return X#, y
+
 if __name__ == '__main__':
     pass
