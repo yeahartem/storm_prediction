@@ -9,7 +9,7 @@ from torchmetrics import MaxMetric, MeanMetric, MinMetric
 from torch.functional import F
 import torch.nn as nn
 import numpy as np
-from src.regression.models import *
+from src.regression.models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
 
 
@@ -22,6 +22,9 @@ class WindNetPL(pl.LightningModule):
             self.net = WindNet20x41()
         elif cfg.model_name=='Linear10x51':
             self.net = Linear10x51()
+        if cfg.model_name=='ConvLSTM':
+            self.net = ConvLSTM(len(cfg.variables), cfg.hidden_dim, tuple(cfg.kernel_size), cfg.num_layers,
+                 batch_first=False, bias=True, return_all_layers=False)
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
         self.scheduler_name = cfg.scheduler_name

@@ -49,7 +49,7 @@ class WindDataModule(pl.LightningDataModule):
 class XarrayDataset(Dataset):
     def __init__(self, data_idxs, dataset_as_blocks, dtype=torch.float16, transforms=None):
         self.dataset_as_blocks = dataset_as_blocks
-        self.data_idxs = data_idxs[:,:30000]
+        self.data_idxs = data_idxs
         self.dtype = dtype
         self.transforms = transforms
 
