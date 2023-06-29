@@ -18,7 +18,7 @@ class WindDataModule(pl.LightningDataModule):
         
         if self.cfg.normalize:
             mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
-            std_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
+            std_channels = np.load(os.path.join(self.cfg.data_dir, f"std_{cfg.precision}.npy"))
             self.transform = torchvision.transforms.Compose(
                 [
                     torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),

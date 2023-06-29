@@ -1,36 +1,39 @@
 ---
 experiment_name: cmip5_lrsch_reg_w_naivemode21x41_max
+make_climate_data: true
+make_normalization: true
+make_cleaned_weather_data: false
+make_target: false
+
+paths_to_climate_files_folders: 
+- '/home/teshbek/Datasets/cmip5_orig/rcp45/'
+
+path_to_weather_stations_data: data_mounted/weatherstation_data
+data_dir: data_mounted/cmip5_world_infer/ # the rest will be saved in this directory
+
+saved_normalized: false #only save to float16 with saved_normalized=true 
+precision: 32 # 32 
 project_name: Wind-speed-regression
 target_type: wind_ms
-
-data_dir: ./data_mounted/cmip5_world3
-path_to_prepared_target_data: ./data_mounted/cmip5_world3/target.parquet
-path_to_prepared_stations: ./data_mounted/cmip5_world3/stations.parquet
+checkpoint_path: 'outputs/epoch=0-step=5505.ckpt'
 
 model_name: WindNet20x41
 normalize: false
-precision: 16 #  16 32 "16-mixed" "bf16-mixed"
-half_side_size: 21
-time_window: 41  # odd only
-time_freq: 1
+
 target_threshold: 20
-target_max: 68.94
-target_min: 0.0
 
-min_height: -10
-max_height: 800
+spatial_crop: False
 train_coords:
-  lat_min: -88.0
-  lat_max: 88.0
-  lon_min: -179.0
-  lon_max: 180.45
-
-test_coords:
   lat_min: 43.62
   lat_max: 62.23
   lon_min: 36.68
   lon_max: 63.20
   
+time_limits:
+- '2018-01-01'
+- '2020-11-14'
+
+start_of_test: false #false means all data will be used for mean, std calulation 
 variables:
 - sfcWindmax
 - sfcWind
@@ -38,25 +41,11 @@ variables:
 - psl
 - tasmax
 - tasmin
-time_limits:
-- '1950-01-01'
-- '2020-11-14'
-start_of_test: '2008-01-01'
 
 batch_size: 250
-learning_rate: 0.004
-weight_decay: 0.0001
-max_epoch: 5
-
-
-optimizer_name: 'Adam'
-scheduler_name: 'OneCycleLR'
-loss_name: 'MSELoss'
-
 num_workers: 4
 gpu_num: 1
 distributed: false
 num_nodes: 1
 strategy: 'ddp'
 
-log_every_n_steps: 100

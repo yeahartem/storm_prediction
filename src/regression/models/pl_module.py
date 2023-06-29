@@ -22,11 +22,12 @@ class WindNetPL(pl.LightningModule):
             self.net = WindNet20x41()
         elif cfg.model_name=='Linear10x51':
             self.net = Linear10x51()
-        if cfg.model_name=='ConvLSTM':
+        elif cfg.model_name=='ConvLSTM':
             self.net = ConvLSTM(len(cfg.variables), cfg.hidden_dim, tuple(cfg.kernel_size), cfg.num_layers,
                  batch_first=False, bias=True, return_all_layers=False)
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
+        
         self.scheduler_name = cfg.scheduler_name
         if cfg.optimizer_name=='Adam':
             self.optimizer = torch.optim.Adam

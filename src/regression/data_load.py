@@ -17,6 +17,9 @@ class DataPreLoader:
 
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg    
+        assert (cfg.precision == 16 and not cfg.normalize) or (cfg.precision == 32 and cfg.normalize), \
+        ''' 16 bit is already normalized. 32 bit is not normalized'''
+        
         self.generate_hash()       
         self.time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
         self.lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
@@ -52,9 +55,13 @@ class DataPreLoader:
             var_data[i] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
 
         var_data = np.moveaxis(var_data, 0, 1)
-        var_data_windows = np.lib.stride_tricks.sliding_window_view(var_data,
-                                                        (self.cfg.time_window, var_data.shape[1], 2 * self.cfg.half_side_size + 1,
-                                                            2 * self.cfg.half_side_size + 1))
+        var_data_windows = sliding_window_view(var_data,
+                                              (
+                                                self.cfg.time_window, var_data.shape[1],
+                                                2 * self.cfg.half_side_size + 1,
+                                                2 * self.cfg.half_side_size + 1
+                                              )
+                                              )
         var_data_windows = np.moveaxis(np.squeeze(var_data_windows), 0, 2)
         logging.info(f"Numpy block preparation took {time.process_time() - start_time} seconds")
 
@@ -72,8 +79,10 @@ class DataPreLoader:
         if len(values)< self.cfg.time_window:
             return None
         else:
-            values = self.time_coords.searchsorted(values) # time into inds
-            return np.array(values)[self.cfg.time_window//2:len(values) - self.cfg.time_window//2]
+            indxs = self.time_coords.searchsorted(values) # time into inds
+            indxs = np.array(values)[self.cfg.time_window//2:len(values) - self.cfg.time_window//2]
+            indxs = indxs - self.cfg.time_window//2 
+            return indxs
 
 
     def align_coords(self, values):

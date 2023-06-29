@@ -117,7 +117,6 @@ class ConvLSTMCell(nn.Module):
 class ConvLSTM(nn.Module):
 
     """
-
     Parameters:
         input_dim: Number of channels in input
         hidden_dim: Number of hidden channels
