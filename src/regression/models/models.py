@@ -1,13 +1,13 @@
 from torch import nn
 import torch
-import wandb
 
-class WindNet(nn.Module):
-    def __init__(self, cfg) -> None:        
-        super(WindNet, self).__init__()
+
+class WindNet20x41(nn.Module):
+    def __init__(self) -> None:        
+        super(WindNet20x41, self).__init__()
 
         self.net = nn.Sequential(
-            nn.Conv3d(in_channels=len(cfg.variables), out_channels=64, kernel_size=(7, 5, 5)), 
+            nn.Conv3d(in_channels=6, out_channels=64, kernel_size=(7, 5, 5)), 
             nn.ReLU(),
             nn.InstanceNorm3d(64),
             nn.MaxPool3d((3, 3, 3), stride=(2, 2, 2)),
@@ -32,6 +32,24 @@ class WindNet(nn.Module):
             nn.ReLU(),  
             nn.BatchNorm1d(100),
             nn.Linear(100, 1)
+        )
+        
+    def forward(self, X) -> torch.Tensor:
+        X = X.transpose(1, 2)
+        output = self.net(X)
+        return output
+    
+
+class Linear10x51(nn.Module):
+    def __init__(self) -> None:   
+        super(Linear10x51, self).__init__()        
+
+        self.net = nn.Sequential(
+            nn.Flatten(start_dim=1),
+            nn.Linear(134946, 200),
+            nn.ReLU(),  
+            nn.BatchNorm1d(200),
+            nn.Linear(200, 1),
         )
 
     def forward(self, X) -> torch.Tensor:

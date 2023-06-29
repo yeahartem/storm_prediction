@@ -1,0 +1,49 @@
+---
+experiment_name: cmip5world
+make_climate_data: true
+make_normalization: true
+make_cleaned_weather_data: false
+make_target: false
+
+paths_to_climate_files_folders: 
+- data_mounted/cmip5_world2
+
+path_to_elevation: data_mounted/cmip/elevation/elevation.nc
+path_to_weather_stations_data: data_mounted/weatherstation_data/data_meteo_full.parquet
+path_to_weather_station_list: data_mounted/weatherstation_data/weatherstation_list.json
+path_to_allowed_stations: configs/splits/allowed_stations.txt
+path_to_world_weather_stations_data: data_mounted/weatherstation_data/world_stations_25_days_6_months.parquet
+
+data_dir: data_mounted/cmip5_world3/ # the resw will be saved in this directory
+prepared_target_data_name: target.parquet
+prepared_stations_name: stations.parquet
+normalization_values_name: normalization_values # _mean.npy, _std.npy, will be added to the name
+
+saved_normalized: true
+precision: 16 # 32
+
+min_height: -10
+max_height: 800
+spatial_crop: False
+train_coords:
+  lat_min: -88.0
+  lat_max: 88.0
+  lon_min: -179.0
+  lon_max: 180.45
+
+variables:
+- sfcWindmax
+- sfcWind
+- pr
+- psl
+- tasmax
+- tasmin
+time_limits:
+- '1950-01-01'
+- '2020-11-14'
+start_of_test: '2008-01-01'
+
+half_side_size: 20
+pad_data: false
+target_column: 
+- max_speed

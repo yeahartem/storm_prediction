@@ -20,3 +20,12 @@ pyarrow==12.0.0
 swifter==1.3.4
 tqdm==4.65.0
 dask
+timm
+polars
+netCDF4
+zarr
+numba
+torchdata
+geopandas
+shapely
+fiona

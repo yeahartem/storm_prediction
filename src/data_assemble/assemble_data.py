@@ -1,7 +1,7 @@
 import time
 import numpy as np
 from tqdm import tqdm
-import pandas as pd
+import dask
 import xarray
 from datetime import timedelta
 import logging
@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore")
 
 
 def make_blocks_no_target(
-        dataset_as_xarray: dict,
+        dataset_as_xarray: xarray.DataArray,
         half_side_size: int = 4,
         time_stack_size=1,
         time_freq=1,
