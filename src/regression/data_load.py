@@ -184,16 +184,12 @@ class DataInferPreLoader(DataPreLoader):
             self.load_data()
 
         self.dataset_as_blocks = self.load_climate_data()
-        # lat_idxs = np.arange(self.dataset_as_blocks.shape[0])
-        # lon_idxs = np.arange(self.dataset_as_blocks.shape[1])
+        
         time_idxs = np.arange(self.dataset_as_blocks.shape[2])
         idxs_mesh = np.meshgrid(self.lat_idxs, self.lon_idxs, time_idxs)
         self.train_data_idxs = None
         self.test_data_idxs = np.vstack((idxs_mesh[0].flatten(), idxs_mesh[1].flatten(), idxs_mesh[2].flatten(), np.empty(len(idxs_mesh[2].flatten())))).astype(int) # walk order: time -> lat -> lon (2 -> 0 -> 1)
-        # self.test_data_idxs = np.vstack((self.test_data_idxs, (-1) * np.ones(self.test_data_idxs[-1], dtype=int)))
-        # self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
-        # self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
-        # logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
+        
         logging.info(f'Records prepared infer {self.test_data_idxs.shape[1]}')
 
         if self.cfg.normalize:
