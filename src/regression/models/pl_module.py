@@ -9,7 +9,7 @@ from torchmetrics import MaxMetric, MeanMetric, MinMetric
 from torch.functional import F
 import torch.nn as nn
 import numpy as np
-from models.models import *
+from src.regression.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
 
 
@@ -96,7 +96,7 @@ class WindNetPL(pl.LightningModule):
         self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/MAE_OP", self.train_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
-        self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
+        # self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
 
         output = OrderedDict(
             {

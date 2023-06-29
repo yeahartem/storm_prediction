@@ -7,7 +7,7 @@ import torchvision
 from torch.utils.data import DataLoader, Dataset
 import torch
 from omegaconf import DictConfig
-from data_load import DataPreLoader
+from src.regression.data_load import DataPreLoader
 
 
 class WindDataModule(pl.LightningDataModule):
@@ -49,7 +49,7 @@ class WindDataModule(pl.LightningDataModule):
 class XarrayDataset(Dataset):
     def __init__(self, data_idxs, dataset_as_blocks, dtype=torch.float16, transforms=None):
         self.dataset_as_blocks = dataset_as_blocks
-        self.data_idxs = data_idxs
+        self.data_idxs = data_idxs[:,:30000]
         self.dtype = dtype
         self.transforms = transforms
 
