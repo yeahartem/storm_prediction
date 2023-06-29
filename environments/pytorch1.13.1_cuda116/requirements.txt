@@ -26,3 +26,6 @@ netCDF4
 zarr
 numba
 torchdata
+geopandas
+shapely
+fiona
