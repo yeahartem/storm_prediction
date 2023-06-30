@@ -7,6 +7,7 @@ import logging
 import dask
 import hydra
 from omegaconf import DictConfig, OmegaConf, ListConfig
+from omegaconf.errors import ConfigAttributeError
 from src.data_assemble.assemble_target import make_target
 from src.data_assemble.prepare_target import get_stations_RU, clean_weather_data_RU, clean_weather_data_WORLD
 import time
@@ -85,7 +86,11 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
 
     if not experiment_name:
         experiment_name = files[0].experiment_name
-    data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy')
+    try:
+        data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', drop_variables=['height'])
+    except TypeError:
+        data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, drop_variables=['height'])
+    
     if time_range:
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
     data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
@@ -149,7 +154,10 @@ def load_dataset(cfg: DictConfig):
     files = get_cmip5_files(cfg.paths_to_climate_files_folders, cfg.variables)
     file_paths = [file.path for file in files]
     logging.info(f'loading {file_paths}')
-    data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords) 
+    try:
+        data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords, drop_variables=['height']) 
+    except TypeError:
+        data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, preprocess=process_coords, drop_variables=['height']) 
     return data_arr
 
 

@@ -5,13 +5,11 @@ import random
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset
-from src.data_assemble.assemble_data import make_blocks_numpy
 from numpy.lib.stride_tricks import sliding_window_view
 from datetime import datetime
 import time
 import polars
 import logging
-
 
 
 def prepare_data(cfg):

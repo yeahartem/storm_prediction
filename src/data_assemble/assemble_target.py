@@ -124,11 +124,11 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
                                            stations_df=stations_df_ru)
           
     df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()])   
-    print(stations_df_ru)
+    # print(stations_df_ru)
 
     df = df.join(stations_df_ru, on='station_name', how='left')
-    df = df.select(pl.col(["time", "y", "lat", "lon"]))
-    print(df)
+    df = df.select(pl.col(["time", "y", "lat", "lon"])).drop_nulls()
+    # print(df)
     gc.collect()
     # df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(pl.Categorical).keep_name()])
 
@@ -160,7 +160,7 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
     gc.collect()         
 
     df = stations_to_data_grid(dataset_xarray=dataset_xarray, stations_df=df)
-    df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()])
+    df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()]).drop_nulls()
     # df = df.select([pl.all().exclude("station_name")])
     df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name + '.pp2'))
 
