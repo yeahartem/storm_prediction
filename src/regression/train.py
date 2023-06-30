@@ -13,12 +13,12 @@ from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 import time
-from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
 
 warnings.filterwarnings("ignore")
 torch.manual_seed(112)
 random.seed(112)
-os.environ['WANDB_MODE'] = 'online'
+os.environ['WANDB_MODE'] = 'offline'
 os.environ['WANDB_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'outputs/wandb'
 os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
@@ -36,26 +36,40 @@ def train(cfg: DictConfig) -> None:
 
     # if torch.__version__ >= "2.0.0":
     #     model = torch.compile(model)
+    #     logging.info("Model compiled")
     # else:
-    #     print("PyTorch version is smaller than 2.0, compilation is not supported")
+    #     logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
         
     wandb_logger.watch(model, log='all', log_freq=100)       
-    lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)
-    default_root_dir = os.path.join(os.getcwd(), "outputs")#os.path.join(os.getcwd(), "outputs")
-    checkpoint_loc = os.path.join(default_root_dir, datetime.today().strftime('%Y-%m-%d'))
-    existing_subfolders = next(os.walk(os.path.join(default_root_dir, datetime.today().strftime('%Y-%m-%d'))))[1]
-    existing_subfolders.sort()
-    checkpoint_loc = os.path.join(checkpoint_loc, existing_subfolders[-1])
-    trainer = pl.Trainer(max_epochs=cfg.max_epoch,
+    default_root_dir = os.path.join(os.getcwd(), "outputs")
+    checkpoint_loc = "outputs"    
+
+    checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
+    # exception_checkpoint_callback = OnExceptionCheckpoint(checkpoint_loc)
+    lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
+    
+    trainer = pl.Trainer(max_epochs=cfg.max_epoch,                         
+                         default_root_dir=default_root_dir,
+                         callbacks=[lr_monitor, checkpoint_callback],
+                         #performance
                          accelerator="gpu",
                          precision="16-mixed",
                          benchmark=True,
-                         devices=[0],
+                         #validation
                          check_val_every_n_epoch=1,
-                         default_root_dir=default_root_dir,
+                         num_sanity_val_steps=0,
+                         #distributed
+                         devices=cfg.gpu_num,
+                         num_nodes=cfg.num_nodes if cfg.distributed else 1,
+                         strategy=cfg.strategy if cfg.distributed else 'auto',
+                         #log
+                         log_every_n_steps=cfg.log_every_n_steps,
                          logger=wandb_logger,
-                         callbacks=[lr_monitor, OnExceptionCheckpoint(checkpoint_loc)],) 
-          
+                         #misc
+                         profiler='simple',
+                         ) 
+    
+    # wandb.config.update(OmegaConf.to_container(cfg, resolve=True))    
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
     

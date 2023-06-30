@@ -9,7 +9,7 @@ from torchmetrics import MaxMetric, MeanMetric, MinMetric
 from torch.functional import F
 import torch.nn as nn
 import numpy as np
-from models.models import *
+from src.regression.models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
 
 
@@ -22,8 +22,12 @@ class WindNetPL(pl.LightningModule):
             self.net = WindNet20x41()
         elif cfg.model_name=='Linear10x51':
             self.net = Linear10x51()
+        elif cfg.model_name=='ConvLSTM':
+            self.net = ConvLSTM(len(cfg.variables), cfg.hidden_dim, tuple(cfg.kernel_size), cfg.num_layers,
+                 batch_first=False, bias=True, return_all_layers=False)
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
+        
         self.scheduler_name = cfg.scheduler_name
         if cfg.optimizer_name=='Adam':
             self.optimizer = torch.optim.Adam
@@ -96,7 +100,7 @@ class WindNetPL(pl.LightningModule):
         self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/MAE_OP", self.train_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
-        self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
+        # self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
 
         output = OrderedDict(
             {
@@ -118,8 +122,8 @@ class WindNetPL(pl.LightningModule):
         self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
         self.val_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
 
-        self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/MAE_OP", self.val_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
