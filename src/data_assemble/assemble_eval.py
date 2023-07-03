@@ -2,19 +2,18 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf
 import os 
 import pandas as pd
+import polars
 
 def load_dataset(cfg: DictConfig, time_slices=None):
     """Load climate data from given folder"""
 
-    cfg.precision = 32 #only 32 bit is supported
-    
+    # cfg.precision = 32     
     time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
     lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
     lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
     var_data = np.empty((len(cfg.variables), len(time_coords), len(lat_coords), len(lon_coords)), dtype=np.float32)
 
     for i, var in enumerate(cfg.variables):
-
         var_data[i] = np.load(os.path.join(cfg.data_dir, var + f'_{cfg.precision}.npy'))
 
     # time_range = [np.datetime64(pd.to_datetime(t)) for t in cfg.get("time_limits")]
@@ -22,4 +21,24 @@ def load_dataset(cfg: DictConfig, time_slices=None):
     # var_data = var_data[:, time_idxs]
     if time_slices:
         var_data = var_data[:, :time_slices]
+        time_coords = time_coords[:time_slices]
+
     return var_data, time_coords, lat_coords, lon_coords
+
+
+def load_target(cfg):
+    """Load target data from given folder"""
+    target_df = polars.read_parquet(cfg.path_to_prepared_target_data)
+    target_df = (
+        target_df
+        .lazy()        
+        .sort("time")
+        .groupby(["station_name"])
+        .agg(
+            [polars.col('time'), polars.col('y')]
+        )
+        .collect()
+    )
+
+    return target_df
+

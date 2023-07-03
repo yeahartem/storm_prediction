@@ -2,85 +2,68 @@ import sys,os
 sys.path.append(os.getcwd())
 import warnings
 import torch
-import random
-from tqdm import tqdm
 import logging
-import pytorch_lightning as pl
-import pandas as pd
+from tqdm import tqdm
+from src.data_assemble.assemble_eval import load_dataset, load_target
+from src.regression.data_load import DataPreLoader
 from src.regression.models.pl_module import WindNetPL
-from datamodule import WindDataInferModule
-from datetime import datetime
 import hydra
-from omegaconf import DictConfig, OmegaConf
-from pytorch_lightning.loggers import WandbLogger
-import wandb
+from omegaconf import DictConfig
 import time
-from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint
-
+import numpy as np
 warnings.filterwarnings("ignore")
-torch.manual_seed(112)
-random.seed(112)
-os.environ['WANDB_MODE'] = 'online'
-os.environ['WANDB_DIR'] = 'outputs/wandb'
-os.environ['WANDB_CONFIG_DIR'] = 'outputs/wandb'
-os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
-torch.set_float32_matmul_precision('high')
+
+
+
+def prepare_data(cfg: DictConfig):
+    """Prepare data for inference"""
+    var_data, time_coords, lat_coords, lon_coords = load_dataset(cfg, time_slices = 500)
+    var_data_blocks = DataPreLoader.data_to_blocks(var_data, cfg.time_window, cfg.half_side_size)
+    
+    time_coords = time_coords[cfg.time_window//2:len(time_coords) - cfg.time_window//2]
+    lat_coords = lat_coords[cfg.half_side_size:len(lat_coords) - cfg.half_side_size]
+    lon_coords = lon_coords[cfg.half_side_size:len(lon_coords) - cfg.half_side_size]
+    assert var_data_blocks.shape[0] == len(lat_coords)
+    assert var_data_blocks.shape[1] == len(lon_coords)
+    assert var_data_blocks.shape[2] == len(time_coords)
+    return var_data_blocks, time_coords, lat_coords, lon_coords
+
+
+def batch_generator(var_data_blocks, time_coords, lat_coords, lon_coords, batch_size):
+    """Generate batches for inference"""
+
+    for index in np.ndindex(var_data_blocks.shape[0], var_data_blocks.shape[1], var_data_blocks.shape[2]):
+        batch = var_data_blocks[index[0], index[1], index[2]]
+        batch = torch.from_numpy(batch).to(torch.float16) #torch.float32
+        batch = batch.unsqueeze(0)
+        yield batch, lat_coords[index[0]], lon_coords[index[1]], time_coords[index[2]], 
+
 
 
 def test(cfg: DictConfig) -> None:        
-    start_time = time.process_time()  
-    wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "outputs/wandb"),
-                               project=cfg.project_name,
-                               name=cfg.experiment_name)
-    dm = WindDataInferModule(cfg)
-    model = WindNetPL.load_from_checkpoint(os.path.join(os.getcwd(), "outputs", cfg.path_to_checkpoint), cfg=cfg)
 
+    model = WindNetPL.load_from_checkpoint(cfg.path_to_checkpoint, cfg=cfg).half()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.eval()
 
-    # if torch.__version__ >= "2.0.0":
-    #     model = torch.compile(model)
-    # else:
-    #     print("PyTorch version is smaller than 2.0, compilation is not supported")
+    var_data_blocks, time_coords, lat_coords, lon_coords = prepare_data(cfg)
+    dataloader = batch_generator(var_data_blocks, time_coords, lat_coords, lon_coords, cfg.batch_size)
+    num_items_to_predict = var_data_blocks.shape[0] * var_data_blocks.shape[1] * var_data_blocks.shape[2]
+    logging.info(f"Number of items to predict: {num_items_to_predict}")
+    predictions_list = []
+    coords_list = []    
+    with torch.no_grad():
+        for batch in tqdm(dataloader, total=num_items_to_predict, desc="Inference"):
+            data, lat, lon, t = batch
+            data = data.to(device)
+            prediction = model(data)
+            predictions_list.append(prediction.cpu().numpy())
+            coords_list.append([lat, lon, t])
+    
 
-    wandb_logger.watch(model, log='all', log_freq=100)       
-    lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)
-    default_root_dir = os.path.join(os.getcwd(), "outputs")#os.path.join(os.getcwd(), "outputs")
-    trainer = pl.Trainer(max_epochs=cfg.max_epoch,
-                         accelerator="gpu",
-                         precision="16-mixed",#cfg.precision,
-                         benchmark=True,
-                         devices=[0],
-                         check_val_every_n_epoch=1,
-                         default_root_dir=default_root_dir,
-                         logger=wandb_logger,
-                         callbacks=[lr_monitor],) 
-
-    dm.setup()
-    logging.info(f"Time to start infer {time.process_time() - start_time} seconds")
-
-    start_time = time.process_time()
-    prediction = trainer.predict(model, dataloaders=dm.test_dataloader())
-    prediction = torch.concat(prediction)
-    logging.info(f"Prediction has taken {time.process_time() - start_time} seconds")
-    logging.info(f"Starting saving into .kml")
-    start_time = time.process_time()
-    time_axis  = dm.DPL.time_coords[dm.DPL.test_data_idxs[2,:] + dm.DPL.cfg.time_window//2]
-    lat_axis   = dm.DPL.lat_coords[dm.DPL.test_data_idxs[0, :]]
-    lon_axis   = dm.DPL.lon_coords[dm.DPL.test_data_idxs[1, :]]
-
-    df_infer = pd.DataFrame({'m/s': prediction.numpy().squeeze(), 'date': time_axis, 'lat': lat_axis, 'lon': lon_axis})
-    df_infer.to_csv(os.path.join(cfg.data_dir, 'inference_raw.csv'))
-    logging.info(f"Saved raw day-wise inference to " + os.path.join(cfg.data_dir, 'inference_raw.csv'))
-    logging.info(f"You may estimate whatever risks, quantiles using this dataframe, using risk_esimation.py")
-    # df_grpby = df_infer.groupby(['lat', 'lon', df_infer.date.dt.year, df_infer.date.dt.month])
-    # df_risks = df_grpby.agg(lambda x: (x > cfg.wind_risk_threshold).mean())
-    # df_risks
-    # logging.info("Estimated risks for {cfg.wind_risk_threshold} m/s, saved into")
-    logging.info(f"Saving into .csv has taken {time.process_time() - start_time} seconds")
-
-
-
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="infer_world_reg_test")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="cmip5_w_eval.yaml")
 def main(cfg: DictConfig):    
     test(cfg)
     logging.info('Inference finished!')
@@ -88,4 +71,3 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":      
     main()
-    wandb.finish()

@@ -1,0 +1,75 @@
+---
+project_name: Wind-speed-regression
+experiment_name: 'cmip5_infer'
+make_climate_data: true
+make_normalization: true #will be taken from train
+make_cleaned_weather_data: false
+make_target: false
+load_normalization: true
+
+paths_to_climate_files_folders: 
+- 'data_mounted/cmip5_orig'
+
+path_to_weather_stations: 'data_mounted/weatherstation_data/'
+
+path_to_folder_with_norm_for_infer: 'data_mounted/cmip5_world3' # channel-wise normalization values (mean and std) will be copied from this folder)
+data_dir: 'data_mounted/cmip5_infer/' # the rest will be saved in this directory
+prepared_target_data_name: 'target.parquet'
+prepared_stations_name: 'stations.parquet'
+normalization_values_name: 'normalization_values' # _mean.npy, _std.npy, will be added to the name
+
+
+
+saved_normalized: true
+precision: 16
+
+
+spatial_crop: False
+train_coords:
+  lat_min: -88.0
+  lat_max: 88.0
+  lon_min: -179.0
+  lon_max: 180.45
+test_coords:
+  lat_min: -88.0
+  lat_max: 88.0
+  lon_min: -179.0
+  lon_max: 180.45
+  
+variables:
+- sfcWindmax
+- sfcWind
+- pr
+- psl
+- tasmax
+- tasmin
+
+time_limits:
+- '2024-01-01'
+- '2024-06-01'
+start_of_test: False
+
+# regards model
+path_to_checkpoint: 'outputs/epoch=0-step=5505.ckpt'
+model_name: WindNet20x41
+normalize: false #already normalized
+max_epoch: 1000
+batch_size: 250
+learning_rate: 0.004
+weight_decay: 0.0001
+
+half_side_size: 21
+time_window: 41  # odd only
+optimizer_name: 'Adam'
+scheduler_name: 'OneCycleLR'
+loss_name: 'MSELoss'
+
+num_workers: 0
+gpu_num: 1
+distributed: false
+num_nodes: 1
+strategy: 'ddp'
+
+log_every_n_steps: 100
+target_column: 
+- 'max_speed'

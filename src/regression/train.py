@@ -74,7 +74,7 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg_test")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="conv_w_reg")
 def main(cfg: DictConfig):    
     train(cfg)
     logging.info('Train finished!')

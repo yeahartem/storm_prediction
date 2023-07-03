@@ -7,43 +7,141 @@ import logging
 import xarray as xr
 import time
 from omegaconf import DictConfig, ListConfig
-from src.data_assemble.prepare_target import get_stations_RU
 import gc
 import polars as pl
 
 
-def preprocess_coordinates():
+def preprocess_coordinates(): # TODO 
     pass
+
+
+def cleanup_ms_name(name: str):        
+        name = name.replace('"', '')
+        name = name.replace(',', '')
+        name = name.casefold()
+        return name
+
+def get_stations_RU(cfg) -> pd.DataFrame:
+
+    all_stations_data = cfg.path_to_weather_station_list
+    rectangle_coords = list(cfg.train_coords.values())                                   
+    min_lat=rectangle_coords[0]
+    max_lat=rectangle_coords[1]                                    
+    min_lon=rectangle_coords[2]
+    max_lon=rectangle_coords[3]
+    max_height = cfg.max_height
+    min_height = cfg.min_height
+    all_stations = pd.read_json(all_stations_data)
+    all_stations = all_stations.rename(columns={
+                            "Широта": "lat",
+                            "Долгота": "lon",
+                            "Наименование станции": "station_name",
+                            "Высота метеопл.": "height"
+                            })    
+    
+    all_stations["station_name"] = all_stations["station_name"].apply(cleanup_ms_name)
+    all_stations["lat"] = all_stations["lat"].astype(np.float32)
+    all_stations["lon"] = all_stations["lon"].astype(np.float32)
+    all_stations["height"] = all_stations["height"].astype(np.float32)
+
+    result_stations = all_stations[["station_name", "lat", "lon", "height"]]
+
+    if cfg.spatial_crop:
+        if max_lat:
+            result_stations = result_stations[result_stations['lat'] < max_lat]
+        if min_lat:
+            result_stations = result_stations[result_stations['lat'] > min_lat]
+        if max_lon:
+            result_stations = result_stations[result_stations['lon'] < max_lon]
+        if min_lon:
+            result_stations = result_stations[result_stations['lon'] > min_lon]
+        if max_height:
+            result_stations = result_stations[result_stations['height'] < max_height]
+        if min_height:
+            result_stations = result_stations[result_stations['height'] > min_height]
+    
+    return result_stations
+
+
+
+def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
+    """ 
+    To load weather stations data from Russia 
+        Features: ['Максимальная скорость ветра', 'Средняя скорость ветра', 'Направление ветра', 
+                   'Температура воздуха по сухому терм-ру', 'Атмосферное давление на уровне станции', 
+                   'Атмосферное давление на уровне моря', 'Сумма осадков', 'Температура поверхности почвы',
+                   'Парциальное давление водяного пара', 'Относительная влажность воздуха', 'Температура точки росы'] 
+    """  
 
     
 
-def closest_pixel_for_station(station_row, grid_lat, grid_lon, precise=False):
+    columns = ["Название метеостанции",
+               "Максимальная скорость",
+               'Средняя скорость ветра',
+               'Температура воздуха по сухому терм-ру',
+               'Температура точки росы',
+               'Атмосферное давление на уровне станции',
+               'Атмосферное давление на уровне моря',
+               "Дата"] # Add more columns if needed
+    
+    start_time = time.process_time()
+    df = pl.read_parquet(path_to_weather_stations, columns=columns)
+    logging.info(f"Time to open ru parquet {time.process_time() - start_time} seconds")
+    
+    q = (df
+        .lazy()
+        .select(
+            [
+                pl.col("Название метеостанции").apply(cleanup_ms_name).cast(pl.Categorical).alias("station_name"),
+                pl.col("Максимальная скорость").round().cast(pl.UInt8).alias("max_speed"),
+                pl.col("Средняя скорость ветра").round().cast(pl.UInt8).alias("avg_speed"),
+                #pl.col("Дата").str.strptime(pl.Date, fmt="%Y-%m-%d", strict=False).alias("time"),   
+                pl.col("Дата").cast(pl.Date).alias("time"),           
+                pl.col("Температура воздуха по сухому терм-ру").round().cast(pl.Int16).alias("avg_temp"),
+                pl.col("Температура точки росы").round().cast(pl.Int16).alias("dew_point_temp"),
+                pl.col("Атмосферное давление на уровне станции").round().cast(pl.Int16).alias("station_level_pressure"),
+                pl.col("Атмосферное давление на уровне моря").round().cast(pl.Int16).alias("sea_level_pressure"),
+            ]
+               )
+        )
+    
+    q = q.collect()
+    q.write_parquet(path_to_weather_stations.replace(".parquet", "_cleaned.parquet"))
 
-    """Finds the closest pixel in the dataset for the station
-    Returns:
-    tuple: x, y lat and lon of the closest pixel on data grid
-    """
-    coord = [station_row["lat"], station_row["lon"]]        
-    theta_offset = 5
-    fi_offset = 5
-    nearest_lat_idx = (np.abs(np.asarray(grid_lat) - coord[0])).argmin() # find nearest
-    nearest_lon_idx = (np.abs(np.asarray(grid_lat) - coord[1])).argmin()
 
-    if precise:
-        closest = great_circle((grid_lat[nearest_lat_idx], grid_lon[nearest_lon_idx]), coord).kilometers
-        for i, theta in enumerate(grid_lon[nearest_lon_idx - 5:nearest_lon_idx + 5]): # find the closest pixel in 10x10 grid by circle distance            
-            for j, fi in enumerate(grid_lat[nearest_lat_idx - 5:nearest_lat_idx + 5]):
-                r = great_circle((fi, theta), coord).kilometers
-                if r < closest:
-                    closest = r
-                    theta_offset = i
-                    fi_offset = j
 
-    closest_x_idx = theta_offset - 5 + nearest_lon_idx
-    closest_y_idx = fi_offset - 5 + nearest_lat_idx
+def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
+    """ To load weather stations data from all world 
+        Features: ['DATE', 'STATION', 'NAME', 'MXWDSP', 'WDSP', 'TEMP', 'STP', 'SLP',
+       'PRCP', 'DEWP', 'LATITUDE', 'LONGITUDE', 'ELEVATION'] 
+    """  
 
-    return grid_lon[closest_x_idx], grid_lat[closest_y_idx]    
-
+    columns = ["STATION", "LATITUDE",  "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP', 'DEWP', 'SLP', 'STP'] 
+    start_time = time.process_time()
+    df = pl.read_parquet(path_to_weather_stations, columns=columns)
+    logging.info(f"Time to open world parquet {time.process_time() - start_time} seconds")
+    
+    q = (df
+        .lazy()
+        .select(
+            [
+                pl.col("STATION").cast(pl.Categorical).alias("station_name"),
+                pl.col("MXWDSP").round().cast(pl.UInt8).alias("max_speed"),
+                pl.col("WDSP").round().cast(pl.UInt8).alias("avg_speed"),
+                pl.col("DATE").cast(pl.Date).alias("time"),                
+                pl.col("TEMP").round().cast(pl.Int16).alias("avg_temp"),
+                pl.col("DEWP").round().cast(pl.Int16).alias("dew_point_temp"),
+                pl.col("STP").round().cast(pl.Int16).alias("station_level_pressure"),
+                pl.col("SLP").round().cast(pl.Int16).alias("sea_level_pressure"),
+                pl.col("LATITUDE").round().cast(pl.Float32).alias("lat"),
+                pl.col("LONGITUDE").round().cast(pl.Float32).alias("lon"),
+                pl.col("ELEVATION").round().cast(pl.Float32).alias("height"),
+            ]
+               )
+        )
+    
+    q = q.collect()
+    q.write_parquet(path_to_weather_stations.replace(".parquet", "_cleaned.parquet"))    
 
 
 def round_to_closest_values(arr, values):
@@ -91,9 +189,12 @@ def stations_to_data_grid(
 
     return stations_df   
 
+
 def filter_lat_lon(stations_df, cfg):
-    lat_min, lat_max, lon_min, lon_max = cfg.train_coords.lat_min, cfg.train_coords.lat_max, cfg.train_coords.lon_min, cfg.train_coords.lon_max
-    return stations_df.filter(pl.any((pl.col('lat') >= lat_min) & (pl.col('lat') <= lat_max) & (pl.col('lon') <= lon_max) & (pl.col('lon') >= lon_min)))
+    # lat_min, lat_max, lon_min, lon_max = cfg.train_coords.lat_min, cfg.train_coords.lat_max, cfg.train_coords.lon_min, cfg.train_coords.lon_max
+    # return stations_df.filter(pl.any((pl.col('lat') >= lat_min) & (pl.col('lat') <= lat_max) & (pl.col('lon') <= lon_max) & (pl.col('lon') >= lon_min)))
+    return stations_df
+
 
 def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
         
@@ -128,7 +229,7 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
 
     df = df.join(stations_df_ru, on='station_name', how='left')
     df = df.select(pl.col(["time", "y", "lat", "lon"])).drop_nulls()
-    # print(df)
+    print(df)
     gc.collect()
     # df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(pl.Categorical).keep_name()])
 
@@ -160,7 +261,8 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
     gc.collect()         
 
     df = stations_to_data_grid(dataset_xarray=dataset_xarray, stations_df=df)
-    df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()]).drop_nulls()
+    df = df.drop("station_name")
+    # df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()]).drop_nulls()
     # df = df.select([pl.all().exclude("station_name")])
     df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name + '.pp2'))
 
@@ -179,15 +281,15 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
     start_time = time.process_time()
     target_df = pl.concat([df_ru, df_world], how='diagonal')
 
-
     target_df = target_df.with_columns(
         [
         pl.col("lat").cast(pl.Int16).alias('lat'),
         pl.col("lon").cast(pl.Int16).alias('lon'),
-        pl.concat_list(pl.col('lat'), pl.col('lon')).alias('station_name')
         ]
     )    
+    print(target_df)
     logging.info(f"Concat took {time.process_time() - start_time} seconds")
-    logging.info(f'TOTAL len: {len(target_df)}')
     target_df = target_df.drop_nulls()
+    logging.info(f'TOTAL len: {len(target_df)}')
+
     target_df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name))

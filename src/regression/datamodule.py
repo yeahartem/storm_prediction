@@ -7,7 +7,7 @@ import torchvision
 from torch.utils.data import DataLoader, Dataset
 import torch
 from omegaconf import DictConfig
-from data_load import DataPreLoader, DataInferPreLoader
+from src.regression.data_load import DataPreLoader, DataInferPreLoader
 
 
 class WindDataModule(pl.LightningDataModule):

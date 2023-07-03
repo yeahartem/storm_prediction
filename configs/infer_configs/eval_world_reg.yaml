@@ -10,6 +10,7 @@ paths_to_climate_files_folders:
 
 path_to_weather_stations_data: data_mounted/weatherstation_data
 data_dir: data_mounted/cmip5_world_infer/ # the rest will be saved in this directory
+path_to_prepared_target_data: ./data_mounted/cmip5_world3/target.parquet
 
 saved_normalized: false #only save to float16 with saved_normalized=true 
 precision: 32 # 32 
