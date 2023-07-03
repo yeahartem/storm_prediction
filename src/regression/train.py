@@ -7,7 +7,7 @@ import logging
 from datetime import datetime 
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
-from datamodule import WindDataModule
+from src.regression.datamodule import WindDataModule
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
