@@ -191,9 +191,10 @@ def stations_to_data_grid(
 
 
 def filter_lat_lon(stations_df, cfg):
-    # lat_min, lat_max, lon_min, lon_max = cfg.train_coords.lat_min, cfg.train_coords.lat_max, cfg.train_coords.lon_min, cfg.train_coords.lon_max
-    # return stations_df.filter(pl.any((pl.col('lat') >= lat_min) & (pl.col('lat') <= lat_max) & (pl.col('lon') <= lon_max) & (pl.col('lon') >= lon_min)))
-    return stations_df
+
+    lat_min, lat_max, lon_min, lon_max = cfg.train_coords.lat_min, cfg.train_coords.lat_max, cfg.train_coords.lon_min, cfg.train_coords.lon_max
+    return stations_df.filter(pl.any((pl.col('lat') >= lat_min) & (pl.col('lat') <= lat_max) & (pl.col('lon') <= lon_max) & (pl.col('lon') >= lon_min)))
+
 
 
 def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
@@ -291,5 +292,4 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
     logging.info(f"Concat took {time.process_time() - start_time} seconds")
     target_df = target_df.drop_nulls()
     logging.info(f'TOTAL len: {len(target_df)}')
-
     target_df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name))

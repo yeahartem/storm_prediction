@@ -25,18 +25,16 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 def risk_estimation(cfg: DictConfig) -> None:        
     start_time = time.process_time()  
     logging.info(f"Reading raw inference")
-    df_infer = pd.read_csv(cfg.path_to_raw_inference).drop(columns=['Unnamed: 0'])
-    logging.info(f"Finished")
+    df_infer = pd.read_csv(os.path.join(cfg.path_to_predictions, "result.csv"))
 
     logging.info(f"Grouping by months, estimating risk")
     df_infer['date'] = pd.to_datetime(df_infer['date'])
     df_grpby = df_infer.groupby(['lat', 'lon', df_infer.date.dt.year, df_infer.date.dt.month])
-    df_risks = df_grpby.agg(lambda x: (x > cfg.wind_risk_threshold).mean())
-    logging.info(f"Finished")
+    df_risks = df_grpby['prediction'].agg(lambda x: (x > cfg.wind_risk_threshold).mean())
 
     logging.info(f"Preparing format for .kml dumping")
     df_risks_ = df_risks.index.rename(['lat', 'lon', 'year', 'month']).to_frame().reset_index(drop=True)
-    df_risks_['prob'] = df_risks['m/s'].values
+    df_risks_['prob'] = df_risks.values
     df_risks = df_risks_
     df_risks['day'] = np.ones(len(df_risks))
     df_risks['timestamp'] = pd.to_datetime(df_risks[['year', 'month', 'day']])
@@ -48,7 +46,7 @@ def risk_estimation(cfg: DictConfig) -> None:
     gdf = GeoDataFrame(df, crs="EPSG:4326", geometry=geometry)
     fiona.supported_drivers['KML'] = 'rw'
     gdf.to_file(cfg.output_file, driver='KML')
-    logging.info(f"Saved to" + cfg.output_file)
+    logging.info(f"Saved to {cfg.output_file}")
     logging.info(f"Total time spent {time.process_time() - start_time} seconds")
 
 

@@ -14,29 +14,35 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import itertools
+import seaborn as sns
+
 
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 
 
 def plot_prediction(cfg: DictConfig, predictions_df: np.ndarray, days: int) -> None:
-
-    given_days = predictions_df['time'].unique()
+    given_days = predictions_df['date'].unique()
     for day in given_days[:days]:
-        current_data = predictions_df[predictions_df['time'] == day]
+        current_data = predictions_df[predictions_df['date'] == day]
         pivot_table = current_data.pivot(index='lat', columns='lon', values='prediction')    
         image_array = pivot_table.values
-        
-        plt.figure(figsize=(14,14))
-        plt.title(f'Max wind speed prediction for {pd.to_datetime(day).date()}')
-        plt.imshow(image_array, cmap='magma', interpolation='lanczos')
-        plt.gca().invert_yaxis()
-        # cb = plt.colorbar() 
-        savepath = os.path.join(cfg.path_to_predictions, f'wind_max_{pd.to_datetime(day).date()}.png')
-        plt.savefig(savepath)
-        # cb.remove()
-        
 
+        fig, ax = plt.subplots(figsize=(12, 12))
+        plt.title(f'Max wind speed prediction for {pd.to_datetime(day).date()}')
+        ax.set_xlabel('Longitude')
+        ax.set_ylabel('Latitude')
+        img = ax.imshow(image_array, interpolation='lanczos')
+        ax.invert_yaxis()
+        plt.gca().invert_yaxis()
+        cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
+        fig.colorbar(img, cax=cax)
+        savepath = os.path.join(cfg.path_to_predictions, f'wind_max_{pd.to_datetime(day).date()}.png')
+        plt.savefig(savepath, dpi=200) 
+        plt.clf()
+        ax.cla()
+
+        
 class DataLoader:
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
@@ -45,7 +51,7 @@ class DataLoader:
 
     def prepare_data(self):
         """Prepare data for inference"""
-        var_data, time_coords, lat_coords, lon_coords = load_dataset(self.cfg, time_slices = 44)
+        var_data, time_coords, lat_coords, lon_coords = load_dataset(self.cfg, time_slices = 42)
         self.var_data_blocks = DataPreLoader.data_to_blocks(var_data, self.cfg.time_window, self.cfg.half_side_size)
         
         self.time_coords = time_coords[self.cfg.time_window//2:len(time_coords) - self.cfg.time_window//2]
@@ -76,19 +82,21 @@ class DataLoader:
                         yield item, [self.lat_coords[i:i+self.cfg.cr_batch], self.lon_coords[j:j+self.cfg.cr_batch], self.time_coords[k:k+self.cfg.cr_batch]]
 
 
-def test(cfg: DictConfig) -> None:        
+def load_model(cfg: DictConfig):
+    return WindNetPL.load_from_checkpoint(cfg.path_to_checkpoint, cfg=cfg).half().eval()
 
-    model = WindNetPL.load_from_checkpoint(cfg.path_to_checkpoint, cfg=cfg).half()
+def predict(model, DL):    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
 
-    DL = DataLoader(cfg)
-    dataloader = DL.single_loader()
     num_items_to_predict = DL.var_data_blocks.shape[0] * DL.var_data_blocks.shape[1] * DL.var_data_blocks.shape[2]
     logging.info(f"Number of items to predict: {num_items_to_predict}")
+    dataloader = DL.single_loader()
+    
     predictions_list = []
     coords_list = []    
+    
     with torch.no_grad():
         for batch in tqdm(dataloader, total=num_items_to_predict, desc="Inference"):
             data = batch[0]
@@ -99,26 +107,28 @@ def test(cfg: DictConfig) -> None:
             coords_list.append(coords)
     
     predictions = np.concatenate(predictions_list, axis=0)
-
-    result_df = pd.DataFrame({"time": [item[2] for item in coords_list],
+    logging.info(f"Predictions max value: {predictions.max()}, min value: {predictions.min()}")
+    logging.info(f"Predictions mean value: {predictions.mean()}, std value: {predictions.std()}")
+    result_df = pd.DataFrame({"date": [item[2] for item in coords_list],
                             "lat": [item[0] for item in coords_list],
                             "lon": [item[1] for item in coords_list],
                             "prediction": predictions.flatten()
                            })
-    
+    return result_df
 
+
+def eval(cfg: DictConfig) -> None:        
+    model = load_model(cfg)
+    DL = DataLoader(cfg)
+    result_df = predict(model, DL)
     os.makedirs(cfg.path_to_predictions, exist_ok=True)
     result_df.to_csv(os.path.join(cfg.path_to_predictions, "result.csv"), index=False)
-    logging.info(f"Predictions shape: {predictions.shape}")
-    logging.info(f"Predictions max value: {predictions.max()}, min value: {predictions.min()}")
-    logging.info(f"Predictions mean value: {predictions.mean()}, std value: {predictions.std()}")
-   
-    plot_prediction(cfg, result_df, 3)
+    plot_prediction(cfg, result_df, 1)
 
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="cmip5_w_eval.yaml")
 def main(cfg: DictConfig):    
-    test(cfg)
+    eval(cfg)
     logging.info('Inference finished!')
 
 

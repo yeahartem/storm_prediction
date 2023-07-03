@@ -62,12 +62,10 @@ class DataPreLoader:
     def data_to_blocks(var_data, time_window, half_side_size):
         var_data = np.moveaxis(var_data, 0, 1)
         var_data_blocks = sliding_window_view(var_data,
-                                              (
-                                                time_window, var_data.shape[1],
-                                                2 * half_side_size + 1,
-                                                2 * half_side_size + 1
-                                              )
-                                              )
+                                             (time_window, var_data.shape[1],
+                                              2 * half_side_size + 1,
+                                              2 * half_side_size + 1,))
+        
         var_data_blocks = np.moveaxis(np.squeeze(var_data_blocks), 0, 2) # (lat, lon, time, block[time, var, lat, lon])
         return var_data_blocks
 
