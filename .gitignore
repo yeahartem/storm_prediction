@@ -16,4 +16,4 @@ outputs
 *.simg
 tmp*
 data
-out
+*.log

@@ -55,9 +55,11 @@ class DataLoader:
         self.var_data_blocks = DataPreLoader.data_to_blocks(var_data, self.cfg.time_window, self.cfg.half_side_size)
         
         self.time_coords = time_coords[self.cfg.time_window//2:len(time_coords) - self.cfg.time_window//2]
+        
         self.lat_coords = lat_coords[self.cfg.half_side_size:len(lat_coords) - self.cfg.half_side_size]
         lat_idxs = np.where(np.logical_and(self.lat_coords >= lat_min, self.lat_coords <= lat_max))[0]
         self.lat_coords = lat_coords[lat_idxs]
+
         self.lon_coords = lon_coords[self.cfg.half_side_size:len(lon_coords) - self.cfg.half_side_size]
         lon_idxs = np.where(np.logical_and(self.lon_coords >= lon_min, self.lon_coords <= lon_max))[0]
         self.lon_coords = lon_coords[lon_idxs]
@@ -79,13 +81,13 @@ class DataLoader:
         """Generate batches for inference"""
         cr_batch = self.cfg.cr_batch
 
-        for i in range(0, self.var_data_blocks.shape[0] + self.cfg.cr_batch - 1, self.cfg.cr_batch):
-            for j in range(0, self.var_data_blocks.shape[1]+ self.cfg.cr_batch - 1, self.cfg.cr_batch):
-                for k in range(0, self.var_data_blocks.shape[2]+ self.cfg.cr_batch - 1, self.cfg.cr_batch):
-                    item = self.var_data_blocks[i:i+self.cfg.cr_batch, j:j+self.cfg.cr_batch, k:k+self.cfg.cr_batch]
+        for i in range(0, self.var_data_blocks.shape[0] + cr_batch - 1, cr_batch):
+            for j in range(0, self.var_data_blocks.shape[1]+ cr_batch - 1, cr_batch):
+                for k in range(0, self.var_data_blocks.shape[2]+ cr_batch - 1, cr_batch):
+                    item = self.var_data_blocks[i:i+cr_batch, j:j+cr_batch, k:k+cr_batch]
                     item = torch.from_numpy(item).to(torch.float16)
                     if item.shape[0] >0:
-                        yield item, [self.lat_coords[i:i+self.cfg.cr_batch], self.lon_coords[j:j+self.cfg.cr_batch], self.time_coords[k:k+self.cfg.cr_batch]]
+                        yield item, [self.lat_coords[i:i+cr_batch], self.lon_coords[j:j+cr_batch], self.time_coords[k:k+cr_batch]]
 
 
 def load_model(cfg: DictConfig):
