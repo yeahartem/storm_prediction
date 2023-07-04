@@ -8,8 +8,7 @@ import dask
 import hydra
 from omegaconf import DictConfig, OmegaConf, ListConfig
 from omegaconf.errors import ConfigAttributeError
-from src.data_assemble.assemble_target import make_target
-from src.data_assemble.prepare_target import get_stations_RU, clean_weather_data_RU, clean_weather_data_WORLD
+from src.data_assemble.assemble_target import clean_weather_data_RU, clean_weather_data_WORLD, make_target
 import time
 from datetime import datetime
 from omegaconf.omegaconf import open_dict
@@ -114,15 +113,21 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
     else:
         split_date = time_range[1].astype(datetime).date()
 
-    std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()
-    mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()
+    if cfg.load_normalization:
+        stds = np.load(os.path.join(cfg.path_to_folder_with_norm_for_infer, "std" + f"_{32}.npy"))
+        std = stds[cfg.variables.index(var)]
+        means = np.load(os.path.join(cfg.path_to_folder_with_norm_for_infer, "mean" + f"_{32}.npy"))
+        mean = means[cfg.variables.index(var)]
+    else:
+        std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()
+        mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()
 
     if save:
         logging.info(f"Saving: {var}")
         if cfg.saved_normalized:
             data = data_arr[var].data
             data = np.divide((data - data.mean()), data.std())
-            np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data).astype(dtype)
+            np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data.astype(dtype))
         else:
             np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
 
@@ -161,8 +166,8 @@ def load_dataset(cfg: DictConfig):
     return data_arr
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/test_configs"), config_name="eval_world_reg")
-def main(cfg: DictConfig):    
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="cmip5_w_eval.yaml")
+def prepare_cmip(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
     os.makedirs(cfg.data_dir, exist_ok=True)
@@ -170,9 +175,9 @@ def main(cfg: DictConfig):
     with open_dict(cfg):
         cfg.path_to_prepared_target_data = os.path.join(cfg.data_dir, "target.parquet")
         cfg.path_to_prepared_stations = os.path.join(cfg.data_dir, "stations.parquet")
-        cfg.path_to_weather_stations_data = os.path.join(cfg.path_to_weather_stations_data, "data_meteo_full.parquet")
-        cfg.path_to_weather_station_list = os.path.join(cfg.path_to_weather_stations_data, "weatherstation_list.json")
-        cfg.path_to_world_weather_stations_data = os.path.join(cfg.path_to_weather_stations_data, "world_stations_25_days_6_months.parquet")
+        cfg.path_to_weather_stations_data = os.path.join(cfg.path_to_weather_stations, "data_meteo_full.parquet")
+        cfg.path_to_weather_station_list = os.path.join(cfg.path_to_weather_stations, "weatherstation_list.json")
+        cfg.path_to_world_weather_stations_data = os.path.join(cfg.path_to_weather_stations, "world_stations_25_days_6_months.parquet")
 
     #save netcdf files to npy and get normalization values
     mean_channels, std_channels = [], []
@@ -207,7 +212,6 @@ def main(cfg: DictConfig):
         start_time = time.process_time()
         clean_weather_data_RU(cfg.path_to_weather_stations_data)
         logging.info(f"Ru data clean took {time.process_time() - start_time} seconds")
-
         start_time = time.process_time()
         clean_weather_data_WORLD(cfg.path_to_world_weather_stations_data)
         logging.info(f"World data clean took {time.process_time() - start_time} seconds")
@@ -222,16 +226,5 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-
-    logging.basicConfig(filename='outputs/dataset.log',
-                        filemode='a',
-                        format='%(asctime)s - %(levelname)s - %(message)s',
-                        datefmt='%H:%M:%S',
-                        level=logging.DEBUG)
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    console.setFormatter(formatter)
-    logging.getLogger('').addHandler(console)
-    logger = logging.getLogger(__name__)
-    main()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
+    prepare_cmip()

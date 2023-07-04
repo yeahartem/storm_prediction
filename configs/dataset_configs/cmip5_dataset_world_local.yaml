@@ -1,28 +1,31 @@
 ---
 experiment_name: cmip5world
-make_climate_data: true
-make_normalization: true
-make_cleaned_weather_data: false
-make_target: false
+make_climate_data: False
+make_normalization: False
+make_cleaned_weather_data: False
+make_target: true
+load_normalization: false
 
 paths_to_climate_files_folders: 
-- '/home/teshbek/Datasets/cmip5_orig/rcp45/'
+- 'data/cmip5_orig'
 
-path_to_weather_stations_data: data_mounted/weatherstation_data
-data_dir: data_mounted/cmip5_world3/ # the rest will be saved in this directory
+path_to_weather_stations: 'data/weatherstation_data/'
+data_dir: data/cmip5_world3/ # the rest will be saved in this directory
 
 prepared_target_data_name: target.parquet
 prepared_stations_name: stations.parquet
 
-saved_normalized: false #only save to float16 with saved_normalized=true 
-precision: 32 # 32 
+saved_normalized: true #only save to float16 with saved_normalized=true 
+precision: 16 # 32 
 
 spatial_crop: False
 train_coords:
-  lat_min: -88.0
-  lat_max: 88.0
-  lon_min: -179.0
+  lat_min: -89.0
+  lat_max: 89.0
+  lon_min: -179.5
   lon_max: 180.45
+min_height: -10
+max_height: 800
 
 variables:
 - sfcWindmax

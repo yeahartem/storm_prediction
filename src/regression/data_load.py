@@ -50,23 +50,24 @@ class DataPreLoader:
         lon_coords = np.load(os.path.join(self.cfg.data_dir, 'lon.npy'))
         dtype = np.float16 if self.cfg.precision == 16 else np.float32
         var_data = np.empty((len(self.cfg.variables), len(time_coords), len(lat_coords), len(lon_coords)), dtype=dtype)
-
         for i, var in enumerate(self.cfg.variables):
             var_data[i] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
 
+        var_data_blocks = self.data_to_blocks(var_data, self.cfg.time_window, self.cfg.half_side_size)
+        logging.info(f"Climate data preparation took {time.process_time() - start_time} seconds")
+
+        return var_data_blocks
+
+    @staticmethod
+    def data_to_blocks(var_data, time_window, half_side_size):
         var_data = np.moveaxis(var_data, 0, 1)
-        var_data_windows = sliding_window_view(var_data,
-                                              (
-                                                self.cfg.time_window, var_data.shape[1],
-                                                2 * self.cfg.half_side_size + 1,
-                                                2 * self.cfg.half_side_size + 1
-                                              )
-                                              )
-        var_data_windows = np.moveaxis(np.squeeze(var_data_windows), 0, 2)
-        logging.info(f"Numpy block preparation took {time.process_time() - start_time} seconds")
-
-        return var_data_windows
-
+        var_data_blocks = sliding_window_view(var_data,
+                                             (time_window, var_data.shape[1],
+                                              2 * half_side_size + 1,
+                                              2 * half_side_size + 1,))
+        
+        var_data_blocks = np.moveaxis(np.squeeze(var_data_blocks), 0, 2) # (lat, lon, time, block[time, var, lat, lon])
+        return var_data_blocks
 
     def max_window(self, values):            
         if len(values)< self.cfg.time_window:
@@ -74,19 +75,16 @@ class DataPreLoader:
         else:
             return np.max(sliding_window_view(np.array(values), window_shape = self.cfg.time_window), axis = 1)
             
-
     def align_time(self, values):
         if len(values)< self.cfg.time_window:
             return None
         else:
-            indxs = self.time_coords.searchsorted(values) # time into inds
-            indxs = np.array(values)[self.cfg.time_window//2:len(values) - self.cfg.time_window//2]
-            indxs = indxs - self.cfg.time_window//2 
-            return indxs
-
+            values = self.time_coords.searchsorted(values) # time into inds
+            values = np.array(values)[self.cfg.time_window//2:len(values) - self.cfg.time_window//2]
+            return values
 
     def align_coords(self, values):
-        lat, lon = values - self.cfg.half_side_size 
+        lat, lon = values - 2 * self.cfg.half_side_size
         if (lat < 0) or (lon < 0):
             return None
         elif (lat > (len(self.lat_coords) - 2*self.cfg.half_side_size - 1)) or (lon > (len(self.lon_coords) - 2*self.cfg.half_side_size - 1)):
@@ -100,7 +98,12 @@ class DataPreLoader:
         logging.info('tmp file not found, processing')            
         start_time = time.process_time()  
         target_df = polars.read_parquet(self.cfg.path_to_prepared_target_data)
+        print(target_df)
         logging.info(f"Records before preparation {len(target_df)}")
+
+        target_df = target_df.with_columns([polars.concat_list(polars.col('lat'),
+                                                               polars.col('lon')).alias('station_name')])
+        target_df = target_df.drop("lat", "lon")
         target_df = (
             target_df
             .lazy()        

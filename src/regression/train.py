@@ -7,7 +7,7 @@ import logging
 from datetime import datetime 
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
-from datamodule import WindDataModule
+from src.regression.datamodule import WindDataModule
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
@@ -15,20 +15,19 @@ import wandb
 import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
 
-warnings.filterwarnings("ignore")
-torch.manual_seed(112)
-random.seed(112)
-os.environ['WANDB_MODE'] = 'offline'
-os.environ['WANDB_DIR'] = 'outputs/wandb'
-os.environ['WANDB_CONFIG_DIR'] = 'outputs/wandb'
-os.environ['WANDB_CACHE_DIR'] = 'outputs/wandb'
-logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
-torch.set_float32_matmul_precision('high')
 
 
-def train(cfg: DictConfig) -> None:        
+
+
+def train_regression(cfg: DictConfig) -> None:        
     start_time = time.process_time()  
-    wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "outputs/wandb"),
+    os.environ['WANDB_MODE'] = 'offline'
+    os.environ['WANDB_DIR'] = 'out/wandb'
+    os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
+    os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
+
+    torch.set_float32_matmul_precision('high')
+    wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "out/wandb"),
                                project=cfg.project_name,
                                name=cfg.experiment_name)
     dm = WindDataModule(cfg)
@@ -41,8 +40,8 @@ def train(cfg: DictConfig) -> None:
     #     logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
         
     wandb_logger.watch(model, log='all', log_freq=100)       
-    default_root_dir = os.path.join(os.getcwd(), "outputs")
-    checkpoint_loc = "outputs"    
+    default_root_dir = os.path.join(os.getcwd(), "out")
+    checkpoint_loc = default_root_dir    
 
     checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
     # exception_checkpoint_callback = OnExceptionCheckpoint(checkpoint_loc)
@@ -74,9 +73,10 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="train_world_reg_test")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="conv_w_reg")
 def main(cfg: DictConfig):    
-    train(cfg)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
+    train_regression(cfg)
     logging.info('Train finished!')
 
 

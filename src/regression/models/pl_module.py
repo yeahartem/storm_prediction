@@ -28,22 +28,23 @@ class WindNetPL(pl.LightningModule):
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
         
-        self.scheduler_name = cfg.scheduler_name
-        if cfg.optimizer_name=='Adam':
-            self.optimizer = torch.optim.Adam
-        elif cfg.optimizer_name=='RAdam':
-            self.optimizer = torch.optim.RAdam
-        elif cfg.optimizer_name=='SGD':
-            self.optimizer = torch.optim.SGD
-        else:
-            raise NotImplementedError(f'Optimizer {cfg.optimizer_name} not found')
-        
-        if cfg.loss_name=='MSELoss':
-            self.criterion = torch.nn.MSELoss()
-        elif cfg.loss_name=='L1Loss':
-            self.criterion = torch.nn.L1Loss()
-        else:
-            raise NotImplementedError(f'Criterion {cfg.loss_name} not found')
+        if not cfg.eval:
+            self.scheduler_name = cfg.scheduler_name
+            if cfg.optimizer_name=='Adam':
+                self.optimizer = torch.optim.Adam
+            elif cfg.optimizer_name=='RAdam':
+                self.optimizer = torch.optim.RAdam
+            elif cfg.optimizer_name=='SGD':
+                self.optimizer = torch.optim.SGD
+            else:
+                raise NotImplementedError(f'Optimizer {cfg.optimizer_name} not found')
+            
+            if cfg.loss_name=='MSELoss':
+                self.criterion = torch.nn.MSELoss()
+            elif cfg.loss_name=='L1Loss':
+                self.criterion = torch.nn.L1Loss()
+            else:
+                raise NotImplementedError(f'Criterion {cfg.loss_name} not found')
         
         self.sigmoid = nn.Sigmoid()
         self.train_loss = MeanMetric()

@@ -3,9 +3,9 @@ experiment_name: "cmip6_highres_test"
 project_name: "Wind-speed-regression"
 target_type: "wind_ms"
 
-data_dir: "./data_mounted/cmip6_highres_test"
-path_to_prepared_target_data: "./data_mounted/cmip6_highres_test/target.parquet"
-path_to_prepared_stations: "./data_mounted/cmip6_highres_test/stations.parquet"
+data_dir: "./data/cmip6_highres_test"
+path_to_prepared_target_data: "./data/cmip6_highres_test/target.parquet"
+path_to_prepared_stations: "./data/cmip6_highres_test/stations.parquet"
 
 model_name: WindNet20x41
 normalize: true
@@ -53,7 +53,7 @@ warmup_steps: 200
 optimizer_name: "Adam"
 scheduler_name: "OneCycleLR"
 loss_name: "MSELoss"
-path_to_checkpoint: "2023-06-28/15-42-36/on_exception.ckpt" #will be searched within `outputs` folder
+path_to_checkpoint: "2023-06-28/15-42-36/on_exception.ckpt" #will be searched within `out` folder
 
 num_workers: 4
 gpu_num: 2

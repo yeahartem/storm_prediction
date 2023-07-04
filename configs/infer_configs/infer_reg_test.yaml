@@ -1,0 +1,59 @@
+---
+project_name: Wind-speed-regression
+experiment_name: 'cmip6_infer'
+make_climate_data: true
+make_normalization: true #will be taken from train
+make_cleaned_weather_data: false
+make_target: false
+load_normalization: true
+
+paths_to_climate_files_folders: 
+- 'data/cmip5_orig'
+
+path_to_predictions : 'out/predictions'
+output_file: 'out/predictions/output_file.kml'
+
+path_to_weather_stations: 'data/weatherstation_data/'
+
+path_to_folder_with_norm_for_infer: 'data/cmip5_world3' # channel-wise normalization values (mean and std) will be copied from this folder)
+data_dir: 'data/cmip6_highres_infer_test/' # the rest will be saved in this directory
+prepared_target_data_name: 'target.parquet'
+prepared_stations_name: 'stations.parquet'
+
+saved_normalized: true
+precision: 16
+
+spatial_crop: False
+coords:
+  lat_min: 43.62
+  lat_max: 62.23
+  lon_min: 36.68
+  lon_max: 63.20
+
+  
+variables:
+- sfcWindmax
+- sfcWind
+- pr
+- psl
+- tasmax
+- tasmin
+
+time_limits:
+- '2024-01-01'
+- '2024-06-01'
+start_of_test: False
+
+wind_risk_threshold: 20
+time_slices: 42 # number of days to be predicted, None to predict all
+
+# regards model
+eval: true
+path_to_checkpoint: 'out/epoch=2-step=16515.ckpt'
+model_name: WindNet20x41
+
+normalize: false #already normalized
+cube_root_of_batch_size: 5
+
+half_side_size: 21
+time_window: 41  # odd only

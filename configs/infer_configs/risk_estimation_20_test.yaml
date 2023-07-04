@@ -1,8 +1,0 @@
----
-experiment_name: "cmip6_highres_infer"
-project_name: "Wind-speed-regression"
-target_type: "wind_ms"
-
-path_to_raw_inference: /app/wind/data_mounted/cmip6_highres_infer_test/inference_raw.csv
-wind_risk_threshold: 20
-output_file: /app/wind/data_mounted/cmip6_highres_infer_test/risks.kml
