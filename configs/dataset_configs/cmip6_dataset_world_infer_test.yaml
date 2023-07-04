@@ -4,23 +4,21 @@ make_climate_data: true
 make_normalization: false #will be taken from train
 make_cleaned_weather_data: false
 make_target: false
+load_normalization: true
 
 paths_to_climate_files_folders: 
-- "./data_mounted/cmip/MRI-highres_H"
+- "./data/cmip/MRI-highres_H"
 
-path_to_elevation: "data_mounted/cmip/elevation/elevation.nc"
-path_to_weather_stations_data: "data_mounted/weatherstation_data/data_meteo_full.parquet"
-path_to_weather_station_list: "data_mounted/weatherstation_data/weatherstation_list.json"
-path_to_allowed_stations: "configs/splits/allowed_stations.txt"
-path_to_world_weather_stations_data: "data_mounted/weatherstation_data/world_stations_25_days_6_months.parquet"
+path_to_elevation: "data/cmip/elevation/elevation.nc"
+path_to_weather_stations: 'data/weatherstation_data/'
+data_dir: "data/cmip6_highres_infer_test/" # the rest will be saved in this directory
 
-data_dir: "data_mounted/cmip6_highres_infer_test/" # the rest will be saved in this directory
 prepared_target_data_name: "target.parquet"
 prepared_stations_name: "stations.parquet"
-path_to_folder_with_norm_for_infer: "data_mounted/cmip6_highres_test" # channel-wise normalization values (mean and std) will be copied from this folder)
+path_to_folder_with_norm_for_infer: "data/cmip6_highres_test" # channel-wise normalization values (mean and std) will be copied from this folder)
 normalization_values_name: "normalization_values" # _mean.npy, _std.npy, will be added to the name
 saved_normalized: true
-precision: 32
+precision: 16
 
 min_height: -10
 max_height: 800

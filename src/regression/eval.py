@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import itertools
-import seaborn as sns
 
 
 warnings.filterwarnings("ignore")
@@ -52,11 +51,18 @@ class DataLoader:
     def prepare_data(self):
         """Prepare data for inference"""
         var_data, time_coords, lat_coords, lon_coords = load_dataset(self.cfg, time_slices = 42)
+        lat_min, lat_max, lon_min, lon_max = self.cfg.coords.lat_min, self.cfg.coords.lat_max, self.cfg.coords.lon_min, self.cfg.coords.lon_max
         self.var_data_blocks = DataPreLoader.data_to_blocks(var_data, self.cfg.time_window, self.cfg.half_side_size)
         
         self.time_coords = time_coords[self.cfg.time_window//2:len(time_coords) - self.cfg.time_window//2]
         self.lat_coords = lat_coords[self.cfg.half_side_size:len(lat_coords) - self.cfg.half_side_size]
+        lat_idxs = np.where(np.logical_and(self.lat_coords >= lat_min, self.lat_coords <= lat_max))[0]
+        self.lat_coords = lat_coords[lat_idxs]
         self.lon_coords = lon_coords[self.cfg.half_side_size:len(lon_coords) - self.cfg.half_side_size]
+        lon_idxs = np.where(np.logical_and(self.lon_coords >= lon_min, self.lon_coords <= lon_max))[0]
+        self.lon_coords = lon_coords[lon_idxs]
+
+        self.var_data_blocks = self.var_data_blocks[np.ix_(lat_idxs, lon_idxs)]
         assert self.var_data_blocks.shape[0] == len(self.lat_coords)
         assert self.var_data_blocks.shape[1] == len(self.lon_coords)
         assert self.var_data_blocks.shape[2] == len(self.time_coords)

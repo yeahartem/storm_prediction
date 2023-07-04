@@ -3,9 +3,9 @@ experiment_name: cmip5_lrsch_reg_w_naivemode21x41_max
 project_name: Wind-speed-regression
 target_type: wind_ms
 
-data_dir: ./data_mounted/cmip5_world3
-path_to_prepared_target_data: ./data_mounted/cmip5_world3/target.parquet
-path_to_prepared_stations: ./data_mounted/cmip5_world3/stations.parquet
+data_dir: ./data/cmip5_world3
+path_to_prepared_target_data: ./data/cmip5_world3/target.parquet
+path_to_prepared_stations: ./data/cmip5_world3/stations.parquet
 
 model_name: WindNet20x41
 normalize: false
@@ -52,6 +52,7 @@ max_epoch: 5
 optimizer_name: 'Adam'
 scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
+eval: false
 
 num_workers: 4
 gpu_num: 1

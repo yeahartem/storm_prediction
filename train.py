@@ -13,5 +13,6 @@ def main(cfg: DictConfig):
     logging.info('Train finished!')
 
 
-if __name__ == "__main__":      
+if __name__ == "__main__":
+    sys.argv.append('hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}')
     main()

@@ -8,7 +8,7 @@ src/research/notebooks/lightning_logs
 logs/*
 outputs/*
 *pycache*
-data_mounted
+data
 wandb
 outputs
 .hydra

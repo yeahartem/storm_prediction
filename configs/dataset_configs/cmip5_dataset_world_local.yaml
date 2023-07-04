@@ -4,12 +4,13 @@ make_climate_data: False
 make_normalization: False
 make_cleaned_weather_data: False
 make_target: true
+load_normalization: false
 
 paths_to_climate_files_folders: 
-- 'data_mounted/cmip5_orig'
+- 'data/cmip5_orig'
 
-path_to_weather_stations: 'data_mounted/weatherstation_data/'
-data_dir: data_mounted/cmip5_world3/ # the rest will be saved in this directory
+path_to_weather_stations: 'data/weatherstation_data/'
+data_dir: data/cmip5_world3/ # the rest will be saved in this directory
 
 prepared_target_data_name: target.parquet
 prepared_stations_name: stations.parquet

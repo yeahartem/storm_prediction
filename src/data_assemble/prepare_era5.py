@@ -124,7 +124,7 @@ def nc2np(path, variables, years, save_dir, partition, num_shards_per_year):
 
 def main(
     root_dir = '/home/teshbek/Datasets/era5',
-    save_dir = './data_mounted/era5_npz',
+    save_dir = './data/era5_npz',
     variables = [
         "2m_temperature",
         "10m_u_component_of_wind",

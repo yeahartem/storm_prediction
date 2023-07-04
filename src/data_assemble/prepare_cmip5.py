@@ -113,8 +113,14 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
     else:
         split_date = time_range[1].astype(datetime).date()
 
-    std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()
-    mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()
+    if cfg.load_normalization:
+        stds = np.load(os.path.join(cfg.path_to_folder_with_norm_for_infer, "std" + f"_{32}.npy"))
+        std = stds[cfg.variables.index(var)]
+        means = np.load(os.path.join(cfg.path_to_folder_with_norm_for_infer, "mean" + f"_{32}.npy"))
+        mean = means[cfg.variables.index(var)]
+    else:
+        std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()
+        mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()
 
     if save:
         logging.info(f"Saving: {var}")

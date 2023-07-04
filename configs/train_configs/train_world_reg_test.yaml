@@ -3,14 +3,14 @@ experiment_name: "cmip6_highres_test"
 project_name: "Wind-speed-regression"
 target_type: "wind_ms"
 
-data_dir: "./data_mounted/cmip6_highres_test"
-path_to_prepared_target_data: "./data_mounted/cmip6_highres_test/target.parquet"
-path_to_prepared_stations: "./data_mounted/cmip6_highres_test/stations.parquet"
+data_dir: "./data/cmip6_highres_test"
+path_to_prepared_target_data: "./data/cmip6_highres_test/target.parquet"
+path_to_prepared_stations: "./data/cmip6_highres_test/stations.parquet"
 
 model_name: WindNet20x41
-normalize: true
-precision: 32 # "16-mixed" "bf16-mixed"
-half_side_size: 20
+normalize: false
+precision: 16 # "16-mixed" "bf16-mixed"
+half_side_size: 21
 time_window: 41  # odd only
 time_freq: 1
 target_threshold: 25
@@ -43,17 +43,21 @@ time_limits:
 - '2020-11-14'
 start_of_test: '2008-01-01'
 
-batch_size: 180
-learning_rate: 0.0003
+batch_size: 250
+learning_rate: 0.004
 weight_decay: 0.0001
 max_epoch: 5
-#Annealing steps
-warmup_steps: 200
 
-optimizer_name: "Adam"
-scheduler_name: "OneCycleLR"
-loss_name: "MSELoss"
+
+optimizer_name: 'Adam'
+scheduler_name: 'OneCycleLR'
+loss_name: 'MSELoss'
+eval: false
 
 num_workers: 4
-gpu_num: 2
-data_in_ram: true
+gpu_num: 1
+distributed: false
+num_nodes: 1
+strategy: 'ddp'
+
+log_every_n_steps: 100

@@ -1,11 +1,11 @@
 ---
 experiment_name: "cmip5_binary_world"
 
-data_dir: "./data_mounted/cmip5_world"
-path_to_prepared_target_data: "./data_mounted/cmip5_world/target.parquet"
-path_to_prepared_stations: "./data_mounted/cmip5_world/stations.parquet"
-path_to_means: "./data_mounted/cmip5_world/normalization_values_mean.npy"
-path_to_std: "./data_mounted/cmip5_world/normalization_values_std.npy"
+data_dir: "./data/cmip5_world"
+path_to_prepared_target_data: "./data/cmip5_world/target.parquet"
+path_to_prepared_stations: "./data/cmip5_world/stations.parquet"
+path_to_means: "./data/cmip5_world/normalization_values_mean.npy"
+path_to_std: "./data/cmip5_world/normalization_values_std.npy"
 logging_level: INFO
 
 half_side_size: 12
