@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 def risk_estimation(cfg: DictConfig) -> None:        
     start_time = time.process_time()  
     logging.info(f"Reading raw inference")
-    df_infer = pd.read_csv(os.path.join(cfg.path_to_predictions, "result.csv"))
+    df_infer = pd.read_csv(cfg.path_to_predictions)
 
     logging.info(f"Grouping by months, estimating risk")
     df_infer['date'] = pd.to_datetime(df_infer['date'])

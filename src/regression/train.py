@@ -16,9 +16,6 @@ import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
 
 
-
-
-
 def train_regression(cfg: DictConfig) -> None:        
     start_time = time.process_time()  
     os.environ['WANDB_MODE'] = 'offline'
@@ -32,7 +29,6 @@ def train_regression(cfg: DictConfig) -> None:
                                name=cfg.experiment_name)
     dm = WindDataModule(cfg)
     model = WindNetPL(cfg)
-
     # if torch.__version__ >= "2.0.0":
     #     model = torch.compile(model)
     #     logging.info("Model compiled")

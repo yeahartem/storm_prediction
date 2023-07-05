@@ -32,11 +32,10 @@ def plot_prediction(cfg: DictConfig, predictions_df: np.ndarray, days: int) -> N
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
         img = ax.imshow(image_array, interpolation='lanczos')
-        ax.invert_yaxis()
         plt.gca().invert_yaxis()
         cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
         fig.colorbar(img, cax=cax)
-        savepath = os.path.join(cfg.path_to_predictions, f'wind_max_{pd.to_datetime(day).date()}.png')
+        savepath = os.path.join(*cfg.path_to_predictions.split('/')[:-1], f'wind_max_{pd.to_datetime(day).date()}.png')
         plt.savefig(savepath, dpi=200) 
         plt.clf()
         ax.cla()
@@ -48,23 +47,27 @@ class DataLoader:
         self.prepare_data()
         self.cr_batch = cfg.cube_root_of_batch_size
 
+    def spatial_crop(self):
+        """Crop data by spatial coordinates"""
+        lat_min_idx = max(np.searchsorted(self.lat_coords, self.cfg.coords.lat_min) - self.cfg.half_side_size, 0)
+        lat_max_idx = min(np.searchsorted(self.lat_coords, self.cfg.coords.lat_max) + self.cfg.half_side_size, len(self.lat_coords))
+        lon_min_idx = max(np.searchsorted(self.lon_coords, self.cfg.coords.lon_min) - self.cfg.half_side_size, 0)
+        lon_max_idx = min(np.searchsorted(self.lon_coords, self.cfg.coords.lon_max) + self.cfg.half_side_size, len(self.lon_coords))        
+        self.var_data = self.var_data[:, :, lat_min_idx:lat_max_idx, lon_min_idx:lon_max_idx]
+        self.lat_coords = self.lat_coords[lat_min_idx:lat_max_idx]
+        self.lon_coords = self.lon_coords[lon_min_idx:lon_max_idx]
+
     def prepare_data(self):
         """Prepare data for inference"""
-        var_data, time_coords, lat_coords, lon_coords = load_dataset(self.cfg, time_slices = 42)
-        lat_min, lat_max, lon_min, lon_max = self.cfg.coords.lat_min, self.cfg.coords.lat_max, self.cfg.coords.lon_min, self.cfg.coords.lon_max
-        self.var_data_blocks = DataPreLoader.data_to_blocks(var_data, self.cfg.time_window, self.cfg.half_side_size)
+        self.var_data, self.time_coords, self.lat_coords, self.lon_coords = load_dataset(self.cfg, time_slices = self.cfg.time_slices)
+       
+        self.spatial_crop()
+        self.var_data_blocks = DataPreLoader.data_to_blocks(self.var_data, self.cfg.time_window, self.cfg.half_side_size)
+        logging.info(f'var_data_blocks.shape: {self.var_data_blocks.shape}')
+        self.time_coords = self.time_coords[self.cfg.time_window//2:len(self.time_coords) - self.cfg.time_window//2]
+        self.lat_coords = self.lat_coords[self.cfg.half_side_size:len(self.lat_coords) - self.cfg.half_side_size]
+        self.lon_coords = self.lon_coords[self.cfg.half_side_size:len(self.lon_coords) - self.cfg.half_side_size]
         
-        self.time_coords = time_coords[self.cfg.time_window//2:len(time_coords) - self.cfg.time_window//2]
-        
-        self.lat_coords = lat_coords[self.cfg.half_side_size:len(lat_coords) - self.cfg.half_side_size]
-        lat_idxs = np.where(np.logical_and(self.lat_coords >= lat_min, self.lat_coords <= lat_max))[0]
-        self.lat_coords = lat_coords[lat_idxs]
-
-        self.lon_coords = lon_coords[self.cfg.half_side_size:len(lon_coords) - self.cfg.half_side_size]
-        lon_idxs = np.where(np.logical_and(self.lon_coords >= lon_min, self.lon_coords <= lon_max))[0]
-        self.lon_coords = lon_coords[lon_idxs]
-
-        self.var_data_blocks = self.var_data_blocks[np.ix_(lat_idxs, lon_idxs)]
         assert self.var_data_blocks.shape[0] == len(self.lat_coords)
         assert self.var_data_blocks.shape[1] == len(self.lon_coords)
         assert self.var_data_blocks.shape[2] == len(self.time_coords)
@@ -93,6 +96,7 @@ class DataLoader:
 def load_model(cfg: DictConfig):
     return WindNetPL.load_from_checkpoint(cfg.path_to_checkpoint, cfg=cfg).half().eval()
 
+
 def predict(model, DL):    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -104,7 +108,6 @@ def predict(model, DL):
     
     predictions_list = []
     coords_list = []    
-    
     with torch.no_grad():
         for batch in tqdm(dataloader, total=num_items_to_predict, desc="Inference"):
             data = batch[0]
@@ -129,8 +132,9 @@ def eval(cfg: DictConfig) -> None:
     model = load_model(cfg)
     DL = DataLoader(cfg)
     result_df = predict(model, DL)
-    os.makedirs(cfg.path_to_predictions, exist_ok=True)
-    result_df.to_csv(os.path.join(cfg.path_to_predictions, "result.csv"), index=False)
+
+    os.makedirs(os.path.join(*cfg.path_to_predictions.split('/')[:-1]), exist_ok=True)
+    result_df.to_csv(cfg.path_to_predictions, index=False)
     plot_prediction(cfg, result_df, 1)
 
 

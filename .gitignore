@@ -17,4 +17,5 @@ outputs
 tmp*
 data
 *.log
+out
 data_mounted
