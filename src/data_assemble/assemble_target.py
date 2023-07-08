@@ -72,9 +72,6 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
                    'Атмосферное давление на уровне моря', 'Сумма осадков', 'Температура поверхности почвы',
                    'Парциальное давление водяного пара', 'Относительная влажность воздуха', 'Температура точки росы'] 
     """  
-
-    
-
     columns = ["Название метеостанции",
                "Максимальная скорость",
                'Средняя скорость ветра',
@@ -87,16 +84,15 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
     start_time = time.process_time()
     df = pl.read_parquet(path_to_weather_stations, columns=columns)
     logging.info(f"Time to open ru parquet {time.process_time() - start_time} seconds")
-    
-    q = (df
+    df = (df
         .lazy()
         .select(
             [
                 pl.col("Название метеостанции").apply(cleanup_ms_name).cast(pl.Categorical).alias("station_name"),
                 pl.col("Максимальная скорость").round().cast(pl.UInt8).alias("max_speed"),
                 pl.col("Средняя скорость ветра").round().cast(pl.UInt8).alias("avg_speed"),
-                pl.col("Дата").str.strptime(pl.Date, fmt="%Y-%m-%d", strict=False).alias("time"),
-                # pl.col("Дата").cast(pl.Date).alias("time"),
+                pl.col("Дата").cast(pl.Datetime).alias("time"),
+                pl.col("Дата").cast(pl.Date).alias("date"),
                 pl.col("Температура воздуха по сухому терм-ру").round().cast(pl.Int16).alias("avg_temp"),
                 pl.col("Температура точки росы").round().cast(pl.Int16).alias("dew_point_temp"),
                 pl.col("Атмосферное давление на уровне станции").round().cast(pl.Int16).alias("station_level_pressure"),
@@ -105,8 +101,20 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
                )
         )
     
-    q = q.collect()
-    q.write_parquet(path_to_weather_stations.replace(".parquet", "_cleaned.parquet"))
+    df = df.collect()
+    df = (df
+        .lazy()
+        .groupby([pl.col("station_name"), pl.col("date")])
+        .agg([pl.col("max_speed").max(),
+              pl.col("avg_speed").mean(),
+              pl.col("avg_temp").mean(),
+              pl.col("dew_point_temp").mean(),
+              pl.col("station_level_pressure").mean(),
+              pl.col("sea_level_pressure").mean()])
+        )
+    df = df.collect()
+    df = df.rename({'date': 'time'})
+    df.write_parquet(path_to_weather_stations.replace(".parquet", "_cleaned.parquet"))
 
 
 

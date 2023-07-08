@@ -11,13 +11,14 @@ import torch.nn as nn
 import numpy as np
 from src.regression.models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
-
+import wandb
 
 class WindNetPL(pl.LightningModule):
 
-    def __init__(self, cfg): 
+    def __init__(self, cfg, run_dir=None): 
         super().__init__()     
         self.cfg = cfg        
+        self.run_dir = run_dir
         if cfg.model_name=='WindNet20x41':
             self.net = WindNet20x41()
         elif cfg.model_name=='Linear10x51':
@@ -66,9 +67,6 @@ class WindNetPL(pl.LightningModule):
         self.train_MAE_OP = torchmetrics.MeanAbsoluteError() # MAE outliers based on prediction
         self.val_MAE_OP = torchmetrics.MeanAbsoluteError()
         self.test_MAE_OP = torchmetrics.MeanAbsoluteError()
-
-        # self.cfg.target_threshold = self.cfg.target_threshold/self.cfg.target_max
-
 
     def forward(self, x):
         return self.net(x)
@@ -141,15 +139,18 @@ class WindNetPL(pl.LightningModule):
     
 
     def on_validation_epoch_end(self):
-
-        MAPE = self.val_MAE.compute()
-        self.val_MAE_best(MAPE)
+        if self.run_dir:
+            if torch.distributed.is_initialized() and torch.distributed.get_rank(group=None) == 0:
+                wandb.save(self.run_dir + '/*ckpt*')  
+            elif not torch.distributed.is_initialized():
+                wandb.save(self.run_dir + '/*ckpt*') 
+        MAE = self.val_MAE.compute()
+        self.val_MAE_best(MAE)
         self.log("val/MAE_best", self.val_MAE_best.compute(), prog_bar=False)
 
 
     def test_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
-
         self.test_loss(loss)
         self.test_MAE(predictions, target)
         self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))

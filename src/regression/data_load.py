@@ -14,12 +14,10 @@ import gc
 
 
 class DataPreLoader:
-
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg    
         assert (cfg.precision == 16 and not cfg.normalize) or (cfg.precision == 32 and cfg.normalize), \
-        ''' 16 bit is already normalized. 32 bit is not normalized'''
-        
+        ''' 16 bit is already normalized. 32 bit is not normalized'''        
         self.generate_hash()       
         self.time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
         self.lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
@@ -104,7 +102,7 @@ class DataPreLoader:
         target_df = target_df.with_columns([polars.concat_list(polars.col('lat'),
                                                                polars.col('lon')).alias('station_name')])
         target_df = target_df.drop("lat", "lon")
-        target_df = (
+        target_df =( 
             target_df
             .lazy()        
             .sort("time")
@@ -112,8 +110,9 @@ class DataPreLoader:
             .agg(
                 [polars.col('time').apply(self.align_time), polars.col('y').apply(self.max_window)]
             )
-            .collect()
         )
+        target_df = target_df.collect()
+
         target_df = target_df.with_columns(polars.col('station_name').apply(self.align_coords).keep_name())
         logging.info(f"Stations before droppping: {len(target_df)}")
         logging.info(f"Time to prepare target {time.process_time() - start_time} seconds")
@@ -142,8 +141,8 @@ class DataPreLoader:
                     test_data_idxs.append(arr_test)
         
         self.stations = np.array(stations)
-        self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
-        self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
+        self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)[:30000]
+        self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)[:30000]
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
@@ -165,51 +164,7 @@ class DataPreLoader:
 
 
     def log_data(self):
-
         logging.info(f"Train size: {self.train_data_idxs.shape[1]}, test size: {self.test_data_idxs.shape[1]}")
         logging.info(f"Station count: {len(self.station)}")
-
-        # logging.info(f"Train rectangle: {dm.result_train_rectangle}")
-        # logging.info(f"Test rectangle: {dm.result_test_rectangle}")
-        # logging.info(f"Extreme stations train: {dm.extreme_stations_train}")
-        # logging.info(f"Extreme stations test: {dm.extreme_stations_test}")
-
         logging.info(f"Target min: {self.train_data_idxs[:,3].min()}, target max: {self.train_data_idxs[:,3].max()}")
         logging.info(f"Target mean: {self.train_data_idxs[:,3].mean()}, target std: {self.train_data_idxs[:,3].std()}")
-
-        # logging.info(f"Data min: {self.dataset_as_blocks.min(axis=(1,2,3))}, data max: {self.dataset_as_blocks.max(axis=(1,2,3))}")
-        # logging.info(f"Data mean: {self.dataset_as_blocks.mean(axis=(1,2,3))}, data std: {self.dataset_as_blocks.std(axis=(1,2,3))}")
-
-class DataInferPreLoader(DataPreLoader):
-    def __init__(self, cfg: DictConfig):
-        self.cfg = cfg    
-        self.generate_hash()       
-        lat_min, lat_max, lon_min, lon_max = cfg.test_coords['lat_min'], cfg.test_coords['lat_max'], cfg.test_coords['lon_min'], cfg.test_coords['lon_max']
-        self.time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
-        self.lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
-        self.lat_idxs = np.where(np.logical_and((self.lat_coords <= lat_max), (self.lat_coords >= lat_min)))
-        self.lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
-        self.lon_idxs = np.where(np.logical_and((self.lon_coords <= lon_max), (self.lon_coords >= lon_min)))
-        self.time_idxs = self.align_time(self.time_coords)
-        
-        if self.data_exists():
-            self.load_data()
-
-        self.dataset_as_blocks = self.load_climate_data()
-        
-        time_idxs = np.arange(self.dataset_as_blocks.shape[2])
-        idxs_mesh = np.meshgrid(self.lat_idxs, self.lon_idxs, time_idxs)
-        self.train_data_idxs = None
-        self.test_data_idxs = np.vstack((idxs_mesh[0].flatten(), idxs_mesh[1].flatten(), idxs_mesh[2].flatten(), np.empty(len(idxs_mesh[2].flatten())))).astype(int) # walk order: time -> lat -> lon (2 -> 0 -> 1)
-        
-        logging.info(f'Records prepared infer {self.test_data_idxs.shape[1]}')
-
-        if self.cfg.normalize:
-            mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
-            std_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
-            self.transform = torchvision.transforms.Compose(
-                [
-                    torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),
-                ]
-            )
-        else: self.transform = None

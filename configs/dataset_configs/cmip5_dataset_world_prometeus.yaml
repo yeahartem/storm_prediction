@@ -2,14 +2,14 @@
 experiment_name: cmip5world
 make_climate_data: true
 make_normalization: true
-make_cleaned_weather_data: false
-make_target: false
+make_cleaned_weather_data: true
+make_target: true
 load_normalization: false
 
 paths_to_climate_files_folders: 
 - data/cmip5_world2
 
-path_to_weather_stations_data: data/weatherstation_data
+path_to_weather_stations: 'data/weatherstation_data/'
 data_dir: data/cmip5_world3/ # the rest will be saved in this directory
 
 saved_normalized: true #only save to float16 with saved_normalized=true 

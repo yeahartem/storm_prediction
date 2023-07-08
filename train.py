@@ -3,7 +3,7 @@ sys.path.append(os.getcwd())
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import logging
-from src.regression.train import train_regression
+from src.regression.train import train_regression, get_rundir_name
 
     
 
@@ -14,5 +14,7 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    sys.argv.append('hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}')
+    experiment_name = 'latest'
+    rundir_name = get_rundir_name(experiment_name)
+    sys.argv.append(f'hydra.run.dir={rundir_name}')
     main()
