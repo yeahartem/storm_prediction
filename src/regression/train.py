@@ -7,7 +7,7 @@ import logging
 from datetime import datetime 
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
-from src.regression.datamodule import WindDataModule
+from src.regression.datamodule import WindDataModule, WindDataModuleAlt
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
@@ -16,22 +16,22 @@ import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
 from omegaconf.omegaconf import open_dict
 
-def get_rundir_name(experiment_name) -> str:
+def get_rundir_name() -> str:
     now = datetime.now()
-    return str(f'out/{now:%Y-%m-%d}/{now:%H-%M-%S}_{experiment_name}')
+    return str(f'out/{now:%Y-%m-%d}/{now:%H-%M-%S}')
     
 def train_regression(cfg: DictConfig) -> None:        
     start_time = time.process_time()  
-    os.environ['WANDB_MODE'] = 'online'
+    os.environ['WANDB_MODE'] = 'offline'
     os.environ['WANDB_DIR'] = 'out/wandb'
     os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
     os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
     torch.set_float32_matmul_precision('high')
-    run_dir = get_rundir_name(cfg.experiment_name)  
+    run_dir = get_rundir_name()  
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
                                project=cfg.project_name,
                                name=cfg.experiment_name)
-    dm = WindDataModule(cfg)
+    dm = WindDataModuleAlt(cfg)
     model = WindNetPL(cfg, run_dir)
     # if torch.__version__ >= "2.0.0":
     #     model = torch.compile(model)

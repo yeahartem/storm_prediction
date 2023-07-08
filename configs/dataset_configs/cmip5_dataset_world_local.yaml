@@ -36,7 +36,7 @@ variables:
 - tasmin
 time_limits:
 - '1950-01-01'
-- '2020-11-14'
+- '2023-11-14'
 start_of_test: '2008-01-01'
 
 half_side_size: 20

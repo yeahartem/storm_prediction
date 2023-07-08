@@ -154,7 +154,6 @@ def save_normalization_values(mean_channels: np.array, std_channels: np.array, c
     
 
 def load_dataset(cfg: DictConfig):
-
     """Load climate data from folder in cfg.paths_to_climate_files_folders"""
     files = get_cmip5_files(cfg.paths_to_climate_files_folders, cfg.variables)
     file_paths = [file.path for file in files]

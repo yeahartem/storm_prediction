@@ -1,5 +1,5 @@
 ---
-experiment_name: cmip5_lrsch_reg_w_naivemode21x41_max
+experiment_name: cmip5_lrsch_reg_w_linear10x51_max
 project_name: Wind-speed-regression
 target_type: wind_ms
 
@@ -7,11 +7,14 @@ data_dir: ./data/cmip5_world3
 path_to_prepared_target_data: ./data/cmip5_world3/target.parquet
 path_to_prepared_stations: ./data/cmip5_world3/stations.parquet
 
-model_name: WindNet20x41
+model_name: Linear10x51
 normalize: false
+eval: false
 precision: 16 #  16 32 "16-mixed" "bf16-mixed"
-half_side_size: 21
-time_window: 41  # odd only
+half_side_size: 10
+time_window: 51  # odd only
+time_agg_window: 51  # odd only
+
 time_freq: 1
 target_threshold: 20
 target_max: 68.94
@@ -40,13 +43,13 @@ variables:
 - tasmin
 time_limits:
 - '1950-01-01'
-- '2020-11-14'
+- '2023-11-14'
 start_of_test: '2008-01-01'
 
-batch_size: 256
-learning_rate: 0.0003
+batch_size: 2048
+learning_rate: 0.0004
 weight_decay: 0.0001
-max_epoch: 5
+max_epoch: 2
 
 optimizer_name: "Adam"
 scheduler_name: "OneCycleLR"
@@ -54,4 +57,8 @@ loss_name: "MSELoss"
 
 num_workers: 4
 gpu_num: 1
-data_in_ram: true
+distributed: false
+num_nodes: 1
+strategy: 'ddp'
+
+log_every_n_steps: 100

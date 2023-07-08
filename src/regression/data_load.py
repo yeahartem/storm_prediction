@@ -2,6 +2,7 @@ import sys,os
 sys.path.append(os.getcwd())
 import logging
 import numpy as np
+import torch
 import torchvision  
 from omegaconf import DictConfig, OmegaConf
 import yaml
@@ -141,8 +142,8 @@ class DataPreLoader:
                     test_data_idxs.append(arr_test)
         
         self.stations = np.array(stations)
-        self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)[:30000]
-        self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)[:30000]
+        self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
+        self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
@@ -162,6 +163,149 @@ class DataPreLoader:
         self.train_data_idxs = np.load(f'tmp_train_{self.config_hash}.npz')['arr_0']
         self.test_data_idxs = np.load(f'tmp_test_{self.config_hash}.npz')['arr_0']
 
+    def log_data(self):
+        logging.info(f"Train size: {self.train_data_idxs.shape[1]}, test size: {self.test_data_idxs.shape[1]}")
+        logging.info(f"Station count: {len(self.station)}")
+        logging.info(f"Target min: {self.train_data_idxs[:,3].min()}, target max: {self.train_data_idxs[:,3].max()}")
+        logging.info(f"Target mean: {self.train_data_idxs[:,3].mean()}, target std: {self.train_data_idxs[:,3].std()}")
+
+
+
+class DataPreLoaderAlt:
+    def __init__(self, cfg: DictConfig):
+        self.cfg = cfg    
+        assert (cfg.precision == 16 and not cfg.normalize) or (cfg.precision == 32 and cfg.normalize), \
+        ''' 16 bit is already normalized. 32 bit is not normalized'''        
+        self.generate_hash()       
+        self.time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
+        self.lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
+        self.lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
+        if self.data_exists():
+            self.load_data()
+        else:
+            self.prepare_target()
+            self.save_data()
+        self.dataset_torch = self.load_climate_data()
+
+        if self.cfg.normalize:
+            mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
+            std_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
+            self.transform = torchvision.transforms.Compose(
+                [
+                    torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),
+                ]
+            )
+        else: self.transform = None
+
+
+    def load_climate_data(self):
+
+        start_time = time.process_time()
+        time_coords = np.load(os.path.join(self.cfg.data_dir, 'time.npy')).astype('datetime64[D]')
+        lat_coords = np.load(os.path.join(self.cfg.data_dir, 'lat.npy'))
+        lon_coords = np.load(os.path.join(self.cfg.data_dir, 'lon.npy'))
+        dtype = np.float16 if self.cfg.precision == 16 else np.float32
+        var_data = np.empty((len(self.cfg.variables), len(time_coords), len(lat_coords), len(lon_coords)), dtype=dtype)
+        for i, var in enumerate(self.cfg.variables):
+            var_data[i] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
+
+        var_data_torch = torch.from_numpy(var_data).half() if self.cfg.precision == 16 else torch.from_numpy(var_data)
+        logging.info(f"Climate data preparation took {time.process_time() - start_time} seconds")
+
+        return var_data_torch
+
+
+    def get_patch(self, time_index, lat_index, lon_index):
+        time_slice = slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1)
+        lat_slice = slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size)
+        lon_slice = slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size)
+        return self.dataset_as_blocks[:, time_slice, lat_slice, lon_slice]
+    
+
+    def max_window(self, values):            
+        if len(values)< self.cfg.time_agg_window:
+            return None
+        else:
+            return np.max(sliding_window_view(np.array(values), window_shape = self.cfg.time_agg_window), axis = 1)
+            
+    def align_time(self, values):
+        if len(values)< self.cfg.time_window:
+            return None
+        else:
+            values = self.time_coords.searchsorted(values) # time into inds
+            values = np.array(values)[self.cfg.time_window//2:len(values) - self.cfg.time_window//2]
+            return values
+
+
+    def prepare_target(self):
+        logging.info('tmp file not found, processing')            
+        start_time = time.process_time()  
+        target_df = polars.read_parquet(self.cfg.path_to_prepared_target_data)
+        logging.info(f"Records before preparation {len(target_df)}")
+        target_df = target_df.filter((polars.col("lat") >= self.cfg.half_side_size) &
+                                     (polars.col("lon") >= self.cfg.half_side_size) &
+                                     (polars.col("lat") < (len(self.lat_coords) - self.cfg.half_side_size -1)) &
+                                     (polars.col("lon") < (len(self.lon_coords) - self.cfg.half_side_size-1))
+                                    )
+        target_df = target_df.with_columns([polars.concat_list(polars.col('lat'),
+                                                               polars.col('lon')).alias('station_name')])
+        target_df = target_df.drop("lat", "lon")
+        target_df =( 
+            target_df
+            .lazy()        
+            .sort("time")
+            .groupby(["station_name"])
+            .agg(
+                [polars.col('time').apply(self.align_time), polars.col('y').apply(self.max_window)]
+            )
+        )
+        target_df = target_df.collect()
+
+        logging.info(f"Stations before droppping: {len(target_df)}")
+        logging.info(f"Time to prepare target {time.process_time() - start_time} seconds")
+        split_date = datetime.strptime(self.cfg.start_of_test, '%Y-%m-%d').date()
+        split_index = self.time_coords.searchsorted(split_date)
+
+        train_data_idxs = []
+        test_data_idxs = []
+        stations = []
+
+        for coords, dates, y in target_df.rows():
+            if (coords is not None) and (dates is not None) and (y is not None):
+                stations.append(coords)
+                clipped_dates = dates[dates < (self.time_coords.shape[0] - self.cfg.time_window - 1)]
+                dates_train = clipped_dates[clipped_dates < split_index]
+                dates_test = clipped_dates[clipped_dates >= split_index]
+
+                y_train = y[:len(dates_train)]
+                y_test = y[len(dates_train):len(clipped_dates)]
+                arr_train = np.stack([np.full(len(dates_train),coords[0], dtype=np.int16), np.full(len(dates_train), coords[1], dtype=np.int16), dates_train, y_train])
+                arr_test = np.stack([np.full(len(dates_test),coords[0], dtype=np.int16), np.full(len(dates_test), coords[1], dtype=np.int16), dates_test, y_test])
+
+                train_data_idxs.append(arr_train)
+                test_data_idxs.append(arr_test)
+
+        self.stations = np.array(stations)
+        self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
+        self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
+        logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
+        logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
+        gc.collect()
+
+    def generate_hash(self):
+        config_str = yaml.dump(OmegaConf.to_yaml(self.cfg), sort_keys=True)
+        self.config_hash = hashlib.sha256(config_str.encode('utf-8')).hexdigest()
+
+    def data_exists(self):
+        return os.path.isfile(f'tmp_train_{self.config_hash}.npz')
+
+    def save_data(self):
+        np.savez_compressed(f'tmp_train_{self.config_hash}.npz', self.train_data_idxs)
+        np.savez_compressed(f'tmp_test_{self.config_hash}.npz', self.test_data_idxs)
+
+    def load_data(self):
+        self.train_data_idxs = np.load(f'tmp_train_{self.config_hash}.npz')['arr_0']
+        self.test_data_idxs = np.load(f'tmp_test_{self.config_hash}.npz')['arr_0']
 
     def log_data(self):
         logging.info(f"Train size: {self.train_data_idxs.shape[1]}, test size: {self.test_data_idxs.shape[1]}")
