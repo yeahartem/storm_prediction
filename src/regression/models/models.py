@@ -35,7 +35,6 @@ class WindNet20x41(nn.Module):
         )
         
     def forward(self, X) -> torch.Tensor:
-        X = X.transpose(1, 2)
         output = self.net(X)
         return output
     

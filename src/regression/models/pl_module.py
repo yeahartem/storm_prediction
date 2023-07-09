@@ -60,13 +60,14 @@ class WindNetPL(pl.LightningModule):
         self.train_MAE = torchmetrics.MeanAbsoluteError()
         self.val_MAE = torchmetrics.MeanAbsoluteError()
         self.test_MAE = torchmetrics.MeanAbsoluteError()
-        
-        self.train_MAE_OS = torchmetrics.MeanAbsoluteError() # MAE outliers based on station measure
-        self.val_MAE_OS = torchmetrics.MeanAbsoluteError() 
-        self.test_MAE_OS = torchmetrics.MeanAbsoluteError() 
-        self.train_MAE_OP = torchmetrics.MeanAbsoluteError() # MAE outliers based on prediction
-        self.val_MAE_OP = torchmetrics.MeanAbsoluteError()
-        self.test_MAE_OP = torchmetrics.MeanAbsoluteError()
+
+        self.val_precision = torchmetrics.Precision(num_classes=1, task='binary')
+        self.val_recall = torchmetrics.Recall(num_classes=1, task='binary')
+
+        # self.train_MAE_OS = torchmetrics.MeanAbsoluteError() # MAE outliers based on station measure
+        # self.val_MAE_OS = torchmetrics.MeanAbsoluteError() 
+        # self.test_MAE_OS = torchmetrics.MeanAbsoluteError() 
+
 
     def forward(self, x):
         return self.net(x)
@@ -89,17 +90,15 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
         self.train_loss(loss)
         self.train_MAE(predictions, target)
-        self.train_MAE_OS(*get_outliers_s(predictions, target , thresh=self.cfg.target_threshold ))
-        self.train_MAE_OP(*get_outliers_p(predictions , target , thresh=self.cfg.target_threshold ))
+        # self.train_MAE_OS(*get_outliers_s(predictions, target , thresh=self.cfg.target_threshold ))
         self.train_AP(float_to_score(predictions , thresh=self.cfg.target_threshold ),
                        float_to_binary(target , thresh=self.cfg.target_threshold))
 
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
-        self.log("train/MAE_OP", self.train_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
+        # self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
-        # self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
+        self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
 
         output = OrderedDict(
             {
@@ -118,15 +117,18 @@ class WindNetPL(pl.LightningModule):
         self.val_MAE(predictions, target)
         self.val_AP(float_to_score(predictions, thresh=self.cfg.target_threshold),
                      float_to_binary(target, thresh=self.cfg.target_threshold))
-        self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
-        self.val_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
+        self.val_precision(float_to_binary(predictions, thresh=self.cfg.target_threshold),
+                           float_to_binary(target, thresh=self.cfg.target_threshold))
+        self.val_recall(float_to_binary(predictions, thresh=self.cfg.target_threshold),
+                        float_to_binary(target, thresh=self.cfg.target_threshold))        
+        # self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
 
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
-        self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
-        self.log("val/MAE_OP", self.val_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
+        # self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
-        self.logger.experiment.log({"val/target": target, "val/prediction": predictions})
+        if batch_idx%100==0:
+            self.logger.experiment.log({"val/target": target, "val/prediction": predictions})
 
         output = OrderedDict(
             {
@@ -153,15 +155,13 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
         self.test_loss(loss)
         self.test_MAE(predictions, target)
-        self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
-        self.test_MAE_OP(*get_outliers_p(predictions, target, thresh=self.cfg.target_threshold))
+        # self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
         self.test_AP(float_to_score(predictions, thresh=self.cfg.target_threshold),
                       float_to_binary(target, thresh=self.cfg.target_threshold))
 
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/MAE", self.test_MAE, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
-        self.log("test/MAE_OP", self.test_MAE_OP, on_step=True, on_epoch=True, prog_bar=False)
+        # self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("test/AP", self.test_AP, on_step=False, on_epoch=True, prog_bar=True)
         
         output = OrderedDict(

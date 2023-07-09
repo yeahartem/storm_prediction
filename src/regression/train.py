@@ -33,12 +33,14 @@ def train_regression(cfg: DictConfig) -> None:
                                name=cfg.experiment_name)
     dm = WindDataModuleAlt(cfg)
     model = WindNetPL(cfg, run_dir)
-    # if torch.__version__ >= "2.0.0":
-    #     model = torch.compile(model)
-    #     logging.info("Model compiled")
-    # else:
-    #     logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
+
+    if torch.__version__ >= "2.0.0":
+        model.net = torch.compile(model.net, mode="reduce-overhead")
+        logging.info("Model compiled")
+    else:
+        logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
         
+    print(model.net)
     wandb_logger.watch(model, log='all', log_freq=100)       
     default_root_dir = run_dir
     checkpoint_loc = run_dir    
