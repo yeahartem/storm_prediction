@@ -69,6 +69,8 @@ def process_coords(ds, concat_dim='time', drop=True):
     else:
         return ds.set_coords(coord_vars)    
 
+def erase_leap_years(data_arr):
+    return data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
 
 def climate_to_npy(files: list, var: str, cfg, save: bool = True):
     """Convert climate data to nc files."""
@@ -98,7 +100,7 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
     if cfg.spatial_crop:
         data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
     # Remove leap days
-    data_arr = data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
+    data_arr = erase_leap_years(data_arr)
 
     if cfg.precision == 16:
         dtype = np.float16
