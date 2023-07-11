@@ -1,5 +1,6 @@
 import random, string
 import sys, os
+import xarray as xr
 sys.path.append(os.getcwd())
 
 from src.data_assemble.prepare_cmip5 import CMIP5File
