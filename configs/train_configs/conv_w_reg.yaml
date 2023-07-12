@@ -6,6 +6,7 @@ target_type: wind_ms
 data_dir: ./data/cmip5_world3
 path_to_prepared_target_data: ./data/cmip5_world3/target.parquet
 path_to_prepared_stations: ./data/cmip5_world3/stations.parquet
+flush_start: true
 
 model_name: WindNet20x41
 normalize: false
@@ -44,20 +45,20 @@ time_limits:
 - '2020-11-14'
 start_of_test: '2008-01-01'
 
-batch_size: 180
-learning_rate: 0.004
+batch_size: 1800
+learning_rate: 0.008
 weight_decay: 0.0001
 max_epoch: 5
 
 
-optimizer_name: 'Adam'
+optimizer_name: 'SGD'
 scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 eval: false
 
-num_workers: 4
-gpu_num: 1
-distributed: false
+num_workers: 8
+gpu_num: 8
+distributed: true
 num_nodes: 1
 strategy: 'ddp'
 

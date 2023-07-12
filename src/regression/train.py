@@ -15,14 +15,31 @@ import wandb
 import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
 from omegaconf.omegaconf import open_dict
+from pytorch_lightning.utilities import rank_zero_only
 
 def get_rundir_name() -> str:
     now = datetime.now()
     return str(f'out/{now:%Y-%m-%d}/{now:%H-%M-%S}')
     
-def train_regression(cfg: DictConfig) -> None:        
+@rank_zero_only
+def log_config(cfg):
+    wandb.config.update(OmegaConf.to_container(cfg, resolve=True))
+
+@rank_zero_only
+def log_model_arch(model):
+    logging.info(model)
+
+def train_regression(cfg: DictConfig) -> None:    
+
     start_time = time.process_time()  
-    os.environ['WANDB_MODE'] = 'offline'
+    # if cfg.flush_start:
+    
+    #     for item in os.listdir('.'):
+    #         if item.startswith("tmp_"):
+    #             os.remove(item)
+
+    os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
+    os.environ['WANDB_MODE'] = 'online'
     os.environ['WANDB_DIR'] = 'out/wandb'
     os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
     os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
@@ -30,28 +47,28 @@ def train_regression(cfg: DictConfig) -> None:
     run_dir = get_rundir_name()  
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
                                project=cfg.project_name,
-                               name=cfg.experiment_name)
+                               name=cfg.experiment_name,
+                               log_model='all')
     dm = WindDataModuleAlt(cfg)
     model = WindNetPL(cfg, run_dir)
-
-    if torch.__version__ >= "2.0.0":
-        model.net = torch.compile(model.net, mode="reduce-overhead")
+    logging.info(f"torch version {torch.__version__ }")
+    if torch.__version__ == "2.0.1" or torch.__version__ == "2.0.0":
+        model.net = torch.compile(model.net)
         logging.info("Model compiled")
     else:
         logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
         
-    print(model.net)
-    wandb_logger.watch(model, log='all', log_freq=100)       
+    # wandb_logger.watch(model, log='all', log_freq=100)       
     default_root_dir = run_dir
     checkpoint_loc = run_dir    
 
     checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
-    exp_checkpoint_callback = OnExceptionCheckpoint(checkpoint_loc)
+    # exp_checkpoint_callback = OnExceptionCheckpoint(checkpoint_loc)
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
     
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,                         
                          default_root_dir=default_root_dir,
-                         callbacks=[lr_monitor, checkpoint_callback, exp_checkpoint_callback],
+                         callbacks=[lr_monitor, checkpoint_callback],
                          #performance
                          accelerator="gpu",
                          precision="16-mixed",
@@ -68,13 +85,10 @@ def train_regression(cfg: DictConfig) -> None:
                          logger=wandb_logger,
                          #misc
                          profiler='simple',
-                         ) 
-    
-    if torch.distributed.is_initialized() and torch.distributed.get_rank(group=None) == 0:
-        wandb.config.update(OmegaConf.to_container(cfg, resolve=True))  
-    elif not torch.distributed.is_initialized():
-        wandb.config.update(OmegaConf.to_container(cfg, resolve=True))  
-        
+                         )   
+      
+    log_config(cfg)
+    log_model_arch(cfg)
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
     

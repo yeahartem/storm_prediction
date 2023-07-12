@@ -98,7 +98,9 @@ class WindNetPL(pl.LightningModule):
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
         # self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
-        self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
+        
+        if batch_idx%100==0:
+            self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
 
         output = OrderedDict(
             {
@@ -141,11 +143,11 @@ class WindNetPL(pl.LightningModule):
     
 
     def on_validation_epoch_end(self):
-        if self.run_dir:
-            if torch.distributed.is_initialized() and torch.distributed.get_rank(group=None) == 0:
-                wandb.save(self.run_dir + '/*ckpt*')  
-            elif not torch.distributed.is_initialized():
-                wandb.save(self.run_dir + '/*ckpt*') 
+        # if self.run_dir:
+        #     if torch.distributed.is_initialized() and torch.distributed.get_rank(group=None) == 0:
+        #         wandb.save(self.run_dir + '/*ckpt*')  
+        #     elif not torch.distributed.is_initialized():
+        #         wandb.save(self.run_dir + '/*ckpt*') 
         MAE = self.val_MAE.compute()
         self.val_MAE_best(MAE)
         self.log("val/MAE_best", self.val_MAE_best.compute(), prog_bar=False)

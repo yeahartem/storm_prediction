@@ -93,11 +93,9 @@ class DataPreLoader:
 
 
     def prepare_target(self):
-
         logging.info('tmp file not found, processing')            
         start_time = time.process_time()  
         target_df = polars.read_parquet(self.cfg.path_to_prepared_target_data)
-        print(target_df)
         logging.info(f"Records before preparation {len(target_df)}")
 
         target_df = target_df.with_columns([polars.concat_list(polars.col('lat'),
@@ -215,14 +213,7 @@ class DataPreLoaderAlt:
         return var_data_torch
 
 
-    def get_patch(self, time_index, lat_index, lon_index):
-        time_slice = slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1)
-        lat_slice = slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size)
-        lon_slice = slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size)
-        return self.dataset_as_blocks[:, time_slice, lat_slice, lon_slice]
-    
-
-    def max_window(self, values):            
+    def max_window(self, values):           
         if len(values)< self.cfg.time_agg_window:
             return None
         else:
@@ -233,7 +224,7 @@ class DataPreLoaderAlt:
             return None
         else:
             values = self.time_coords.searchsorted(values) # time into inds
-            values = np.array(values)[self.cfg.time_window//2:len(values) - self.cfg.time_window//2]
+            values = np.array(values)[self.cfg.time_window//2 + 1:len(values) - self.cfg.time_window//2 - 1]
             return values
 
 
@@ -242,10 +233,10 @@ class DataPreLoaderAlt:
         start_time = time.process_time()  
         target_df = polars.read_parquet(self.cfg.path_to_prepared_target_data)
         logging.info(f"Records before preparation {len(target_df)}")
-        target_df = target_df.filter((polars.col("lat") >= self.cfg.half_side_size) &
-                                     (polars.col("lon") >= self.cfg.half_side_size) &
-                                     (polars.col("lat") < (len(self.lat_coords) - self.cfg.half_side_size -1)) &
-                                     (polars.col("lon") < (len(self.lon_coords) - self.cfg.half_side_size-1))
+        target_df = target_df.filter((polars.col("lat") > self.cfg.half_side_size) &
+                                     (polars.col("lon") > self.cfg.half_side_size) &
+                                     (polars.col("lat") < (len(self.lat_coords) - self.cfg.half_side_size - 1)) &
+                                     (polars.col("lon") < (len(self.lon_coords) - self.cfg.half_side_size- 1))
                                     )
         target_df = target_df.with_columns([polars.concat_list(polars.col('lat'),
                                                                polars.col('lon')).alias('station_name')])
@@ -272,18 +263,22 @@ class DataPreLoaderAlt:
 
         for coords, dates, y in target_df.rows():
             if (coords is not None) and (dates is not None) and (y is not None):
-                stations.append(coords)
-                clipped_dates = dates[dates < (self.time_coords.shape[0] - self.cfg.time_window - 1)]
-                dates_train = clipped_dates[clipped_dates < split_index]
-                dates_test = clipped_dates[clipped_dates >= split_index]
+                if not (any(np.isnan(np.array(coords), casting='unsafe')) and any(np.isnan(np.array(dates), casting='unsafe')) and any(np.isnan(np.array(y), casting='unsafe'))):
 
-                y_train = y[:len(dates_train)]
-                y_test = y[len(dates_train):len(clipped_dates)]
-                arr_train = np.stack([np.full(len(dates_train),coords[0], dtype=np.int16), np.full(len(dates_train), coords[1], dtype=np.int16), dates_train, y_train])
-                arr_test = np.stack([np.full(len(dates_test),coords[0], dtype=np.int16), np.full(len(dates_test), coords[1], dtype=np.int16), dates_test, y_test])
+                    stations.append(coords)
+                    clipped_dates = dates[dates<(self.time_coords.shape[0]-self.cfg.time_window - 1)]
+                    clipped_dates = clipped_dates[clipped_dates>self.cfg.time_window]
 
-                train_data_idxs.append(arr_train)
-                test_data_idxs.append(arr_test)
+                    dates_train = clipped_dates[clipped_dates < split_index]
+                    dates_test = clipped_dates[clipped_dates >= split_index]
+
+                    y_train = y[:len(dates_train)]
+                    y_test = y[len(dates_train):len(clipped_dates)]
+                    arr_train = np.stack([np.full(len(dates_train),coords[0], dtype=np.int16), np.full(len(dates_train), coords[1], dtype=np.int16), dates_train, y_train])
+                    arr_test = np.stack([np.full(len(dates_test),coords[0], dtype=np.int16), np.full(len(dates_test), coords[1], dtype=np.int16), dates_test, y_test])
+
+                    train_data_idxs.append(arr_train)
+                    test_data_idxs.append(arr_test)
 
         self.stations = np.array(stations)
         self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
