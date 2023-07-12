@@ -13,6 +13,7 @@ import time
 from datetime import datetime
 from omegaconf.omegaconf import open_dict
 
+
 class CMIP5File():
     """Parse the filename of a CMIP5 file to get the model name and experiment name.
         e.g. filename = 'pr_day_MRI-CGCM3_rcp45_r1i1p1_20560101-20651231.nc' """
@@ -94,7 +95,6 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
         data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
     data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
     data_arr = data_arr.sortby(data_arr.lon)
-
     if cfg.spatial_crop:
         data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
     # Remove leap days
@@ -130,7 +130,6 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
             np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data.astype(dtype))
         else:
             np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
-
         if not os.path.isfile(os.path.join(cfg.data_dir, "time.npy")): 
             time = data_arr[var]["time"].to_numpy()       
             lat = data_arr[var]["lat"].to_numpy()
@@ -139,7 +138,6 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
             np.save(os.path.join(cfg.data_dir, "lat.npy"), lat)
             np.save(os.path.join(cfg.data_dir, "lon.npy"), lon)
             logging.info(f"Coords saved: time {time.min()}-{time.max()}, lat {lat.min()}-{lat.max()} step {lat[1]-lat[0]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
-
     return mean, std
 
 

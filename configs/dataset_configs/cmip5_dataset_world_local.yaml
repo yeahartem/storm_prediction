@@ -1,9 +1,9 @@
 ---
 experiment_name: cmip5world
-make_climate_data: False
-make_normalization: False
-make_cleaned_weather_data: true
-make_target: true
+make_climate_data: true
+make_normalization: true
+make_cleaned_weather_data: false
+make_target: false
 load_normalization: false
 
 paths_to_climate_files_folders: 

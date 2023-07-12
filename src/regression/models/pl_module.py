@@ -98,10 +98,8 @@ class WindNetPL(pl.LightningModule):
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
         # self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
-        
         if batch_idx%100==0:
             self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
-
         output = OrderedDict(
             {
                 "loss": loss,
@@ -177,11 +175,9 @@ class WindNetPL(pl.LightningModule):
     
 
     def configure_optimizers(self):
-
         optimizer = self.optimizer(self.net.parameters(),
                                    lr=self.cfg.learning_rate,
-                                   weight_decay=self.cfg.weight_decay)
-        
+                                   weight_decay=self.cfg.weight_decay)        
         if self.scheduler_name is not None:
             if self.scheduler_name == "ReduceLROnPlateau":
                 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode="min", factor=0.7, patience=300, verbose=True, interval="step", frequency=1)

@@ -38,14 +38,11 @@ def get_stations_RU(cfg) -> pd.DataFrame:
                             "Наименование станции": "station_name",
                             "Высота метеопл.": "height"
                             })    
-    
     all_stations["station_name"] = all_stations["station_name"].apply(cleanup_ms_name)
     all_stations["lat"] = all_stations["lat"].astype(np.float32)
     all_stations["lon"] = all_stations["lon"].astype(np.float32)
     all_stations["height"] = all_stations["height"].astype(np.float32)
-
     result_stations = all_stations[["station_name", "lat", "lon", "height"]]
-
     if cfg.spatial_crop:
         if max_lat:
             result_stations = result_stations[result_stations['lat'] < max_lat]
@@ -100,7 +97,6 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
             ]
                )
         )
-    
     df = df.collect()
     df = (df
         .lazy()
@@ -128,7 +124,6 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
     start_time = time.process_time()
     df = pl.read_parquet(path_to_weather_stations, columns=columns)
     logging.info(f"Time to open world parquet {time.process_time() - start_time} seconds")
-    
     q = (df
         .lazy()
         .select(
@@ -152,57 +147,9 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
     q.write_parquet(path_to_weather_stations.replace(".parquet", "_cleaned.parquet"))    
 
 
-def round_to_closest_values(arr, values):
-
-    values = np.array(values)
-    indices = np.searchsorted(values, arr)
-    indices = np.clip(indices, 1, len(values) - 1)
-    left_values = values[indices - 1]
-    right_values = values[indices]
-    closest_values = np.where(np.abs(arr - left_values) <= np.abs(arr - right_values), left_values, right_values)
-    return closest_values
-
-
-def round_to_closest_indices(arr, values):
-
-    values = np.array(values)
-    indices = np.searchsorted(values, arr)
-    indices = np.clip(indices, 1, len(values) - 1)
-    left_values = values[indices - 1]
-    right_values = values[indices]
-    left_indices = indices - 1
-    right_indices = indices
-    closest_indices = np.where(np.abs(arr - left_values) <= np.abs(arr - right_values), left_indices, right_indices)
-
-    return closest_indices
-
-
-def stations_to_data_grid(
-        dataset_xarray: xr.DataArray,
-        stations_df: pl.DataFrame) -> pl.DataFrame:
-    """
-    maps stations to the data grid pixels
-    """
-    grid_lon = dataset_xarray.lon.data
-    grid_lat = dataset_xarray.lat.data
-    start_time = time.process_time()   
-    lat_vector = round_to_closest_indices(stations_df["lat"].to_numpy(), grid_lat)
-    lon_vector = round_to_closest_indices(stations_df["lon"].to_numpy(), grid_lon)
-    stations_df = stations_df.with_columns(
-                        pl.Series(name="lat", values=lat_vector),
-                        pl.Series(name="lon", values=lon_vector)
-                        )
-    
-    logging.info(f"Closest pixel search took {time.process_time() - start_time} seconds")
-
-    return stations_df   
-
-
 def filter_lat_lon(stations_df, cfg):
-
     lat_min, lat_max, lon_min, lon_max = cfg.train_coords.lat_min, cfg.train_coords.lat_max, cfg.train_coords.lon_min, cfg.train_coords.lon_max
     return stations_df.filter(pl.any((pl.col('lat') >= lat_min) & (pl.col('lat') <= lat_max) & (pl.col('lon') <= lon_max) & (pl.col('lon') >= lon_min)))
-
 
 
 def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
@@ -210,13 +157,10 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
     start_time = time.process_time()
     df = pl.read_parquet(cfg.path_to_weather_stations_data.replace(".parquet", "_cleaned.parquet"), use_pyarrow=True)
     logging.info(f"Time to open ru parquet {time.process_time() - start_time} seconds")
-
     start = cfg.time_limits[0]
     end = cfg.time_limits[1]
-
     df = df.filter(pl.any(pl.col('time') >= pd.to_datetime(start)))
     df = df.filter(pl.any(pl.col('time') <= pd.to_datetime(end)))
-    
     if len(cfg.target_column)>1:
         target_cols = [df[col] for col in cfg.target_column]
         df['y'] = list(zip(*target_cols)) 
@@ -225,23 +169,15 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
     else:
         raise ValueError
     
-    df = df.select(pl.col(["time", "station_name", "y" ]))
-    gc.collect()
-    
+    df = df.select(pl.col(["time", "station_name", "y" ]))    
     stations_df_ru = pl.from_pandas(get_stations_RU(cfg))
     stations_df_ru = filter_lat_lon(stations_df_ru, cfg)      
-    stations_df_ru = stations_to_data_grid(dataset_xarray=dataset_xarray,
-                                           stations_df=stations_df_ru)
-          
+    # stations_df_ru = stations_to_data_grid(dataset_xarray=dataset_xarray,
+    #                                        stations_df=stations_df_ru)
     df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()])   
-    # print(stations_df_ru)
-
     df = df.join(stations_df_ru, on='station_name', how='left')
     df = df.select(pl.col(["time", "y", "lat", "lon"])).drop_nulls()
     print(df)
-    gc.collect()
-    # df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(pl.Categorical).keep_name()])
-
     df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name + '.pp1'))
 
     
@@ -257,7 +193,6 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
     df = df.filter(pl.any(pl.col('time') >= pd.to_datetime(start)))
     df = df.filter(pl.any(pl.col('time') <= pd.to_datetime(end)))
     df = filter_lat_lon(df, cfg)
-
     if len(cfg.target_column)>1:
         target_cols = [df[col] for col in cfg.target_column]
         df['y'] = list(zip(*target_cols)) 
@@ -265,14 +200,11 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
         df = df.rename({cfg.target_column[0]: 'y'})    
     else:
         raise ValueError
-    
+        
     df = df.select(pl.col(["time", "station_name", "y", "lat", "lon"]))
-    gc.collect()         
-
-    df = stations_to_data_grid(dataset_xarray=dataset_xarray, stations_df=df)
+    gc.collect()      
+    # df = stations_to_data_grid(dataset_xarray=dataset_xarray, stations_df=df)
     df = df.drop("station_name")
-    # df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()]).drop_nulls()
-    # df = df.select([pl.all().exclude("station_name")])
     df.write_parquet(os.path.join(cfg.data_dir, cfg.prepared_target_data_name + '.pp2'))
 
 
@@ -289,13 +221,6 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
 
     start_time = time.process_time()
     target_df = pl.concat([df_ru, df_world], how='diagonal')
-
-    target_df = target_df.with_columns(
-        [
-        pl.col("lat").cast(pl.Int16).alias('lat'),
-        pl.col("lon").cast(pl.Int16).alias('lon'),
-        ]
-    )    
     print(target_df)
     logging.info(f"Concat took {time.process_time() - start_time} seconds")
     target_df = target_df.drop_nulls()

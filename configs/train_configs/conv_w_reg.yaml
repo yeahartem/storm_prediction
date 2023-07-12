@@ -42,10 +42,10 @@ variables:
 - tasmin
 time_limits:
 - '1950-01-01'
-- '2020-11-14'
+- '2023-11-14'
 start_of_test: '2008-01-01'
 
-batch_size: 1800
+batch_size: 220
 learning_rate: 0.008
 weight_decay: 0.0001
 max_epoch: 5
@@ -56,9 +56,9 @@ scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 eval: false
 
-num_workers: 8
-gpu_num: 8
-distributed: true
+num_workers: 4
+gpu_num: 1
+distributed: false
 num_nodes: 1
 strategy: 'ddp'
 
