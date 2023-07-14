@@ -5,7 +5,7 @@ make_climate_data: true
 make_normalization: true #will be taken from train
 make_cleaned_weather_data: false
 make_target: false
-load_normalization: true
+load_normalization: false
 
 paths_to_climate_files_folders: 
 - 'data/cmip5_orig'
@@ -25,6 +25,11 @@ precision: 16
 
 spatial_crop: False
 
+train_coords:
+  lat_min: 43.62
+  lat_max: 62.23
+  lon_min: 36.68
+  lon_max: 63.20  
 coords:
   lat_min: 43.62
   lat_max: 62.23
