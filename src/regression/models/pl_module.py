@@ -6,12 +6,11 @@ import pytorch_lightning as pl
 from collections import OrderedDict
 import torchmetrics
 from torchmetrics import MaxMetric, MeanMetric, MinMetric
+from torchmetrics.classification import BinaryPrecisionRecallCurve
 from torch.functional import F
 import torch.nn as nn
-import numpy as np
 from src.regression.models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
-import wandb
 
 class WindNetPL(pl.LightningModule):
 
@@ -19,7 +18,9 @@ class WindNetPL(pl.LightningModule):
         super().__init__()     
         self.cfg = cfg        
         self.run_dir = run_dir
-        if cfg.model_name=='WindNet20x41':
+        if cfg.model_name=='WindNet41x41':
+            self.net = WindNet41x41()
+        elif cfg.model_name=='WindNet20x41':
             self.net = WindNet20x41()
         elif cfg.model_name=='Linear10x51':
             self.net = Linear10x51()
@@ -63,10 +64,12 @@ class WindNetPL(pl.LightningModule):
 
         self.val_precision = torchmetrics.Precision(num_classes=1, task='binary')
         self.val_recall = torchmetrics.Recall(num_classes=1, task='binary')
+        self.test_precision = torchmetrics.Precision(num_classes=1, task='binary')
+        self.test_recall = torchmetrics.Recall(num_classes=1, task='binary')
 
-        # self.train_MAE_OS = torchmetrics.MeanAbsoluteError() # MAE outliers based on station measure
-        # self.val_MAE_OS = torchmetrics.MeanAbsoluteError() 
-        # self.test_MAE_OS = torchmetrics.MeanAbsoluteError() 
+        self.train_MAE_OS = torchmetrics.MeanAbsoluteError() # MAE outliers based on station measure
+        self.val_MAE_OS = torchmetrics.MeanAbsoluteError() 
+        self.test_MAE_OS = torchmetrics.MeanAbsoluteError() 
 
 
     def forward(self, x):
@@ -90,13 +93,13 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
         self.train_loss(loss)
         self.train_MAE(predictions, target)
-        # self.train_MAE_OS(*get_outliers_s(predictions, target , thresh=self.cfg.target_threshold ))
+        self.train_MAE_OS(*get_outliers_s(predictions, target , thresh=self.cfg.target_threshold ))
         self.train_AP(float_to_score(predictions , thresh=self.cfg.target_threshold ),
                        float_to_binary(target , thresh=self.cfg.target_threshold))
 
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
-        # self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
         if batch_idx%100==0:
             self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
@@ -121,12 +124,15 @@ class WindNetPL(pl.LightningModule):
                            float_to_binary(target, thresh=self.cfg.target_threshold))
         self.val_recall(float_to_binary(predictions, thresh=self.cfg.target_threshold),
                         float_to_binary(target, thresh=self.cfg.target_threshold))        
-        # self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
+        self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
 
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
-        # self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/recall", self.val_recall, on_step=False, on_epoch=True, prog_bar=True)
+
         if batch_idx%100==0:
             self.logger.experiment.log({"val/target": target, "val/prediction": predictions})
 
@@ -141,11 +147,6 @@ class WindNetPL(pl.LightningModule):
     
 
     def on_validation_epoch_end(self):
-        # if self.run_dir:
-        #     if torch.distributed.is_initialized() and torch.distributed.get_rank(group=None) == 0:
-        #         wandb.save(self.run_dir + '/*ckpt*')  
-        #     elif not torch.distributed.is_initialized():
-        #         wandb.save(self.run_dir + '/*ckpt*') 
         MAE = self.val_MAE.compute()
         self.val_MAE_best(MAE)
         self.log("val/MAE_best", self.val_MAE_best.compute(), prog_bar=False)
@@ -155,14 +156,20 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
         self.test_loss(loss)
         self.test_MAE(predictions, target)
-        # self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
+        self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
         self.test_AP(float_to_score(predictions, thresh=self.cfg.target_threshold),
                       float_to_binary(target, thresh=self.cfg.target_threshold))
-
+        self.test_precision(float_to_binary(predictions, thresh=self.cfg.target_threshold),
+                           float_to_binary(target, thresh=self.cfg.target_threshold))
+        self.test_recall(float_to_binary(predictions, thresh=self.cfg.target_threshold),
+                        float_to_binary(target, thresh=self.cfg.target_threshold))
+        
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/MAE", self.test_MAE, on_step=False, on_epoch=True, prog_bar=True)
-        # self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("test/AP", self.test_AP, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/recall", self.val_recall, on_step=False, on_epoch=True, prog_bar=True)
         
         output = OrderedDict(
             {
@@ -173,6 +180,14 @@ class WindNetPL(pl.LightningModule):
         )
         return output
     
+    def test_epoch_end(self, output):
+        bprc = BinaryPrecisionRecallCurve(thresholds=None)
+        preds = torch.stack([x["preds"] for x in output])
+        target = torch.stack([x["target"] for x in output])
+        bprc.update(preds, target)
+        fig, ax = bprc.plot()
+        fig.savefig(self.run_dir)   # save the figure to file        
+
 
     def configure_optimizers(self):
         optimizer = self.optimizer(self.net.parameters(),
