@@ -10,7 +10,7 @@ import hydra
 import pandas as pd
 import numpy as np
 from geopandas import GeoDataFrame
-from shapely.geometry import Point
+from shapely.geometry import Polygon
 import geopandas as gpd
 import fiona
 from fiona.drvsupport import supported_drivers
@@ -39,10 +39,21 @@ def risk_estimation(cfg: DictConfig) -> None:
     df_risks['day'] = np.ones(len(df_risks))
     df_risks['timestamp'] = pd.to_datetime(df_risks[['year', 'month', 'day']])
     df_risks = df_risks.drop(columns=['year', 'month', 'day'])
+    lat_axis = np.sort(df_risks.lat.unique())
+    lon_axis = np.sort(df_risks.lon.unique())
+    dlat = np.unique(np.diff(lat_axis))[0]
+    dlon = np.unique(np.diff(lon_axis))[0]
+    
+    lower_left = list(zip(df_risks['lon'], df_risks['lat']))
+    upper_right = list(zip(df_risks['lon'] + dlon, df_risks['lat'] + dlat))
+    lower_right = list(zip(df_risks['lon'] + dlon, df_risks['lat']))
+    upper_left = list(zip(df_risks['lon'], df_risks['lat'] + dlat))
+    df_risks['geom'] = list(zip(lower_left, upper_left, upper_right, lower_right))
     logging.info(f"Casting to geopandas")
     df = df_risks
-    geometry = [Point(xy) for xy in zip(df.lon, df.lat)]
-    df = df.drop(['lon', 'lat'], axis=1)
+    geometry = [Polygon(xy) for xy in df.geom]
+    df = df.drop(['geom'], axis=1)
+    df = df.drop(columns=['lat', 'lon'])
     gdf = GeoDataFrame(df, crs="EPSG:4326", geometry=geometry)
     fiona.supported_drivers['KML'] = 'rw'
     gdf.to_file(cfg.output_file, driver='KML')
