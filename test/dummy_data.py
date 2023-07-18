@@ -1,9 +1,12 @@
 import numpy as np 
 import pandas as pd
+import polars
 import os, shutil
 import sys
+import xarray as xr
 sys.path.append(os.path.join(os.getcwd()))
 from src.regression import data_load as dl
+
 import datetime
 from omegaconf import OmegaConf
 
@@ -27,6 +30,9 @@ def dummy_climate(start_date = '2020-12-02', number_of_days = 60):
     time_coords = np.array([start_date + datetime.timedelta(days=x) for x in range(number_of_days)]).astype('datetime64')
     lat_coords = np.arange(0, 12, 1.25)
     lon_coords = np.arange(0, 11, 1.15)
+    data_xr = xr.DataArray(data, 
+    coords={'lat': lat_coords,'lon': lon_coords, 'channel': [0, 1, 2, 3, 4, 5], 'time': time_coords}, 
+    dims=["time", "channel", "lat", "lon"])
 
     assert data.shape[0] == len(time_coords)
     assert data.shape[1] == len(climate_vars)
@@ -40,7 +46,7 @@ def dummy_climate(start_date = '2020-12-02', number_of_days = 60):
 
     #dummy config
     cfg = OmegaConf.create({"data_dir": "data/dummy_test", "path_to_prepared_target_data": "data/dummy_test/target.parquet",
-    "precision": 16, "normalize": False, "time_window": 3, "half_side_size": 3, "start_of_test": str(time_coords[4]), "variables": climate_vars})
+    "precision": 16, "normalize": False, "time_window": 3, "half_side_size": 3, "start_of_test": str(time_coords[number_of_days // 2]), "variables": climate_vars})
     if not os.path.exists(cfg.data_dir):
         os.makedirs(cfg.data_dir)
     
@@ -66,13 +72,28 @@ def dummy_climate(start_date = '2020-12-02', number_of_days = 60):
         with open(os.path.join(cfg.data_dir, name + f'_{cfg.precision}' + '.npy'), 'wb') as f:
             np.save(f, data[:, i, :, :])
 
-    df_data = {"time": np.concatenate((time_coords[0:6],time_coords[0:6])),
-               "y": [3, 7] * 3 + [3, 7] * 3,
-               "lat": [3, 7] * 3 + [3, 7] * 3,
-               "lon": [3, 7] * 3 + [3, 7] * 3,
-            #    "station_name": ["A"] * 6 + ["B"] * 6
-              }
-    df_data = pd.DataFrame(df_data)
-    df_data.to_parquet(os.path.join(cfg.data_dir, 'target.parquet'))
+    # df_data = {"time": np.concatenate((time_coords[0:6],time_coords[0:6])),
+    #            "y": [3, 7] * 3 + [3, 7] * 3,
+    #            "lat": [3, 7] * 3 + [3, 7] * 3,
+    #            "lon": [3, 7] * 3 + [3, 7] * 3,
+    #         #    "station_name": ["A"] * 6 + ["B"] * 6
+    #           }
+    df_data_ru = {
+        "time": np.concatenate((time_coords, time_coords, time_coords)),
+        "y": np.concatenate((np.arange(len(time_coords)), np.arange(len(time_coords)), np.arange(len(time_coords)))),
+        "station_name": ["A"] * len(time_coords) + ["B"] * len(time_coords) + ["C"] * len(time_coords),
+                }
+    df_data_ru = polars.from_dict(df_data_ru)
+    stations_df = {
+        "station_name": ["A", "B", "C"],
+        "lat": [0, 3.65, 3.7],
+        "lon": [0, 3.95, 3.7],
+        }
+    stations_df = polars.from_dict(stations_df)
+    
+    # df_data_ru.to_parquet(os.path.join(cfg.data_dir, 'target.parquet'))
 
-    return data, time_coords, lat_coords, lon_coords, climate_vars, df_data, cfg
+    return data, data_xr, time_coords, lat_coords, lon_coords, climate_vars, df_data_ru, stations_df, cfg
+
+if __name__ == '__main__':
+    dummy_climate()
