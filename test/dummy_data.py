@@ -13,23 +13,27 @@ from omegaconf import OmegaConf
 def str_to_date(string):
     return datetime.datetime.strptime(string, '%Y-%m-%d').date()
 
-def dummy_climate(start_date = '2020-12-02', number_of_days = 60):
+def dummy_climate(start_date='2020-12-02', number_of_days=60, lat_lims=(0, 12), lon_lims=(0, 11), dlat=1.25, dlon=1.15):
     # create dummy data
+    #-90,90; 0,360
     climate_vars = ['var_1', 'var_2', 'var_3', 'var_4', 'var_5', 'var_6' ]
-    var_1 = np.arange(0, 100, 1).reshape(10, 10) + 0.1
-    var_2 = np.arange(0, 100, 1).reshape(10, 10) + 0.2
-    var_3 = np.arange(0, 100, 1).reshape(10, 10) + 0.3
-    var_4 = np.arange(0, 100, 1).reshape(10, 10) + 0.4
-    var_5 = np.arange(0, 100, 1).reshape(10, 10) + 0.5
-    var_6 = np.arange(0, 100, 1).reshape(10, 10) + 0.6
+    start_date = str_to_date(start_date)
+    time_coords = np.array([start_date + datetime.timedelta(days=x) for x in range(number_of_days)]).astype('datetime64')
+    lat_coords = np.arange(lat_lims[0], lat_lims[1], dlat)
+    lat_size = len(lat_coords)
+    lon_coords = np.arange(lon_lims[0], lon_lims[1], dlon)
+    lon_size = len(lon_coords)
+    var_1 = np.arange(0, lat_size * lon_size, 1).reshape(lat_size, lon_size) + 0.1
+    var_2 = np.arange(0, lat_size * lon_size, 1).reshape(lat_size, lon_size) + 0.2
+    var_3 = np.arange(0, lat_size * lon_size, 1).reshape(lat_size, lon_size) + 0.3
+    var_4 = np.arange(0, lat_size * lon_size, 1).reshape(lat_size, lon_size) + 0.4
+    var_5 = np.arange(0, lat_size * lon_size, 1).reshape(lat_size, lon_size) + 0.5
+    var_6 = np.arange(0, lat_size * lon_size, 1).reshape(lat_size, lon_size) + 0.6
 
     time_slice = np.stack([var_1, var_2, var_3, var_4, var_5, var_6], axis=0)
     data = np.stack([time_slice + 0.001*(i+1) for i in range(number_of_days)], axis=0)
 
-    start_date = str_to_date(start_date)
-    time_coords = np.array([start_date + datetime.timedelta(days=x) for x in range(number_of_days)]).astype('datetime64')
-    lat_coords = np.arange(0, 12, 1.25)
-    lon_coords = np.arange(0, 11, 1.15)
+    
     data_xr = xr.DataArray(data, 
     coords={'lat': lat_coords,'lon': lon_coords, 'channel': [0, 1, 2, 3, 4, 5], 'time': time_coords}, 
     dims=["time", "channel", "lat", "lon"])

@@ -10,7 +10,7 @@ import hydra
 from omegaconf import DictConfig
 
 from src.regression import data_load as dl
-from dummy_data import dummy_climate
+from test.dummy_data import dummy_climate
 
 def test_pre_prepare_target():
     pass
