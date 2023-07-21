@@ -12,7 +12,7 @@ from omegaconf import DictConfig
 
 from src.regression import data_load as dl
 from src.data_assemble.assemble_target import stations_to_data_grid
-from dummy_data import dummy_climate
+from test.dummy_data import dummy_climate
 
 def test_pre_prepare_target():
     pass
