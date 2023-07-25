@@ -9,7 +9,7 @@ sys.path.append(os.path.join(os.getcwd()))
 import hydra
 from omegaconf import DictConfig
 
-# from src.data_assemble.prepare_cmip5 import extract_quadrants, assemble_padded_map
+from src.regression.data_load import extract_quadrants, assemble_padded_map
 try:
     from test.dummy_data import dummy_climate
 except ModuleNotFoundError:
@@ -21,28 +21,6 @@ except ModuleNotFoundError:
 #         super().__init__()
 #         self.cfg = cfg
 # def test_climatedata_to_patches(self):
-
-def extract_quadrants(data):
-    halfs = {"lat": data.shape[-2] // 2, "lon": data.shape[-1] // 2}
-    first_quadrant  = data[..., halfs['lat']:, halfs['lon']:]
-    second_quadrant = data[..., halfs['lat']:, :halfs['lon']]
-    third_quadrant  = data[..., :halfs['lat'], :halfs['lon']]
-    fourth_quadrant = data[..., :halfs['lat'], halfs['lon']:]
-    return first_quadrant, second_quadrant, third_quadrant, fourth_quadrant
-
-def assemble_padded_map(quadrants):
-    try:
-        q_flipped = [q.reindex(lat=list(reversed(q.lat))) for q in quadrants]
-    except AttributeError:
-        q_flipped = [np.flip(q, axis=-2) for q in quadrants]
-    
-    column_0 = np.concatenate([q_flipped[2], quadrants[3], quadrants[0], q_flipped[1]], axis=-2)
-    column_1 = np.concatenate([q_flipped[3], quadrants[2], quadrants[1], q_flipped[0]], axis=-2)
-    #0 1 0 1
-
-    padded_map = np.concatenate((column_0, column_1, column_0, column_1), axis=-1)
-
-    return padded_map
 
 
 def assert_quadrants_coords(xr_quadrants, lat_lims, lon_lims):
