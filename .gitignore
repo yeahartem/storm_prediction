@@ -7,6 +7,8 @@ src/research/notebooks/lightning_logs
 *.nc
 logs/*
 outputs/*
+out/*
+lightning_logs/*
 *pycache*
 data
 wandb
@@ -17,5 +19,4 @@ outputs
 tmp*
 data
 *.log
-out
 data_mounted
