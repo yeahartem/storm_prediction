@@ -54,7 +54,8 @@ class DataPreLoaderAlt:
             var_data[i] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
 
         #map padding
-        var_data_padded = self.make_padding(var_data)
+        var_data_padded, fourth_q_shape = self.make_padding(var_data)
+        self.fourth_q_shape = fourth_q_shape
 
         var_data_torch = torch.from_numpy(var_data_padded).half() if self.cfg.precision == 16 else torch.from_numpy(var_data_padded)
         logging.info(f"Climate data preparation took {time.process_time() - start_time} seconds")
@@ -88,22 +89,22 @@ class DataPreLoaderAlt:
                             )
         logging.info(f"Closest pixel search took {time.process_time() - start_time} seconds")
         return stations_df
-
-    def make_padding(self, data):
-        quadrants = self.extract_quadrants(data)
-        padded_map = self.assemble_padded_map(quadrants)
-        return padded_map
-    
-    def extract_quadrants(self, data):
+    @staticmethod
+    def make_padding(data):
+        quadrants, fourth_q_shape = DataPreLoaderAlt.extract_quadrants(data)
+        padded_map = DataPreLoaderAlt.assemble_padded_map(quadrants)
+        return padded_map, fourth_q_shape
+    @staticmethod
+    def extract_quadrants(data):
         halfs = {"lat": data.shape[-2] // 2, "lon": data.shape[-1] // 2}
         first_quadrant  = data[..., halfs['lat']:, halfs['lon']:]
         second_quadrant = data[..., halfs['lat']:, :halfs['lon']]
         third_quadrant  = data[..., :halfs['lat'], :halfs['lon']]
         fourth_quadrant = data[..., :halfs['lat'], halfs['lon']:]
-        self.fourth_q_shape = (fourth_quadrant.shape[-2], fourth_quadrant.shape[-1])
-        return first_quadrant, second_quadrant, third_quadrant, fourth_quadrant
-
-    def assemble_padded_map(self, quadrants):
+        fourth_q_shape = (fourth_quadrant.shape[-2], fourth_quadrant.shape[-1])
+        return (first_quadrant, second_quadrant, third_quadrant, fourth_quadrant), fourth_q_shape
+    @staticmethod
+    def assemble_padded_map(quadrants):
         try:
             q_flipped = [q.reindex(lat=list(reversed(q.lat))) for q in quadrants]
         except AttributeError:
