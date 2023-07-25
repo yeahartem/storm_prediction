@@ -7,7 +7,7 @@ from src.regression.train import train_regression, get_rundir_name
 
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="conv_w_reg")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="test_reg_train")
 def main(cfg: DictConfig):    
     train_regression(cfg)
     logging.info('Train finished!')
@@ -15,6 +15,6 @@ def main(cfg: DictConfig):
 
 if __name__ == "__main__":
     experiment_name = 'latest'
-    rundir_name = get_rundir_name(experiment_name)
+    rundir_name = get_rundir_name()
     sys.argv.append(f'hydra.run.dir={rundir_name}')
     main()
