@@ -13,13 +13,12 @@ from omegaconf import OmegaConf
 def str_to_date(string):
     return datetime.datetime.strptime(string, '%Y-%m-%d').date()
 
-def dummy_climate(start_date='2020-12-02', number_of_days=60, lat_lims=(0, 12), lon_lims=(0, 11), dlat=1.25, dlon=1.15):
+def dummy_climate(start_date='2020-12-02', number_of_days=60, lat_lims=(0, 12), lon_lims=(0, 11), dlat=1, dlon=1.15):
     # create dummy data
-    #-90,90; 0,360
     climate_vars = ['var_1', 'var_2', 'var_3', 'var_4', 'var_5', 'var_6' ]
     start_date = str_to_date(start_date)
     time_coords = np.array([start_date + datetime.timedelta(days=x) for x in range(number_of_days)]).astype('datetime64')
-    lat_coords = np.arange(lat_lims[0], lat_lims[1], dlat)
+    lat_coords = np.arange(lat_lims[0], lat_lims[1], dlat)[1:]
     lat_size = len(lat_coords)
     lon_coords = np.arange(lon_lims[0], lon_lims[1], dlon)
     lon_size = len(lon_coords)
