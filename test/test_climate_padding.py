@@ -9,7 +9,7 @@ sys.path.append(os.path.join(os.getcwd()))
 import hydra
 from omegaconf import DictConfig
 
-from src.regression.data_load import extract_quadrants, assemble_padded_map
+from src.regression.data_load import DataPreLoaderAlt
 try:
     from test.dummy_data import dummy_climate
 except ModuleNotFoundError:
@@ -70,10 +70,10 @@ def test_pad_climate_data():
     lon_lims = (0, 360)
     data, data_xr, time_coords, lat_coords, lon_coords, climate_vars, df_data, stations_df, cfg = dummy_climate(start_date='2020-12-02', number_of_days=10, lat_lims=lat_lims, lon_lims=lon_lims, dlat=0.56, dlon=1.5)
     # halfs = {"lat": data.shape[-2] // 2, "lon": data.shape[-1] // 2}
-    xr_q = extract_quadrants(data_xr)
+    xr_q = DataPreLoaderAlt.extract_quadrants(data_xr)
     assert_quadrants_coords(xr_q, lat_lims, lon_lims)
     
-    padded_map = assemble_padded_map(xr_q)
+    padded_map = DataPreLoaderAlt.assemble_padded_map(xr_q)
     test_padding_correctness(padded_map, data_xr, xr_q)
     
     
