@@ -29,4 +29,3 @@ torchdata
 geopandas
 shapely
 fiona
-seaborn

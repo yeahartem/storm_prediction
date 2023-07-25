@@ -7,44 +7,55 @@ import logging
 from datetime import datetime 
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
-from src.regression.datamodule import WindDataModule
+from src.regression.datamodule import WindDataModuleAlt
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
+from omegaconf.omegaconf import open_dict
+from pytorch_lightning.utilities import rank_zero_only
 
+def get_rundir_name() -> str:
+    now = datetime.now()
+    return str(f'out/{now:%Y-%m-%d}/{now:%H-%M-%S}')
+    
+@rank_zero_only
+def log_config(cfg):
+    wandb.config.update(OmegaConf.to_container(cfg, resolve=True))
 
+@rank_zero_only
+def log_model_arch(model):
+    logging.info(model)
 
-
-
-def train_regression(cfg: DictConfig) -> None:        
+def train_regression(cfg: DictConfig) -> None: 
     start_time = time.process_time()  
+    os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
     os.environ['WANDB_MODE'] = 'offline'
     os.environ['WANDB_DIR'] = 'out/wandb'
     os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
     os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
-
     torch.set_float32_matmul_precision('high')
-    wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "out/wandb"),
+    run_dir = get_rundir_name()  
+    wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
                                project=cfg.project_name,
-                               name=cfg.experiment_name)
-    dm = WindDataModule(cfg)
-    model = WindNetPL(cfg)
-
-    # if torch.__version__ >= "2.0.0":
-    #     model = torch.compile(model)
-    #     logging.info("Model compiled")
-    # else:
-    #     logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
+                               name=cfg.experiment_name,
+                               log_model='all')
+    dm = WindDataModuleAlt(cfg)
+    model = WindNetPL(cfg, run_dir)
+    logging.info(f"torch version {torch.__version__ }")
+    if torch.__version__ == "2.0.1" or torch.__version__ == "2.0.0":
+        model.net = torch.compile(model.net)
+        logging.info("Model compiled")
+    else:
+        logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
         
-    wandb_logger.watch(model, log='all', log_freq=100)       
-    default_root_dir = os.path.join(os.getcwd(), "out")
-    checkpoint_loc = default_root_dir    
-
+    # wandb_logger.watch(model, log='all', log_freq=100)       
+    default_root_dir = run_dir
+    checkpoint_loc = run_dir    
     checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
-    # exception_checkpoint_callback = OnExceptionCheckpoint(checkpoint_loc)
+    # exp_checkpoint_callback = OnExceptionCheckpoint(checkpoint_loc)
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
     
     trainer = pl.Trainer(max_epochs=cfg.max_epoch,                         
@@ -66,20 +77,21 @@ def train_regression(cfg: DictConfig) -> None:
                          logger=wandb_logger,
                          #misc
                          profiler='simple',
-                         ) 
-    
-    # wandb.config.update(OmegaConf.to_container(cfg, resolve=True))    
+                         )   
+    log_config(cfg)
+    log_model_arch(cfg)
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="conv_w_reg")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="cmip6_conv_w_reg")
 def main(cfg: DictConfig):    
     logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
     train_regression(cfg)
     logging.info('Train finished!')
 
 
-if __name__ == "__main__":      
+if __name__ == "__main__":    
+    sys.argv.append('hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}')
     main()
     wandb.finish()

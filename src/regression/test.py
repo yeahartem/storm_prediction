@@ -6,7 +6,7 @@ import random
 import logging
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
-from datamodule import WindDataModule
+from datamodule import WindDataModuleAlt
 from datetime import datetime
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -33,12 +33,6 @@ def test(cfg: DictConfig) -> None:
                                name=cfg.experiment_name)
     dm = WindDataModule(cfg)
     model = WindNetPL.load_from_checkpoint(os.path.join(os.getcwd(), "out", cfg.path_to_checkpoint), cfg=cfg)
-
-
-    # if torch.__version__ >= "2.0.0":
-    #     model = torch.compile(model)
-    # else:
-    #     print("PyTorch version is smaller than 2.0, compilation is not supported")
 
     wandb_logger.watch(model, log='all', log_freq=100)       
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=True)

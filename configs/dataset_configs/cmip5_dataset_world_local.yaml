@@ -1,9 +1,9 @@
 ---
 experiment_name: cmip5world
-make_climate_data: False
-make_normalization: False
-make_cleaned_weather_data: False
-make_target: true
+make_climate_data: true
+make_normalization: true
+make_cleaned_weather_data: false
+make_target: false
 load_normalization: false
 
 paths_to_climate_files_folders: 
@@ -36,7 +36,7 @@ variables:
 - tasmin
 time_limits:
 - '1950-01-01'
-- '2020-11-14'
+- '2023-11-14'
 start_of_test: '2008-01-01'
 
 half_side_size: 20

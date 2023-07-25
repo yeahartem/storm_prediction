@@ -26,7 +26,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import itertools
-
 import pandas as pd
 import numpy as np
 from geopandas import GeoDataFrame
@@ -40,7 +39,7 @@ supported_drivers['LIBKML'] = 'rw'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="infer_reg_test.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="cmip5_w_eval.yaml")
 def main(cfg: DictConfig):    
     eval(cfg)
     risk_estimation(cfg)
@@ -49,4 +48,3 @@ def main(cfg: DictConfig):
 if __name__ == "__main__":      
     sys.argv.append('hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}')
     main()
-    wandb.finish()

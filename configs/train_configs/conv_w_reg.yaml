@@ -6,12 +6,14 @@ target_type: wind_ms
 data_dir: ./data/cmip5_world3
 path_to_prepared_target_data: ./data/cmip5_world3/target.parquet
 path_to_prepared_stations: ./data/cmip5_world3/stations.parquet
+flush_start: true
 
 model_name: WindNet20x41
 normalize: false
 precision: 16 #  16 32 "16-mixed" "bf16-mixed"
 half_side_size: 21
 time_window: 41  # odd only
+time_agg_window: 41
 time_freq: 1
 target_threshold: 20
 target_max: 68.94
@@ -40,16 +42,16 @@ variables:
 - tasmin
 time_limits:
 - '1950-01-01'
-- '2020-11-14'
+- '2023-11-14'
 start_of_test: '2008-01-01'
 
-batch_size: 250
-learning_rate: 0.004
+batch_size: 220
+learning_rate: 0.008
 weight_decay: 0.0001
 max_epoch: 5
 
 
-optimizer_name: 'Adam'
+optimizer_name: 'SGD'
 scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 eval: false
