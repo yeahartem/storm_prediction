@@ -41,7 +41,7 @@ class DataPreLoaderAlt:
                 ]
             )
         else: self.transform = None
-
+        self.log_data()
 
     def load_climate_data(self):
         start_time = time.process_time()
@@ -89,11 +89,13 @@ class DataPreLoaderAlt:
                             )
         logging.info(f"Closest pixel search took {time.process_time() - start_time} seconds")
         return stations_df
+    
     @staticmethod
     def make_padding(data):
         quadrants, fourth_q_shape = DataPreLoaderAlt.extract_quadrants(data)
         padded_map = DataPreLoaderAlt.assemble_padded_map(quadrants)
         return padded_map, fourth_q_shape
+    
     @staticmethod
     def extract_quadrants(data):
         halfs = {"lat": data.shape[-2] // 2, "lon": data.shape[-1] // 2}
@@ -103,6 +105,7 @@ class DataPreLoaderAlt:
         fourth_quadrant = data[..., :halfs['lat'], halfs['lon']:]
         fourth_q_shape = (fourth_quadrant.shape[-2], fourth_quadrant.shape[-1])
         return (first_quadrant, second_quadrant, third_quadrant, fourth_quadrant), fourth_q_shape
+    
     @staticmethod
     def assemble_padded_map(quadrants):
         try:
@@ -113,7 +116,6 @@ class DataPreLoaderAlt:
         column_0 = np.concatenate([q_flipped[2], quadrants[3], quadrants[0], q_flipped[1]], axis=-2)
         column_1 = np.concatenate([q_flipped[3], quadrants[2], quadrants[1], q_flipped[0]], axis=-2)
         #0 1 0 1
-
         padded_map = np.concatenate((column_0, column_1, column_0, column_1), axis=-1)
 
         return padded_map
@@ -181,7 +183,6 @@ class DataPreLoaderAlt:
         for dates, y, lat, lon in target_df.rows():
             if (lat is not None) and (lon is not None) and (dates is not None) and (y is not None):
                 if not (any(np.isnan(np.array([lat, lon]), casting='unsafe')) and any(np.isnan(np.array(dates), casting='unsafe')) and any(np.isnan(np.array(y), casting='unsafe'))):
-
                     stations.append([lat, lon])
                     clipped_dates = dates[dates<(self.time_coords.shape[0]-self.cfg.time_window - 1)]
                     clipped_dates = clipped_dates[clipped_dates>self.cfg.time_window]
@@ -192,7 +193,6 @@ class DataPreLoaderAlt:
                     y_test = y[len(dates_train):len(clipped_dates)]
                     arr_train = np.stack([np.full(len(dates_train), lat, dtype=np.int16), np.full(len(dates_train), lon, dtype=np.int16), dates_train, y_train])
                     arr_test = np.stack([np.full(len(dates_test), lat, dtype=np.int16), np.full(len(dates_test), lon, dtype=np.int16), dates_test, y_test])
-
                     train_data_idxs.append(arr_train)
                     test_data_idxs.append(arr_test)
 
@@ -225,6 +225,12 @@ class DataPreLoaderAlt:
 
     def log_data(self):
         logging.info(f"Train size: {self.train_data_idxs.shape[1]}, test size: {self.test_data_idxs.shape[1]}")
-        logging.info(f"Station count: {len(self.station)}")
-        logging.info(f"Target min: {self.train_data_idxs[:,3].min()}, target max: {self.train_data_idxs[:,3].max()}")
-        logging.info(f"Target mean: {self.train_data_idxs[:,3].mean()}, target std: {self.train_data_idxs[:,3].std()}")
+        # logging.info(f"Station count: {len(self.stations)}")
+        logging.info(f"Target min: {self.train_data_idxs[3, :].min()}, target max: {self.train_data_idxs[3, :].max()}")
+        logging.info(f"Target mean: {self.train_data_idxs[3, :].mean()}, target std: {self.train_data_idxs[3, :].std()}")
+        logging.info(f"Balance train: {self.get_class_balance(self.train_data_idxs[3, :])}, balance test:{self.get_class_balance(self.test_data_idxs[3, :])}")
+
+    def get_class_balance(self, target_array):
+        positive = np.sum(target_array >= self.cfg.target_threshold)
+        all = target_array.shape[0]
+        return positive/all

@@ -31,7 +31,7 @@ def test(cfg: DictConfig) -> None:
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), "outdb"),
                                project=cfg.project_name,
                                name=cfg.experiment_name)
-    dm = WindDataModule(cfg)
+    dm = WindDataModuleAlt(cfg)
     model = WindNetPL.load_from_checkpoint(os.path.join(os.getcwd(), "out", cfg.path_to_checkpoint), cfg=cfg)
 
     wandb_logger.watch(model, log='all', log_freq=100)       

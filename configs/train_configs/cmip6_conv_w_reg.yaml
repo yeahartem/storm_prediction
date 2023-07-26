@@ -10,7 +10,7 @@ flush_start: true
 
 model_name: WindNet41x41
 normalize: false
-precision: 16 #  16 32 "16-mixed" "bf16-mixed"
+precision: 16 #  16 32
 half_side_size: 41
 time_window: 41  # odd only
 time_agg_window: 41
