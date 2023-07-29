@@ -44,6 +44,7 @@ def train_regression(cfg: DictConfig) -> None:
                                log_model='all')
     dm = WindDataModuleAlt(cfg)
     model = WindNetPL(cfg, run_dir)
+    
     logging.info(f"torch version {torch.__version__ }")
     if torch.__version__ == "2.0.1" or torch.__version__ == "2.0.0":
         model.net = torch.compile(model.net)
