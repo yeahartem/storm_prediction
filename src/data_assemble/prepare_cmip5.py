@@ -132,14 +132,13 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
             np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data.astype(dtype))
         else:
             np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
-        if not os.path.isfile(os.path.join(cfg.data_dir, "time.npy")): 
-            time = data_arr[var]["time"].to_numpy()       
-            lat = data_arr[var]["lat"].to_numpy()
-            lon = data_arr[var]["lon"].to_numpy()
-            np.save(os.path.join(cfg.data_dir, "time.npy"), time)
-            np.save(os.path.join(cfg.data_dir, "lat.npy"), lat)
-            np.save(os.path.join(cfg.data_dir, "lon.npy"), lon)
-            logging.info(f"Coords saved: time {time.min()}-{time.max()}, lat {lat.min()}-{lat.max()} step {lat[1]-lat[0]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
+        time = data_arr[var]["time"].to_numpy()       
+        lat = data_arr[var]["lat"].to_numpy()
+        lon = data_arr[var]["lon"].to_numpy()
+        np.save(os.path.join(cfg.data_dir, "time.npy"), time)
+        np.save(os.path.join(cfg.data_dir, "lat.npy"), lat)
+        np.save(os.path.join(cfg.data_dir, "lon.npy"), lon)
+        logging.info(f"Coords saved: time {time.min()}-{time.max()}, lat {lat.min()}-{lat.max()} step {lat[1]-lat[0]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
     return mean, std
 
 

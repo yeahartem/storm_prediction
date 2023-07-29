@@ -6,12 +6,13 @@ import pytorch_lightning as pl
 from collections import OrderedDict
 import torchmetrics
 from torchmetrics import MaxMetric, MeanMetric, MinMetric
-from torchmetrics.classification import BinaryPrecisionRecallCurve
 from torch.functional import F
 import torch.nn as nn
 from src.regression.models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
-
+from sklearn.metrics import precision_recall_curve
+import matplotlib.pyplot as plt
+                             
 class WindNetPL(pl.LightningModule):
 
     def __init__(self, cfg, run_dir=None): 
@@ -154,15 +155,15 @@ class WindNetPL(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
+
+        binary_target = float_to_binary(target, thresh=self.cfg.target_threshold)
+        binary_preds = float_to_score(predictions, thresh=self.cfg.target_threshold)
         self.test_loss(loss)
         self.test_MAE(predictions, target)
         self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
-        self.test_AP(float_to_score(predictions, thresh=self.cfg.target_threshold),
-                      float_to_binary(target, thresh=self.cfg.target_threshold))
-        self.test_precision(float_to_binary(predictions, thresh=self.cfg.target_threshold),
-                           float_to_binary(target, thresh=self.cfg.target_threshold))
-        self.test_recall(float_to_binary(predictions, thresh=self.cfg.target_threshold),
-                        float_to_binary(target, thresh=self.cfg.target_threshold))
+        self.test_AP( binary_preds, binary_target)
+        self.test_precision(binary_preds,binary_target)
+        self.test_recall(binary_preds, binary_target)
         
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/MAE", self.test_MAE, on_step=False, on_epoch=True, prog_bar=True)
@@ -174,19 +175,28 @@ class WindNetPL(pl.LightningModule):
         output = OrderedDict(
             {
                 "loss": loss,
-                "preds": predictions,
-                "target": target,
+                "binary_preds": binary_preds,
+                "binary_target": binary_target,
             }
         )
+        self.test_outputs.append(output)
+
         return output
     
-    def test_epoch_end(self, output):
-        bprc = BinaryPrecisionRecallCurve(thresholds=None)
-        preds = torch.stack([x["preds"] for x in output])
-        target = torch.stack([x["target"] for x in output])
-        bprc.update(preds, target)
-        fig, ax = bprc.plot()
-        fig.savefig(self.run_dir)   # save the figure to file        
+    def on_test_start(self):
+        print(f'Plots will be saved to {self.run_dir}')
+        self.test_outputs = []
+
+    def on_test_epoch_end(self):
+        preds = torch.stack([x["binary_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().numpy().flatten()
+        target = torch.stack([x["binary_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().numpy().flatten()
+        precision, recall, thresholds = precision_recall_curve( target, preds)
+        fig, ax = plt.subplots()
+        ax.plot(recall, precision, color='purple')
+        ax.set_title('Precision-Recall Curve')
+        ax.set_ylabel('Precision')
+        ax.set_xlabel('Recall')
+        fig.savefig(os.path.join(self.run_dir, 'PR_curve.png'))   # save the figure to file        
 
 
     def configure_optimizers(self):
