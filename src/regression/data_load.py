@@ -54,7 +54,7 @@ class DataPreLoaderAlt:
             var_data[i] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
 
         #map padding
-        var_data_padded, shift = self.make_padding(var_data)
+        var_data_padded, shift = self.make_padding(var_data, self.cfg.half_side_size)
         self.shift = shift
 
         var_data_torch = torch.from_numpy(var_data_padded).half() if self.cfg.precision == 16 else torch.from_numpy(var_data_padded)
