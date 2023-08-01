@@ -1,6 +1,7 @@
 import numpy as np 
 import pandas as pd
 import unittest
+import xarray as xr
 
 import os, shutil
 import sys
@@ -50,35 +51,46 @@ def assert_quadrants_coords(xr_quadrants, lat_lims, lon_lims):
     assert((qs_lon_lims[3][1] <= lon_lims[1]) and (qs_lon_lims[3][0] >= lon_lims_middle)), "Third quadrant wrong Longitude limits"
     assert((qs_lat_lims[3][1] <= lat_lims_middle) and (qs_lat_lims[3][0] >= lat_lims[0])), "Third quadrant wrong Latitude limits"
 
-def test_padding_correctness(padded_map, data_xr, xr_q):
-    middle = data_xr.sel(lon=xr_q[0].lon.data[0])
-    top = data_xr.sel(lon=xr_q[1].lon.data[0], lat=slice(0, 90))
+def test_padding_correctness(padded_map, data_xr, xr_q, half_side_size):
+    middle = data_xr.sel(lon=xr_q[0].lon.data[-1])
+    top = data_xr.sel(lon=xr_q[1].lon.data[-1], lat=slice(0, 90))
     top = top.reindex(lat=list(reversed(top.lat)))
-    bot = data_xr.sel(lon=xr_q[2].lon.data[0], lat=slice(-90, 0))
+    bot = data_xr.sel(lon=xr_q[2].lon.data[-1], lat=slice(-90, 0))
     bot = bot.reindex(lat=list(reversed(bot.lat)))
-    combined = np.concatenate((bot.data, middle.data, top.data), axis=-1)
+    combined = np.concatenate((bot.data[..., -half_side_size:], middle.data, top.data[..., :half_side_size]), axis=-1)
     assert(combined.shape[-1] == padded_map.shape[-2]), "Wrong padded map shape"
-    assert(np.allclose(padded_map[..., 0] - combined, 0)), "values of padded map are wrong at Longitude=180"
+    assert(np.allclose(padded_map[..., half_side_size-1] - combined, 0)), "values of padded map are wrong at Longitude=360"
     pass
 
 
-def test_pad_climate_data():
+def test_pad_climate_data(map_test=False):
     print("Padding")
     # cfg = self.cfg
     #create dummy data
     lat_lims = (-90, 90)
     lon_lims = (0, 360)
-    data, data_xr, time_coords, lat_coords, lon_coords, climate_vars, df_data, stations_df, cfg = dummy_climate(start_date='2020-12-02', number_of_days=10, lat_lims=lat_lims, lon_lims=lon_lims, dlat=0.56, dlon=1.5)
+    half_side_size = 5
+    if map_test:
+        print("reading cmip sample")
+        data_xr = xr.open_mfdataset('/app/wind/data/cmip/MRI-highres_H/pr_day_MRI-AGCM3-2-H_highresSST-future_r1i1p1f1_gn_20150101-20241231.nc')
+        var = [k for k in data_xr.data_vars.keys()][-1]
+        data_xr = data_xr[var].compute()
+        print("cmip sample has been read")
+    else:
+        data, data_xr, time_coords, lat_coords, lon_coords, climate_vars, df_data, stations_df, cfg = dummy_climate(start_date='2020-12-02', number_of_days=10, lat_lims=lat_lims, lon_lims=lon_lims, dlat=0.56, dlon=1.5)
     # halfs = {"lat": data.shape[-2] // 2, "lon": data.shape[-1] // 2}
-    xr_q = DataPreLoaderAlt.extract_quadrants(data_xr)
+    xr_q, shift = DataPreLoaderAlt.extract_quadrants(data_xr)
+    xr_q_borders = DataPreLoaderAlt.extrect_quadrant_borders(xr_q, half_side_size)
     assert_quadrants_coords(xr_q, lat_lims, lon_lims)
     
-    padded_map = DataPreLoaderAlt.assemble_padded_map(xr_q)
-    test_padding_correctness(padded_map, data_xr, xr_q)
+    padded_map = DataPreLoaderAlt.assemble_padded_map(xr_q, xr_q_borders, half_side_size)
+    test_padding_correctness(padded_map, data_xr, xr_q, half_side_size)
     
     
 
 if __name__ == "__main__":
-    
-    test_pad_climate_data()
+    # map_test = True
+    # test_pad_climate_data(map_test)
+    map_test = False
+    test_pad_climate_data(map_test)
     # unittest.main()

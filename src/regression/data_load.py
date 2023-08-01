@@ -54,8 +54,8 @@ class DataPreLoaderAlt:
             var_data[i] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
 
         #map padding
-        var_data_padded, fourth_q_shape = self.make_padding(var_data)
-        self.fourth_q_shape = fourth_q_shape
+        var_data_padded, shift = self.make_padding(var_data)
+        self.shift = shift
 
         var_data_torch = torch.from_numpy(var_data_padded).half() if self.cfg.precision == 16 else torch.from_numpy(var_data_padded)
         logging.info(f"Climate data preparation took {time.process_time() - start_time} seconds")
@@ -91,10 +91,11 @@ class DataPreLoaderAlt:
         return stations_df
     
     @staticmethod
-    def make_padding(data):
+    def make_padding(data, half_side_size):
         quadrants, fourth_q_shape = DataPreLoaderAlt.extract_quadrants(data)
-        padded_map = DataPreLoaderAlt.assemble_padded_map(quadrants)
-        return padded_map, fourth_q_shape
+        quadrants_borders = DataPreLoaderAlt.extrect_quadrant_borders(quadrants, half_side_size)
+        padded_map = DataPreLoaderAlt.assemble_padded_map(quadrants, quadrants_borders, half_side_size)
+        return padded_map, (half_side_size, half_side_size)
     
     @staticmethod
     def extract_quadrants(data):
@@ -107,16 +108,43 @@ class DataPreLoaderAlt:
         return (first_quadrant, second_quadrant, third_quadrant, fourth_quadrant), fourth_q_shape
     
     @staticmethod
-    def assemble_padded_map(quadrants):
+    def extrect_quadrant_borders(quadrants, half_side_size):
+        q_borders = {}
+
+        q_borders['0_top'] = quadrants[0][..., -half_side_size:, :]
+        q_borders['0_right'] = quadrants[0][..., :, -half_side_size:]
+
+        q_borders['1_top'] = quadrants[1][..., -half_side_size:, :]
+        q_borders['1_left'] = quadrants[1][..., :, :half_side_size]
+
+        q_borders['2_bot'] = quadrants[2][..., :half_side_size, :]
+        q_borders['2_left'] = quadrants[2][..., :, :half_side_size]
+
+        q_borders['3_bot'] = quadrants[3][..., :half_side_size, :]
+        q_borders['3_right'] = quadrants[3][..., :, -half_side_size:]
+
+        return q_borders
+
+    @staticmethod
+    def assemble_padded_map(quadrants, q_borders, half_side_size):
         try:
-            q_flipped = [q.reindex(lat=list(reversed(q.lat))) for q in quadrants]
+            column_1 = np.concatenate((q_borders['3_bot'].reindex(lat=list(reversed(q_borders['3_bot'].lat))), quadrants[2], quadrants[1], q_borders['0_top'].reindex(lat=list(reversed(q_borders['0_top'].lat)))), axis=-2)
+            column_2 = np.concatenate((q_borders['2_bot'].reindex(lat=list(reversed(q_borders['2_bot'].lat))), quadrants[3], quadrants[0], q_borders['1_top'].reindex(lat=list(reversed(q_borders['1_top'].lat)))), axis=-2)
         except AttributeError:
-            q_flipped = [np.flip(q, axis=-2) for q in quadrants]
+            column_1 = np.concatenate((np.flip(q_borders['3_bot'], axis=-2), quadrants[2], quadrants[1], np.flip(q_borders['0_top'], axis=-2)), axis=-2)
+            column_2 = np.concatenate((np.flip(q_borders['2_bot'], axis=-2), quadrants[3], quadrants[0], np.flip(q_borders['1_top'], axis=-2)), axis=-2)
+
+        column_0 = column_2[..., :, -half_side_size:]
+        column_3 = column_1[..., :, :half_side_size]
+        # try:
+        #     q_flipped = [q.reindex(lat=list(reversed(q.lat))) for q in quadrants]
+        # except AttributeError:
+        #     q_flipped = [np.flip(q, axis=-2) for q in quadrants]
         
-        column_0 = np.concatenate([q_flipped[2], quadrants[3], quadrants[0], q_flipped[1]], axis=-2)
-        column_1 = np.concatenate([q_flipped[3], quadrants[2], quadrants[1], q_flipped[0]], axis=-2)
+        # column_0 = np.concatenate([q_flipped[2], quadrants[3], quadrants[0], q_flipped[1]], axis=-2)
+        # column_1 = np.concatenate([q_flipped[3], quadrants[2], quadrants[1], q_flipped[0]], axis=-2)
         #0 1 0 1
-        padded_map = np.concatenate((column_0, column_1, column_0, column_1), axis=-1)
+        padded_map = np.concatenate((column_0, column_1, column_2, column_3), axis=-1)
 
         return padded_map
 
@@ -200,10 +228,10 @@ class DataPreLoaderAlt:
         self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
         self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
         #index shift due to padding
-        self.train_data_idxs[0, :] += self.fourth_q_shape[0] #lat
-        self.train_data_idxs[1, :] += self.fourth_q_shape[1] #lon
-        self.test_data_idxs[0, :] += self.fourth_q_shape[0]  #lat
-        self.test_data_idxs[1, :] += self.fourth_q_shape[1]  #lon
+        self.train_data_idxs[0, :] += self.shift[0] #lat
+        self.train_data_idxs[1, :] += self.shift[1] #lon
+        self.test_data_idxs[0, :] += self.shift[0]  #lat
+        self.test_data_idxs[1, :] += self.shift[1]  #lon
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
