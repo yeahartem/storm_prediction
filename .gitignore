@@ -20,3 +20,4 @@ tmp*
 data
 *.log
 data_mounted
+*proxy*

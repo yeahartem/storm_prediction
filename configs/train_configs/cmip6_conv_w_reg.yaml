@@ -41,12 +41,13 @@ variables:
 - psl
 - tasmax
 - tasmin
-time_limits:
-- '1950-01-01'
-- '2023-11-14'
-start_of_test: '2008-01-01'
 
-batch_size: 12
+start_time: '2006-01-01'
+end_time: '2023-11-14'
+start_of_test: '2008-01-01' 
+
+
+batch_size: 50
 learning_rate: 0.008
 weight_decay: 0.0001
 max_epoch: 5

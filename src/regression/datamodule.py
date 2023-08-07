@@ -7,13 +7,14 @@ import torchvision
 from torch.utils.data import DataLoader, Dataset
 import torch
 from omegaconf import DictConfig
-from src.regression.data_load import DataPreLoaderAlt
+from src.regression.data_load import DataPreLoader
+
 
 class WindDataModuleAlt(pl.LightningDataModule):
-    def __init__(self, cfg: DictConfig):
+    def __init__(self, cfg: DictConfig, test=False):
         super().__init__()
         self.cfg = cfg      
-        self.DPL = DataPreLoaderAlt(cfg)
+        self.DPL = DataPreLoader(cfg)
         
         if self.cfg.normalize:
             mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
@@ -39,13 +40,13 @@ class WindDataModuleAlt(pl.LightningDataModule):
                                                 transforms=self.DPL.transform)
 
     def train_dataloader(self):
-        return DataLoader(dataset=self.dataset_train, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers)
+        return DataLoader(dataset=self.dataset_train, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers, pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(dataset=self.dataset_val, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers)
+        return DataLoader(dataset=self.dataset_val, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers, pin_memory=True)
 
     def test_dataloader(self):
-        return DataLoader(dataset=self.dataset_test, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers)
+        return DataLoader(dataset=self.dataset_test, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers, pin_memory=True)
 
 
 class XarrayDatasetAlt(Dataset):

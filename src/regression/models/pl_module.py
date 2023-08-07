@@ -232,6 +232,19 @@ class WindNetPL(pl.LightningModule):
                         'frequency': 1,
                     }
                 }
+            elif self.scheduler_name == "LinearLR":
+                scheduler = torch.optim.lr_scheduler.LinearLR(optimizer,
+                                                             start_factor=1.0, end_factor=0.3, 
+                                                             total_iters=self.trainer.estimated_stepping_batches)
+                return {
+                    'optimizer': optimizer,
+                    'lr_scheduler': {
+                        'name': 'train/lr',
+                        'scheduler': scheduler,
+                        'interval': 'step', 
+                        'frequency': 1,
+                    }
+                }
 
         else:
             return optimizer

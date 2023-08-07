@@ -16,7 +16,7 @@ output_file: 'out/predictions/output_file_world.kml'
 path_to_weather_stations: 'data/weatherstation_data/'
 
 path_to_folder_with_norm_for_infer: 'data/cmip5_world3' # channel-wise normalization values (mean and std) will be copied from this folder)
-data_dir: 'data/cmip5_infer/' # the rest will be saved in this directory
+data_dir: 'data/cmip5_world3/' # the rest will be saved in this directory
 prepared_target_data_name: 'target.parquet'
 prepared_stations_name: 'stations.parquet'
 
@@ -25,11 +25,10 @@ precision: 16
 
 spatial_crop: False
 
-coords:
-  lat_min: -88.0
-  lat_max: 88.0
-  lon_min: -179.0
-  lon_max: 180.45
+lat_min: -90.0
+lat_max: 90.0
+lon_min: -180.0
+lon_max: 180.0
 
 variables:
 - sfcWindmax
@@ -39,21 +38,21 @@ variables:
 - tasmax
 - tasmin
 
-time_limits:
-- '2024-01-01'
-- '2024-12-01'
+time_start: '2019-01-30'
+time_end: '2019-01-31'
 start_of_test: False
 
 wind_risk_threshold: 20
-time_slices: 42 # number of days to be predicted, false to predict all
-
+time_slices: 41 # number of days to be predicted, false to predict all
+batch_size: 200
+distributed: True
 # regards model
 eval: true
-path_to_checkpoint: 'out/epoch=2-step=16515.ckpt'
-model_name: WindNet20x41
+path_to_checkpoint: out/checkpoints/epoch=0-step=21023.ckpt
+model_name: WindNet41x41
 
 normalize: false #already normalized
 cube_root_of_batch_size: 5
 
-half_side_size: 21
+half_side_size: 41
 time_window: 41  # odd only

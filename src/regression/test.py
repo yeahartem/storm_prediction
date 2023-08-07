@@ -14,7 +14,7 @@ from pytorch_lightning.loggers import WandbLogger
 import wandb
 import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint
-
+print(os.getcwd())
 warnings.filterwarnings("ignore")
 torch.manual_seed(112)
 random.seed(112)
@@ -36,7 +36,7 @@ def test(cfg: DictConfig) -> None:
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
                                project=cfg.project_name,
                                name=cfg.experiment_name)
-    dm = WindDataModuleAlt(cfg)
+    dm = WindDataModuleAlt(cfg, test=True)
     model = WindNetPL(cfg, run_dir)
     model.load_from_checkpoint(os.path.join(os.getcwd(), cfg.path_to_checkpoint), cfg=cfg)
 
@@ -48,7 +48,7 @@ def test(cfg: DictConfig) -> None:
                          devices=[0],
                          default_root_dir=run_dir,
                          logger=wandb_logger,
-                         limit_test_batches=200) 
+                         limit_test_batches=1000) 
     
     logging.info(f"Time to start test {time.process_time() - start_time} seconds")
     trainer.test(model, dm)
