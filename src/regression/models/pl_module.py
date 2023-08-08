@@ -84,8 +84,8 @@ class WindNetPL(pl.LightningModule):
 
     def model_step(self, batch):
         objs, target = batch
-        print(objs[0].shape)
-        print(objs[1].shape)
+        # print(objs[0].shape)
+        # print(objs[1].shape)
         target = torch.unsqueeze(target, dim=-1)
         predictions = self(objs).float()
         loss = self.loss(predictions, target.float())

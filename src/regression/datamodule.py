@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 from omegaconf import DictConfig
 from src.regression.data_load import DataPreLoader
-
+from data_load import make_padding_torch
 
 class WindDataModule(pl.LightningDataModule):
     def __init__(self, cfg: DictConfig, test=False):
@@ -85,16 +85,26 @@ class XarrayDatasetElev(XarrayDataset):
 
     def __getitem__(self, idx):
         lat_index, lon_index, time_index, y = self.data_idxs[:, idx]
-        X = self.dataset_torch[:,
+        dataset_torch_crop = self.dataset_torch[:,
                                slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
+                               :,
+                               :
+                               ]
+        
+        dataset_torch_crop, _ = make_padding_torch(dataset_torch_crop, self.cfg.half_side_size + self.cfg.half_side_size//2)
+
+        X = dataset_torch_crop[:,
+                               :,
                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
                                slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
                                ]
+        # print([time_index, lat_index, lon_index])
         lat_index_elev = int((lat_index - self.shift_clim[0]) * self.r_lat) + self.shift_elev[0]
         lon_index_elev = int((lon_index - self.shift_clim[1]) * self.r_lon) + self.shift_elev[1]
-        X_elev = self.elevation_torch[slice(lat_index_elev - self.elev_hss, lat_index_elev + self.elev_hss + 1),
-                                 slice(lon_index_elev - self.elev_hss, lon_index_elev + self.elev_hss + 1),
-                                ]
+        X_elev = self.elevation_torch[
+                                    slice(lat_index_elev - self.elev_hss, lat_index_elev + self.elev_hss + 1),
+                                    slice(lon_index_elev - self.elev_hss, lon_index_elev + self.elev_hss + 1),
+                                    ]
         X_elev = X_elev.view(1, X_elev.shape[-2], X_elev.shape[-1])
         y = torch.tensor(y, dtype=self.dtype)
         return (X, X_elev), y    

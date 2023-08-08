@@ -16,6 +16,8 @@ import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
 from omegaconf.omegaconf import open_dict
 from pytorch_lightning.utilities import rank_zero_only
+warnings.filterwarnings("ignore")
+
 
 def get_rundir_name() -> str:
     now = datetime.now()
@@ -80,7 +82,7 @@ def train_regression(cfg: DictConfig) -> None:
                          profiler='simple',
                          )   
     log_config(cfg)
-    log_model_arch(cfg)
+    # log_model_arch(cfg)
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
     

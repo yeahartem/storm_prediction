@@ -57,11 +57,15 @@ class DataPreLoader:
         logging.info(f"CMIP data loaded {var_data.shape}")
         #map padding
         var_data = self.time_crop(var_data)
-        var_data, shift = make_padding(var_data, self.cfg.half_side_size)
-        self.shift = shift
-        
+        # var_data, shift = make_padding(var_data, self.cfg.half_side_size)
+        shift_fixed =  self.cfg.half_side_size + self.cfg.half_side_size//2
+        self.shift = [shift_fixed, shift_fixed]
+        logging.info(f"Padded data shape {var_data.shape}")
         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.precision == 16 else torch.from_numpy(var_data)
+
         return var_data_torch
+    
+
     def load_elevation_data(self):
          start_time = time.process_time()
          var = 'topo'
@@ -74,7 +78,6 @@ class DataPreLoader:
 
          var_data = np.empty((len(lat_elev_coords), len(lon_elev_coords)), dtype=dtype)
          var_data[...] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
-
          #adjusted half_side_size
          self.r = np.max((np.abs(np.diff(lat_coords)).max(), np.abs(np.diff(lon_coords)).max())) / np.min((np.abs(np.diff(lat_elev_coords)).min(), np.abs(np.diff(lon_elev_coords)).min()))
          self.r_lat = np.abs(np.diff(lat_coords)).max() / np.abs(np.diff(lat_elev_coords)).min()
@@ -83,12 +86,10 @@ class DataPreLoader:
          self.r = torch.from_numpy(np.atleast_1d(self.r))
          self.r_lat = torch.from_numpy(np.atleast_1d(self.r_lat))
          self.r_lon = torch.from_numpy(np.atleast_1d(self.r_lon))
-
          #map padding
-         var_data_padded, shift = make_padding(var_data, self.elev_hss)
+         var_data, shift = make_padding(var_data, self.elev_hss + self.elev_hss//2)
          self.shift_elev = shift
-
-         var_data_torch = torch.from_numpy(var_data_padded).half() if self.cfg.precision == 16 else torch.from_numpy(var_data_padded)
+         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.precision == 16 else torch.from_numpy(var_data)
          logging.info(f"Elevation data preparation took {time.process_time() - start_time} seconds")
          return var_data_torch
     
@@ -184,12 +185,15 @@ class DataPreLoader:
         self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
         self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
         self.train_data_idxs = self.train_data_idxs[:, ::self.cfg.time_freq]
-        self.test_data_idxs = self.train_data_idxs[:, ::self.cfg.time_freq]
+        self.test_data_idxs = self.test_data_idxs[:, ::self.cfg.time_freq]
         #index shift due to padding
         self.train_data_idxs[0, :] += self.shift[0] #lat
         self.train_data_idxs[1, :] += self.shift[1] #lon
         self.test_data_idxs[0, :] += self.shift[0]  #lat
         self.test_data_idxs[1, :] += self.shift[1]  #lon
+
+        logging.info(f'TRAIN MIN LAT {self.test_data_idxs[0, :].min()} LON {self.test_data_idxs[1, :].min()}')
+        logging.info(f'TRAIN MAX LAT {self.test_data_idxs[0, :].max()} LON {self.test_data_idxs[1, :].max()}')
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
@@ -259,7 +263,7 @@ def extract_quadrants(data):
     fourth_quadrant = data[..., :halfs['lat'], halfs['lon']:]
     fourth_q_shape = (fourth_quadrant.shape[-2], fourth_quadrant.shape[-1])
     return (first_quadrant, second_quadrant, third_quadrant, fourth_quadrant), fourth_q_shape
-
+    
 
 def extrect_quadrant_borders(quadrants, half_side_size):
     q_borders = {}
@@ -288,13 +292,27 @@ def assemble_padded_map(quadrants, q_borders, half_side_size):
         column_2 = np.concatenate((np.flip(q_borders['2_bot'], axis=-2), quadrants[3], quadrants[0], np.flip(q_borders['1_top'], axis=-2)), axis=-2)
     column_0 = column_2[..., :, -half_side_size:]
     column_3 = column_1[..., :, :half_side_size]
-    # try:
-    #     q_flipped = [q.reindex(lat=list(reversed(q.lat))) for q in quadrants]
-    # except AttributeError:
-    #     q_flipped = [np.flip(q, axis=-2) for q in quadrants]
-    # column_0 = np.concatenate([q_flipped[2], quadrants[3], quadrants[0], q_flipped[1]], axis=-2)
-    # column_1 = np.concatenate([q_flipped[3], quadrants[2], quadrants[1], q_flipped[0]], axis=-2)
-    #0 1 0 1
+
     padded_map = np.concatenate((column_0, column_1, column_2, column_3), axis=-1)
     return padded_map
 
+def make_padding_torch(data, half_side_size):
+    quadrants, fourth_q_shape = extract_quadrants(data)
+    quadrants_borders = extrect_quadrant_borders(quadrants, half_side_size)
+    padded_map = assemble_padded_map_torch(quadrants, quadrants_borders, half_side_size)
+    return padded_map, (half_side_size, half_side_size)
+
+
+
+def assemble_padded_map_torch(quadrants, q_borders, half_side_size):
+    try:
+        column_1 = torch.concatenate((q_borders['3_bot'].reindex(lat=list(reversed(q_borders['3_bot'].lat))), quadrants[2], quadrants[1], q_borders['0_top'].reindex(lat=list(reversed(q_borders['0_top'].lat)))), dims=(-2,))
+        column_2 = torch.concatenate((q_borders['2_bot'].reindex(lat=list(reversed(q_borders['2_bot'].lat))), quadrants[3], quadrants[0], q_borders['1_top'].reindex(lat=list(reversed(q_borders['1_top'].lat)))), dims=(-2,))
+    except AttributeError:
+        column_1 = torch.concatenate((torch.flip(q_borders['3_bot'], dims=(-2,)), quadrants[2], quadrants[1], torch.flip(q_borders['0_top'], dims=(-2,))), dim=-2)
+        column_2 = torch.concatenate((torch.flip(q_borders['2_bot'], dims=(-2,)), quadrants[3], quadrants[0], torch.flip(q_borders['1_top'], dims=(-2,))), dim=-2)
+    column_0 = column_2[..., :, -half_side_size:]
+    column_3 = column_1[..., :, :half_side_size]
+
+    padded_map = torch.concatenate((column_0, column_1, column_2, column_3), axis=-1)
+    return padded_map
