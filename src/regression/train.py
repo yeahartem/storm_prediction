@@ -7,7 +7,7 @@ import logging
 from datetime import datetime 
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
-from src.regression.datamodule import WindDataModuleAlt
+from src.regression.datamodule import WindDataModule
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
@@ -42,7 +42,7 @@ def train_regression(cfg: DictConfig) -> None:
                                project=cfg.project_name,
                                name=cfg.experiment_name,
                                log_model='all')
-    dm = WindDataModuleAlt(cfg)
+    dm = WindDataModule(cfg)
     model = WindNetPL(cfg, run_dir)
     
     logging.info(f"torch version {torch.__version__ }")
@@ -85,7 +85,7 @@ def train_regression(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="cmip6_conv_w_reg")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="cmip6_conv_elev_reg.yaml")
 def main(cfg: DictConfig):    
     logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
     train_regression(cfg)

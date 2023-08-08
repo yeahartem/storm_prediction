@@ -26,6 +26,8 @@ class DataPreLoader:
         self.lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
         self.lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
         self.dataset_torch = self.load_climate_data()
+        self.elevation_torch = self.load_elevation_data()
+
         if self.data_exists():
             self.load_data()
         else:
@@ -44,6 +46,7 @@ class DataPreLoader:
         else: self.transform = None
         self.log_data()
 
+
     def load_climate_data(self):
         dtype = np.float16 if self.cfg.precision == 16 else np.float32
         var_data = np.empty(
@@ -59,7 +62,36 @@ class DataPreLoader:
         
         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.precision == 16 else torch.from_numpy(var_data)
         return var_data_torch
+    def load_elevation_data(self):
+         start_time = time.process_time()
+         var = 'topo'
+         time_coords = np.load(os.path.join(self.cfg.data_dir, 'time.npy')).astype('datetime64[D]')
+         lat_coords = np.load(os.path.join(self.cfg.data_dir, 'lat.npy'))
+         lon_coords = np.load(os.path.join(self.cfg.data_dir, 'lon.npy'))
+         lat_elev_coords = np.load(os.path.join(self.cfg.data_dir, 'topo_lat.npy'))
+         lon_elev_coords = np.load(os.path.join(self.cfg.data_dir, 'topo_lon.npy'))
+         dtype = np.float16 if self.cfg.precision == 16 else np.float32
 
+         var_data = np.empty((len(lat_elev_coords), len(lon_elev_coords)), dtype=dtype)
+         var_data[...] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
+
+         #adjusted half_side_size
+         self.r = np.max((np.abs(np.diff(lat_coords)).max(), np.abs(np.diff(lon_coords)).max())) / np.min((np.abs(np.diff(lat_elev_coords)).min(), np.abs(np.diff(lon_elev_coords)).min()))
+         self.r_lat = np.abs(np.diff(lat_coords)).max() / np.abs(np.diff(lat_elev_coords)).min()
+         self.r_lon = np.abs(np.diff(lon_coords)).max() / np.abs(np.diff(lon_elev_coords)).min()
+         self.elev_hss = np.int(self.r * self.cfg.half_side_size) // 2
+         self.r = torch.from_numpy(np.atleast_1d(self.r))
+         self.r_lat = torch.from_numpy(np.atleast_1d(self.r_lat))
+         self.r_lon = torch.from_numpy(np.atleast_1d(self.r_lon))
+
+         #map padding
+         var_data_padded, shift = make_padding(var_data, self.elev_hss)
+         self.shift_elev = shift
+
+         var_data_torch = torch.from_numpy(var_data_padded).half() if self.cfg.precision == 16 else torch.from_numpy(var_data_padded)
+         logging.info(f"Elevation data preparation took {time.process_time() - start_time} seconds")
+         return var_data_torch
+    
     def time_crop(self, var_data):
         start_date = datetime.strptime(self.cfg.start_time, '%Y-%m-%d').date()
         end_date = datetime.strptime(self.cfg.end_time, '%Y-%m-%d').date()
@@ -151,6 +183,8 @@ class DataPreLoader:
 
         self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
         self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
+        self.train_data_idxs = self.train_data_idxs[:, ::self.cfg.time_freq]
+        self.test_data_idxs = self.train_data_idxs[:, ::self.cfg.time_freq]
         #index shift due to padding
         self.train_data_idxs[0, :] += self.shift[0] #lat
         self.train_data_idxs[1, :] += self.shift[1] #lon

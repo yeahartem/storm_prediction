@@ -25,16 +25,15 @@ class WindNetPL(pl.LightningModule):
             self.net = WindNet20x41()
         elif cfg.model_name=='Linear10x51':
             self.net = Linear10x51()
-        elif cfg.model_name=='ConvLSTM':
-            self.net = ConvLSTM(len(cfg.variables), cfg.hidden_dim, tuple(cfg.kernel_size), cfg.num_layers,
-                 batch_first=False, bias=True, return_all_layers=False)
+        elif cfg.model_name=="WindNetElev41x41":
+             self.net = WindNetElev41x41()
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
         
         if not cfg.eval:
             self.scheduler_name = cfg.scheduler_name
-            if cfg.optimizer_name=='Adam':
-                self.optimizer = torch.optim.Adam
+            if cfg.optimizer_name=='AdamW':
+                self.optimizer = torch.optim.AdamW
             elif cfg.optimizer_name=='RAdam':
                 self.optimizer = torch.optim.RAdam
             elif cfg.optimizer_name=='SGD':
@@ -85,6 +84,8 @@ class WindNetPL(pl.LightningModule):
 
     def model_step(self, batch):
         objs, target = batch
+        print(objs[0].shape)
+        print(objs[1].shape)
         target = torch.unsqueeze(target, dim=-1)
         predictions = self(objs).float()
         loss = self.loss(predictions, target.float())

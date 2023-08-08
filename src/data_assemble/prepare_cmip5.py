@@ -141,15 +141,59 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
         logging.info(f"Coords saved: time {time.min()}-{time.max()}, lat {lat.min()}-{lat.max()} step {lat[1]-lat[0]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
     return mean, std
 
+def elevation_to_npy(file: str, cfg, save: bool = True):
+    """Convert elevation data to nc files."""
+    var = 'topo'
+    assert (cfg.precision == 16 and cfg.saved_normalized) or (cfg.precision == 32 and not cfg.saved_normalized), \
+    ''' 16 bit precision works only normalized,
+        32 bit precision should be used with saved_normalized=False.'''
+    experiment_name = cfg.experiment_name
+    train_coords = cfg.train_coords
+    rect_coords = list(train_coords.values()) #rect_coords = [min_lat, max_lat, min_lon, max_lon]    
+    try:
+        data_arr = xr.open_mfdataset(file, preprocess=process_coords, parallel=True, engine='scipy')
+    except TypeError:
+        data_arr = xr.open_mfdataset(file, preprocess=process_coords, parallel=True)
+    data_arr = data_arr.rename({"X": 'lon', "Y": 'lat'})
+    data_arr = data_arr.fillna(0)
+    
+    if cfg.spatial_crop:
+        data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
 
-def save_normalization_values(mean_channels: np.array, std_channels: np.array, cfg: DictConfig):
+    if cfg.precision == 16:
+        dtype = np.float16
+    elif cfg.precision == 32:
+        dtype = np.float32
+    else:
+        raise NotImplementedError
+    
+    #Calculate mean and std
+    std = data_arr[var].std().compute()
+    mean = data_arr[var].mean().compute()
+
+    if save:
+        logging.info(f"Saving: {var}")
+        if cfg.saved_normalized:
+            data = data_arr[var].data
+            data = np.divide((data - data.mean()), data.std())
+            np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data.astype(dtype))
+        else:
+            np.save(os.path.join(cfg.data_dir, var + f"_{cfg.precision}.npy"), data_arr[var].data.astype(dtype))
+        lat = data_arr[var]["lat"].to_numpy()
+        lon = data_arr[var]["lon"].to_numpy()
+        np.save(os.path.join(cfg.data_dir, "topo_lat.npy"), lat)
+        np.save(os.path.join(cfg.data_dir, "topo_lon.npy"), lon)
+        logging.info(f"Coords saved: lat {lat.min()}-{lat.max()} step {lat[1]-lat[0]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
+    return mean, std
+
+def save_normalization_values(mean_channels: np.array, std_channels: np.array, cfg: DictConfig, prefix: str = ''):
     """Save normalization values for the climate data in given folder"""
     for i in zip(mean_channels, std_channels):
         print(f" mean: {i[0]}, std:  {i[1]}")
-    np.save(os.path.join(cfg.data_dir, "mean_32.npy"), mean_channels.astype(np.float32))
-    np.save(os.path.join(cfg.data_dir, "std_32.npy"), std_channels.astype(np.float32))
-    np.save(os.path.join(cfg.data_dir, "mean_16.npy"), mean_channels.astype(np.float16))
-    np.save(os.path.join(cfg.data_dir, "std_16.npy"), std_channels.astype(np.float16))
+    np.save(os.path.join(cfg.data_dir, prefix + "mean_32.npy"), mean_channels.astype(np.float32))
+    np.save(os.path.join(cfg.data_dir, prefix + "std_32.npy"), std_channels.astype(np.float32))
+    np.save(os.path.join(cfg.data_dir, prefix + "mean_16.npy"), mean_channels.astype(np.float16))
+    np.save(os.path.join(cfg.data_dir, prefix + "std_16.npy"), std_channels.astype(np.float16))
     
 
 def load_dataset(cfg: DictConfig):
@@ -164,7 +208,7 @@ def load_dataset(cfg: DictConfig):
     return data_arr
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip5_dataset_world_prometeus.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/dataset_configs"), config_name="cmip6_dataset_elevation.yaml")
 def prepare_cmip(cfg: DictConfig):    
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
@@ -188,6 +232,11 @@ def prepare_cmip(cfg: DictConfig):
                 mean_channels.append(mean)
                 std_channels.append(std)
                 logging.info(f"{var} data saved to {cfg.data_dir}")
+    #elevation
+    if cfg.make_elevation_data:
+        mean_elev, std_elev = elevation_to_npy(cfg.path_to_elevation, cfg)
+        save_normalization_values(np.array([mean_elev]), np.array([std_elev]), cfg, prefix='elev_')
+        logging.info(f"elevation data saved to {cfg.data_dir}")
 
     #save normalization values
     if cfg.make_normalization and cfg.make_climate_data:
@@ -204,7 +253,7 @@ def prepare_cmip(cfg: DictConfig):
 
         save_normalization_values(np.array(mean_channels), np.array(std_channels), cfg)
         logging.info(f"Normalization values saved to {cfg.data_dir}")
-
+    
     #save cleaned target data
     if cfg.make_cleaned_weather_data:
         start_time = time.process_time()
