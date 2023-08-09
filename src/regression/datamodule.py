@@ -85,16 +85,8 @@ class XarrayDatasetElev(XarrayDataset):
 
     def __getitem__(self, idx):
         lat_index, lon_index, time_index, y = self.data_idxs[:, idx]
-        dataset_torch_crop = self.dataset_torch[:,
+        X = self.dataset_torch[:,
                                slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
-                               :,
-                               :
-                               ]
-        
-        dataset_torch_crop, _ = make_padding_torch(dataset_torch_crop, self.cfg.half_side_size + self.cfg.half_side_size//2)
-
-        X = dataset_torch_crop[:,
-                               :,
                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
                                slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
                                ]

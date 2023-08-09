@@ -57,9 +57,9 @@ class DataPreLoader:
         logging.info(f"CMIP data loaded {var_data.shape}")
         #map padding
         var_data = self.time_crop(var_data)
-        # var_data, shift = make_padding(var_data, self.cfg.half_side_size)
-        shift_fixed =  self.cfg.half_side_size + self.cfg.half_side_size//2
-        self.shift = [shift_fixed, shift_fixed]
+        var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
+        # shift_fixed =  self.cfg.half_side_size + self.cfg.half_side_size//2
+        # self.shift = [shift_fixed, shift_fixed]
         logging.info(f"Padded data shape {var_data.shape}")
         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.precision == 16 else torch.from_numpy(var_data)
 
@@ -86,7 +86,7 @@ class DataPreLoader:
          self.r_lat = torch.from_numpy(np.atleast_1d(self.r_lat))
          self.r_lon = torch.from_numpy(np.atleast_1d(self.r_lon))
          #map padding
-         var_data, shift = make_padding(var_data, self.elev_hss + self.elev_hss//2)
+         var_data, shift = make_padding(var_data, self.elev_hss)
          self.shift_elev = shift
          var_data_torch = torch.from_numpy(var_data).half() if self.cfg.precision == 16 else torch.from_numpy(var_data)
          logging.info(f"Elevation data preparation took {time.process_time() - start_time} seconds")

@@ -13,7 +13,7 @@ precision: 16 #  16 32 "16-mixed" "bf16-mixed"
 half_side_size: 41
 time_window: 83  # odd only
 time_agg_window: 28
-time_freq: 10
+time_freq: 28
 target_threshold: 20
 target_max: 68.94
 target_min: 0.0
@@ -40,23 +40,23 @@ variables:
 - tasmax
 - tasmin
 
-start_time: '1950-01-01'
+start_time: '1975-01-01'
 end_time: '2020-12-12'
 start_of_test: '2008-01-01'
 
-batch_size: 75
-learning_rate: 0.008
+batch_size: 120
+learning_rate: 0.009
 weight_decay: 0.0001
 max_epoch: 3
 
 
 optimizer_name: 'AdamW'
-scheduler_name: 'OneCycleLR'
+scheduler_name: 'LinearLR'
 loss_name: 'MSELoss'
 eval: false
 
-num_workers: 7
-gpu_num: 2
+num_workers: 6
+gpu_num: 8
 distributed: true
 num_nodes: 1
 strategy: 'ddp'

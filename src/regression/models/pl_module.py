@@ -235,7 +235,7 @@ class WindNetPL(pl.LightningModule):
                 }
             elif self.scheduler_name == "LinearLR":
                 scheduler = torch.optim.lr_scheduler.LinearLR(optimizer,
-                                                             start_factor=1.0, end_factor=0.3, 
+                                                             start_factor=1.0, end_factor=0.2, 
                                                              total_iters=self.trainer.estimated_stepping_batches)
                 return {
                     'optimizer': optimizer,
