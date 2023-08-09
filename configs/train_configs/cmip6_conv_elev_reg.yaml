@@ -2,9 +2,9 @@ experiment_name: cmip6_reg_test_elev
 project_name: Wind-speed-regression
 target_type: wind_ms
 
-data_dir: ./data/cmip6_world
-path_to_prepared_target_data: ./data/cmip6_world/target.parquet
-path_to_prepared_stations: ./data/cmip6_world/stations.parquet
+data_dir: data/cmip6_world
+path_to_prepared_target_data: data/cmip5_world3/target.parquet
+path_to_prepared_stations: data/cmip5_world3/stations.parquet
 
 model_name: WindNetElev41x41
 use_elevation: true
@@ -41,23 +41,23 @@ variables:
 - tasmin
 
 start_time: '1950-01-01'
-end_time: '2023-02-02'
+end_time: '2020-12-12'
 start_of_test: '2008-01-01'
 
-batch_size: 9
+batch_size: 75
 learning_rate: 0.008
 weight_decay: 0.0001
-max_epoch: 5
+max_epoch: 3
 
 
-optimizer_name: 'SGD'
+optimizer_name: 'AdamW'
 scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 eval: false
 
-num_workers: 8
-gpu_num: 1
-distributed: false
+num_workers: 7
+gpu_num: 2
+distributed: true
 num_nodes: 1
 strategy: 'ddp'
 

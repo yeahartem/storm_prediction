@@ -69,7 +69,6 @@ class DataPreLoader:
     def load_elevation_data(self):
          start_time = time.process_time()
          var = 'topo'
-         time_coords = np.load(os.path.join(self.cfg.data_dir, 'time.npy')).astype('datetime64[D]')
          lat_coords = np.load(os.path.join(self.cfg.data_dir, 'lat.npy'))
          lon_coords = np.load(os.path.join(self.cfg.data_dir, 'lon.npy'))
          lat_elev_coords = np.load(os.path.join(self.cfg.data_dir, 'topo_lat.npy'))
@@ -82,7 +81,7 @@ class DataPreLoader:
          self.r = np.max((np.abs(np.diff(lat_coords)).max(), np.abs(np.diff(lon_coords)).max())) / np.min((np.abs(np.diff(lat_elev_coords)).min(), np.abs(np.diff(lon_elev_coords)).min()))
          self.r_lat = np.abs(np.diff(lat_coords)).max() / np.abs(np.diff(lat_elev_coords)).min()
          self.r_lon = np.abs(np.diff(lon_coords)).max() / np.abs(np.diff(lon_elev_coords)).min()
-         self.elev_hss = np.int(self.r * self.cfg.half_side_size) // 2
+         self.elev_hss = int(self.r * self.cfg.half_side_size) // 2
          self.r = torch.from_numpy(np.atleast_1d(self.r))
          self.r_lat = torch.from_numpy(np.atleast_1d(self.r_lat))
          self.r_lon = torch.from_numpy(np.atleast_1d(self.r_lon))
@@ -170,6 +169,9 @@ class DataPreLoader:
         for dates, y, lat, lon in self.target_df.rows():
             if (lat is not None) and (lon is not None) and (dates is not None) and (y is not None):
                 if not (any(np.isnan(np.array([lat, lon]), casting='unsafe')) and any(np.isnan(np.array(dates), casting='unsafe')) and any(np.isnan(np.array(y), casting='unsafe'))):
+                    if isinstance(dates, float):
+                        print(dates)
+                        continue
                     stations.append([lat, lon])
                     clipped_dates = dates[dates<(self.time_coords.shape[0]-self.cfg.time_window - 1)]
                     clipped_dates = clipped_dates[clipped_dates>self.cfg.time_window]

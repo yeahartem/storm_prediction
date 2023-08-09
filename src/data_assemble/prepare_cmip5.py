@@ -156,17 +156,14 @@ def elevation_to_npy(file: str, cfg, save: bool = True):
         data_arr = xr.open_mfdataset(file, preprocess=process_coords, parallel=True)
     data_arr = data_arr.rename({"X": 'lon', "Y": 'lat'})
     data_arr = data_arr.fillna(0)
-    
     if cfg.spatial_crop:
         data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
-
     if cfg.precision == 16:
         dtype = np.float16
     elif cfg.precision == 32:
         dtype = np.float32
     else:
         raise NotImplementedError
-    
     #Calculate mean and std
     std = data_arr[var].std().compute()
     mean = data_arr[var].mean().compute()
