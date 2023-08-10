@@ -1,0 +1,38 @@
+make_climate_data: false
+make_elevation_data: false
+make_normalization: false
+make_cleaned_weather_data: false
+make_target: false
+
+saved_normalized: true #only save to float16 with saved_normalized=true 
+precision: 16 # 32 
+
+spatial_crop: False
+coords:
+  lat_min: -89.0
+  lat_max: 89.0
+  lon_min: -179.5
+  lon_max: 180.45
+  
+min_height: -10
+max_height: 800
+
+variables:
+- sfcWindmax
+- sfcWind
+- pr
+- psl
+- tasmax
+- tasmin
+
+time_limits:
+- '2000-01-01'
+- '2010-11-14'
+start_of_test: '2008-01-01'
+
+target_column: 
+- 'max_speed'
+# - 'avg_speed'
+# - 'avg_temp'
+# - 'sea_level_pressure'
+# - 'station_level_pressure'

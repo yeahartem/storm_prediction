@@ -30,7 +30,7 @@ def risk_estimation(cfg: DictConfig) -> None:
     logging.info(f"Grouping by months, estimating risk")
     df_infer['date'] = pd.to_datetime(df_infer['date'])
     df_grpby = df_infer.groupby(['lat', 'lon', df_infer.date.dt.year, df_infer.date.dt.month])
-    df_risks = df_grpby['prediction'].agg(lambda x: (x > cfg.wind_risk_threshold).mean())
+    df_risks = df_grpby['prediction'].agg(lambda x: (x > cfg.test.wind_risk_threshold).mean())
 
     logging.info(f"Preparing format for .kml dumping")
     df_risks_ = df_risks.index.rename(['lat', 'lon', 'year', 'month']).to_frame().reset_index(drop=True)

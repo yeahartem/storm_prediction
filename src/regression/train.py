@@ -35,7 +35,7 @@ def train_regression(cfg: DictConfig) -> None:
     logging.info(f"Starting in {os.getcwd()}")
     start_time = time.process_time()  
     os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
-    os.environ['WANDB_MODE'] = 'online'
+    os.environ['WANDB_MODE'] = 'offline'
     os.environ['WANDB_DIR'] = 'out/wandb'
     os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
     os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
@@ -63,7 +63,7 @@ def train_regression(cfg: DictConfig) -> None:
     # exp_checkpoint_callback = OnExceptionCheckpoint(checkpoint_loc)
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
     
-    trainer = pl.Trainer(max_epochs=cfg.max_epoch,                         
+    trainer = pl.Trainer(max_epochs=cfg.train.max_epoch,                         
                          default_root_dir=default_root_dir,
                          callbacks=[lr_monitor, checkpoint_callback],
                          #performance
@@ -74,11 +74,11 @@ def train_regression(cfg: DictConfig) -> None:
                          check_val_every_n_epoch=1,
                          num_sanity_val_steps=0,
                          #distributed
-                         devices=cfg.gpu_num,
-                         num_nodes=cfg.num_nodes if cfg.distributed else 1,
-                         strategy=cfg.strategy if cfg.distributed else 'auto',
+                         devices=cfg.train.gpu_num,
+                         num_nodes=cfg.train.num_nodes if cfg.train.distributed else 1,
+                         strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
                          #log
-                         log_every_n_steps=cfg.log_every_n_steps,
+                         log_every_n_steps=cfg.train.log_every_n_steps,
                          logger=wandb_logger,
                          #misc
                          profiler='simple',
@@ -89,7 +89,7 @@ def train_regression(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="cmip6_conv_elev_reg.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_train_WindNetElev83x41.yaml")
 def main(cfg: DictConfig):    
     logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
     train_regression(cfg)

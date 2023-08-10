@@ -29,7 +29,7 @@ class TestClimateToPatches(unittest.TestCase):
         preloader = dl.DataPreLoader(cfg)
         blocks = preloader.dataset_as_blocks
         #making identical precision
-        data = data.astype(np.float16 if cfg.precision == 16 else np.float32)
+        data = data.astype(np.float16 if cfg.process.precision == 16 else np.float32)
         # check on shapes:
         ## size of block
         self.assertTrue((blocks.shape[-1] == blocks.shape[-2]) and (blocks.shape[-1] == (cfg.half_side_size * 2 + 1)), "spatial block size is not correct")  
@@ -48,7 +48,7 @@ class TestClimateToPatches(unittest.TestCase):
                     self.assertTrue((handmade_block.shape == sliding_block.shape), f"at {(i, j, t)} block shape does not coincide with handmade")
                     self.assertTrue((np.allclose(handmade_block, sliding_block)), f"at {(i, j, t)} block values do not coincide with handmade")
         # deleting test files
-        shutil.rmtree(cfg.data_dir)
+        shutil.rmtree(cfg.data.data_dir)
     
 
 if __name__ == "__main__":

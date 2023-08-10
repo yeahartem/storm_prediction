@@ -37,11 +37,11 @@ def test(cfg: DictConfig) -> None:
                                project=cfg.project_name,
                                name=cfg.experiment_name)
     dm = WindDataModuleAlt(cfg, test=True)
-    model = WindNetPL(cfg, run_dir)
-    model.load_from_checkpoint(os.path.join(os.getcwd(), cfg.path_to_checkpoint), cfg=cfg)
+    model = WindNetPL(cfg, run_dir, eval=True)
+    model.load_from_checkpoint(os.path.join(os.getcwd(), cfg.test.path_to_checkpoint), cfg=cfg)
 
     wandb_logger.watch(model, log='all', log_freq=100)       
-    trainer = pl.Trainer(max_epochs=cfg.max_epoch,
+    trainer = pl.Trainer(max_epochs=cfg.train.max_epoch,
                          accelerator="gpu",
                          precision="16-mixed",
                          benchmark=True,

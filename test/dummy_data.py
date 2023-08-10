@@ -50,29 +50,29 @@ def dummy_climate(start_date='2020-12-02', number_of_days=60, lat_lims=(0, 12), 
     #dummy config
     cfg = OmegaConf.create({"data_dir": "data/dummy_test", "path_to_prepared_target_data": "data/dummy_test/target.parquet",
     "precision": 16, "normalize": False, "time_window": 3, "half_side_size": 3, "start_of_test": str(time_coords[number_of_days // 2]), "variables": climate_vars})
-    if not os.path.exists(cfg.data_dir):
-        os.makedirs(cfg.data_dir)
+    if not os.path.exists(cfg.data.data_dir):
+        os.makedirs(cfg.data.data_dir)
     
     # saving test files
-    with open(os.path.join(cfg.data_dir, 'lat.npy'), 'wb') as f:
+    with open(os.path.join(cfg.data.data_dir, 'lat.npy'), 'wb') as f:
         np.save(f, lat_coords)
-    with open(os.path.join(cfg.data_dir, 'lon.npy'), 'wb') as f:
+    with open(os.path.join(cfg.data.data_dir, 'lon.npy'), 'wb') as f:
         np.save(f, lon_coords)
-    with open(os.path.join(cfg.data_dir, 'time.npy'), 'wb') as f:
+    with open(os.path.join(cfg.data.data_dir, 'time.npy'), 'wb') as f:
         np.save(f, time_coords)
         pass
     dummy_mean = np.zeros(len(climate_vars))
-    with open(os.path.join(cfg.data_dir, 'mean_16.npy'), 'wb') as f:
+    with open(os.path.join(cfg.data.data_dir, 'mean_16.npy'), 'wb') as f:
         np.save(f, dummy_mean)
-    with open(os.path.join(cfg.data_dir, 'mean_32.npy'), 'wb') as f:
+    with open(os.path.join(cfg.data.data_dir, 'mean_32.npy'), 'wb') as f:
         np.save(f, dummy_mean)
     dummy_std = np.ones(len(climate_vars))
-    with open(os.path.join(cfg.data_dir, 'std_16.npy'), 'wb') as f:
+    with open(os.path.join(cfg.data.data_dir, 'std_16.npy'), 'wb') as f:
         np.save(f, dummy_std)
-    with open(os.path.join(cfg.data_dir, 'std_32.npy'), 'wb') as f:
+    with open(os.path.join(cfg.data.data_dir, 'std_32.npy'), 'wb') as f:
         np.save(f, dummy_std)
     for i, name in enumerate(climate_vars):
-        with open(os.path.join(cfg.data_dir, name + f'_{cfg.precision}' + '.npy'), 'wb') as f:
+        with open(os.path.join(cfg.data.data_dir, name + f'_{cfg.process.precision}' + '.npy'), 'wb') as f:
             np.save(f, data[:, i, :, :])
 
     # df_data = {"time": np.concatenate((time_coords[0:6],time_coords[0:6])),
@@ -94,7 +94,7 @@ def dummy_climate(start_date='2020-12-02', number_of_days=60, lat_lims=(0, 12), 
         }
     stations_df = polars.from_dict(stations_df)
     
-    # df_data_ru.to_parquet(os.path.join(cfg.data_dir, 'target.parquet'))
+    # df_data_ru.to_parquet(os.path.join(cfg.data.data_dir, 'target.parquet'))
 
     return data, data_xr, time_coords, lat_coords, lon_coords, climate_vars, df_data_ru, stations_df, cfg
 

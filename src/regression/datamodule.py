@@ -9,6 +9,7 @@ import torch
 from omegaconf import DictConfig
 from src.regression.data_load import DataPreLoader
 from data_load import make_padding_torch
+from src.utils.norm_values import mean_channels, std_channels
 
 class WindDataModule(pl.LightningDataModule):
     def __init__(self, cfg: DictConfig, test=False):
@@ -16,9 +17,7 @@ class WindDataModule(pl.LightningDataModule):
         self.cfg = cfg      
         self.DPL = DataPreLoader(cfg)
         
-        if self.cfg.normalize:
-            mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
-            std_channels = np.load(os.path.join(self.cfg.data_dir, f"std_{cfg.precision}.npy"))
+        if self.cfg.train.normalize:
             self.transform = torchvision.transforms.Compose(
                 [
                     torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),
@@ -27,7 +26,7 @@ class WindDataModule(pl.LightningDataModule):
         else: self.transform = None
         
     def setup(self, stage=None):
-        if self.cfg.use_elevation:
+        if self.cfg.train.use_elevation:
             DatasetClass = XarrayDatasetElev
         else:
             DatasetClass = XarrayDataset
@@ -40,13 +39,13 @@ class WindDataModule(pl.LightningDataModule):
 
 
     def train_dataloader(self):
-        return DataLoader(dataset=self.dataset_train, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers, pin_memory=True)
+        return DataLoader(dataset=self.dataset_train, batch_size=self.cfg.train.batch_size, num_workers=self.cfg.train.num_workers, pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(dataset=self.dataset_val, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers, pin_memory=True)
+        return DataLoader(dataset=self.dataset_val, batch_size=self.cfg.train.batch_size, num_workers=self.cfg.train.num_workers, pin_memory=True)
 
     def test_dataloader(self):
-        return DataLoader(dataset=self.dataset_test, batch_size=self.cfg.batch_size, num_workers=self.cfg.num_workers, pin_memory=True)
+        return DataLoader(dataset=self.dataset_test, batch_size=self.cfg.train.batch_size, num_workers=self.cfg.train.num_workers, pin_memory=True)
 
 
 class XarrayDataset(Dataset):

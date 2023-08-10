@@ -1,0 +1,8 @@
+paths_to_climate_files_folders: 
+- './data/cmip/MRI-highres_H'
+path_to_elevation: 'data/elevation.nc'
+
+path_to_weather_stations: 'data/weatherstation_data/'
+
+prepared_target_data_name: target.parquet
+prepared_stations_name: stations.parquet

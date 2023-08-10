@@ -16,16 +16,16 @@ def prepare_data(cfg):
 
     logging.info('tmp file not found, processing')
     start_time = time.process_time()
-    time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
-    lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
-    lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
-    var_data = np.empty((len(cfg.variables), len(time_coords), len(lat_coords), len(lon_coords)), dtype=np.float32)
+    time_coords = np.load(os.path.join(cfg.data.data_dir, 'time.npy')).astype('datetime64[D]')
+    lat_coords = np.load(os.path.join(cfg.data.data_dir, 'lat.npy'))
+    lon_coords = np.load(os.path.join(cfg.data.data_dir, 'lon.npy'))
+    var_data = np.empty((len(cfg.process.variables), len(time_coords), len(lat_coords), len(lon_coords)), dtype=np.float32)
 
-    for i, var in enumerate(cfg.variables):
-        var_data[i] = np.load(os.path.join(cfg.data_dir, var + f'_{16}.npy'))
+    for i, var in enumerate(cfg.process.variables):
+        var_data[i] = np.load(os.path.join(cfg.data.data_dir, var + f'_{16}.npy'))
 
     var_data = np.moveaxis(var_data, 0, 1)
-    dataset_as_blocks = make_blocks_numpy(var_data, cfg.half_side_size, time_stack_size=cfg.time_window, time_freq=cfg.time_freq)  
+    dataset_as_blocks = make_blocks_numpy(var_data, cfg.half_side_size, time_stack_size=cfg.time_window, time_freq=cfg.train.time_freq)  
     logging.info(f"Time to load and prep climate data {time.process_time() - start_time} seconds")
 
     def max_window(values):
@@ -51,7 +51,7 @@ def prepare_data(cfg):
             return np.array((lat, lon))
         
     start_time = time.process_time()  
-    target_df = polars.read_parquet(cfg.path_to_prepared_target_data)
+    target_df = polars.read_parquet(cfg.data.path_to_prepared_target_data)
     logging.info(f"Records before preparation {len(target_df)}")
 
     target_df = (

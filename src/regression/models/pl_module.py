@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
                              
 class WindNetPL(pl.LightningModule):
 
-    def __init__(self, cfg, run_dir=None): 
+    def __init__(self, cfg, run_dir=None, eval=False): 
         super().__init__()     
         self.cfg = cfg        
         self.run_dir = run_dir
@@ -25,28 +25,28 @@ class WindNetPL(pl.LightningModule):
             self.net = WindNet20x41()
         elif cfg.model_name=='Linear10x51':
             self.net = Linear10x51()
-        elif cfg.model_name=="WindNetElev41x41":
-             self.net = WindNetElev41x41()
+        elif cfg.model_name=="WindNetElev83x41":
+             self.net = WindNetElev83x41()
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
-        
-        if not cfg.eval:
-            self.scheduler_name = cfg.scheduler_name
-            if cfg.optimizer_name=='AdamW':
+
+        if not eval:
+            self.scheduler_name = cfg.train.scheduler_name
+            if cfg.train.optimizer_name=='AdamW':
                 self.optimizer = torch.optim.AdamW
-            elif cfg.optimizer_name=='RAdam':
+            elif cfg.train.optimizer_name=='RAdam':
                 self.optimizer = torch.optim.RAdam
-            elif cfg.optimizer_name=='SGD':
+            elif cfg.train.optimizer_name=='SGD':
                 self.optimizer = torch.optim.SGD
             else:
-                raise NotImplementedError(f'Optimizer {cfg.optimizer_name} not found')
+                raise NotImplementedError(f'Optimizer {cfg.train.optimizer_name} not found')
             
-            if cfg.loss_name=='MSELoss':
+            if cfg.train.loss_name=='MSELoss':
                 self.criterion = torch.nn.MSELoss()
-            elif cfg.loss_name=='L1Loss':
+            elif cfg.train.loss_name=='L1Loss':
                 self.criterion = torch.nn.L1Loss()
             else:
-                raise NotImplementedError(f'Criterion {cfg.loss_name} not found')
+                raise NotImplementedError(f'Criterion {cfg.train.loss_name} not found')
         
         self.sigmoid = nn.Sigmoid()
         self.train_loss = MeanMetric()
@@ -95,9 +95,9 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
         self.train_loss(loss)
         self.train_MAE(predictions, target)
-        self.train_MAE_OS(*get_outliers_s(predictions, target , thresh=self.cfg.target_threshold ))
-        self.train_AP(float_to_score(predictions , thresh=self.cfg.target_threshold ),
-                       float_to_binary(target , thresh=self.cfg.target_threshold))
+        self.train_MAE_OS(*get_outliers_s(predictions, target , thresh=self.cfg.train.target_threshold ))
+        self.train_AP(float_to_score(predictions , thresh=self.cfg.train.target_threshold ),
+                       float_to_binary(target , thresh=self.cfg.train.target_threshold))
 
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
@@ -120,13 +120,13 @@ class WindNetPL(pl.LightningModule):
 
         self.val_loss(loss)
         self.val_MAE(predictions, target)
-        self.val_AP(float_to_score(predictions, thresh=self.cfg.target_threshold),
-                     float_to_binary(target, thresh=self.cfg.target_threshold))
-        self.val_precision(float_to_binary(predictions, thresh=self.cfg.target_threshold),
-                           float_to_binary(target, thresh=self.cfg.target_threshold))
-        self.val_recall(float_to_binary(predictions, thresh=self.cfg.target_threshold),
-                        float_to_binary(target, thresh=self.cfg.target_threshold))        
-        self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
+        self.val_AP(float_to_score(predictions, thresh=self.cfg.train.target_threshold),
+                     float_to_binary(target, thresh=self.cfg.train.target_threshold))
+        self.val_precision(float_to_binary(predictions, thresh=self.cfg.train.target_threshold),
+                           float_to_binary(target, thresh=self.cfg.train.target_threshold))
+        self.val_recall(float_to_binary(predictions, thresh=self.cfg.train.target_threshold),
+                        float_to_binary(target, thresh=self.cfg.train.target_threshold))        
+        self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.train.target_threshold))
 
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
@@ -157,11 +157,11 @@ class WindNetPL(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
 
-        binary_target = float_to_binary(target, thresh=self.cfg.target_threshold)
-        binary_preds = float_to_score(predictions, thresh=self.cfg.target_threshold)
+        binary_target = float_to_binary(target, thresh=self.cfg.train.target_threshold)
+        binary_preds = float_to_score(predictions, thresh=self.cfg.train.target_threshold)
         self.test_loss(loss)
         self.test_MAE(predictions, target)
-        self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.target_threshold))
+        self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.train.target_threshold))
         self.test_AP( binary_preds, binary_target)
         self.test_precision(binary_preds,binary_target)
         self.test_recall(binary_preds, binary_target)
@@ -202,8 +202,8 @@ class WindNetPL(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = self.optimizer(self.net.parameters(),
-                                   lr=self.cfg.learning_rate,
-                                   weight_decay=self.cfg.weight_decay)        
+                                   lr=self.cfg.train.learning_rate,
+                                   weight_decay=self.cfg.train.weight_decay)        
         if self.scheduler_name is not None:
             if self.scheduler_name == "ReduceLROnPlateau":
                 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode="min", factor=0.7, patience=300, verbose=True, interval="step", frequency=1)

@@ -183,9 +183,9 @@ class WindNetElev41x41_o(nn.Module):
          output = self.net_combined(clim + elev)
          return output
      
-class WindNetElev41x41(nn.Module):
+class WindNetElev83x41(nn.Module):
      def __init__(self) -> None:        
-         super(WindNetElev41x41, self).__init__()
+         super(WindNetElev83x41, self).__init__()
          self.net_climate_p1 = nn.Sequential(
             nn.Conv3d(in_channels=6, out_channels=140, kernel_size=(5, 5, 5), dilation=(2, 2, 2), stride=2), 
             nn.ReLU(),

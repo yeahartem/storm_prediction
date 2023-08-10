@@ -15,16 +15,15 @@ import polars
 import gc
 
 
-
 class DataPreLoader:
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg    
-        assert (cfg.precision == 16 and not cfg.normalize) or (cfg.precision == 32 and cfg.normalize), \
+        assert (cfg.process.precision == 16 and not cfg.train.normalize) or (cfg.process.precision == 32 and cfg.train.normalize), \
         ''' 16 bit is already normalized. 32 bit is not normalized'''        
         self.generate_hash()       
-        self.time_coords = np.load(os.path.join(cfg.data_dir, 'time.npy')).astype('datetime64[D]')
-        self.lat_coords = np.load(os.path.join(cfg.data_dir, 'lat.npy'))
-        self.lon_coords = np.load(os.path.join(cfg.data_dir, 'lon.npy'))
+        self.time_coords = np.load(os.path.join(cfg.data.data_dir, 'time.npy')).astype('datetime64[D]')
+        self.lat_coords = np.load(os.path.join(cfg.data.data_dir, 'lat.npy'))
+        self.lon_coords = np.load(os.path.join(cfg.data.data_dir, 'lon.npy'))
         self.dataset_torch = self.load_climate_data()
         self.elevation_torch = self.load_elevation_data()
 
@@ -35,9 +34,9 @@ class DataPreLoader:
             self.target_df_to_array()
             self.save_data()
         
-        if self.cfg.normalize:
-            mean_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
-            std_channels = np.load(os.path.join(self.cfg.data_dir, f"mean_{cfg.precision}.npy"))
+        if self.cfg.train.normalize:
+            mean_channels = np.load(os.path.join(self.cfg.data.data_dir, f"mean_{cfg.process.precision}.npy"))
+            std_channels = np.load(os.path.join(self.cfg.data.data_dir, f"mean_{cfg.process.precision}.npy"))
             self.transform = torchvision.transforms.Compose(
                 [
                     torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),
@@ -48,12 +47,12 @@ class DataPreLoader:
 
 
     def load_climate_data(self):
-        dtype = np.float16 if self.cfg.precision == 16 else np.float32
+        dtype = np.float16 if self.cfg.process.precision == 16 else np.float32
         var_data = np.empty(
-            (len(self.cfg.variables), len(self.time_coords), len(self.lat_coords), len(self.lon_coords)),
+            (len(self.cfg.process.variables), len(self.time_coords), len(self.lat_coords), len(self.lon_coords)),
             dtype=dtype)
-        for i, var in enumerate(self.cfg.variables):
-            var_data[i] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
+        for i, var in enumerate(self.cfg.process.variables):
+            var_data[i] = np.load(os.path.join(self.cfg.data.data_dir, var + f'_{self.cfg.process.precision}.npy'))
         logging.info(f"CMIP data loaded {var_data.shape}")
         #map padding
         var_data = self.time_crop(var_data)
@@ -61,26 +60,23 @@ class DataPreLoader:
         # shift_fixed =  self.cfg.half_side_size + self.cfg.half_side_size//2
         # self.shift = [shift_fixed, shift_fixed]
         logging.info(f"Padded data shape {var_data.shape}")
-        var_data_torch = torch.from_numpy(var_data).half() if self.cfg.precision == 16 else torch.from_numpy(var_data)
+        var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
 
         return var_data_torch
     
 
     def load_elevation_data(self):
          start_time = time.process_time()
-         var = 'topo'
-         lat_coords = np.load(os.path.join(self.cfg.data_dir, 'lat.npy'))
-         lon_coords = np.load(os.path.join(self.cfg.data_dir, 'lon.npy'))
-         lat_elev_coords = np.load(os.path.join(self.cfg.data_dir, 'topo_lat.npy'))
-         lon_elev_coords = np.load(os.path.join(self.cfg.data_dir, 'topo_lon.npy'))
-         dtype = np.float16 if self.cfg.precision == 16 else np.float32
+         lat_elev_coords = np.load(os.path.join(self.cfg.data.data_dir, 'elev_lat.npy'))
+         lon_elev_coords = np.load(os.path.join(self.cfg.data.data_dir, 'elev_lon.npy'))
+         dtype = np.float16 if self.cfg.process.precision == 16 else np.float32
 
          var_data = np.empty((len(lat_elev_coords), len(lon_elev_coords)), dtype=dtype)
-         var_data[...] = np.load(os.path.join(self.cfg.data_dir, var + f'_{self.cfg.precision}.npy'))
+         var_data[...] = np.load(os.path.join(self.cfg.data.data_dir, 'elev' + f'_{self.cfg.process.precision}.npy'))
          #adjusted half_side_size
-         self.r = np.max((np.abs(np.diff(lat_coords)).max(), np.abs(np.diff(lon_coords)).max())) / np.min((np.abs(np.diff(lat_elev_coords)).min(), np.abs(np.diff(lon_elev_coords)).min()))
-         self.r_lat = np.abs(np.diff(lat_coords)).max() / np.abs(np.diff(lat_elev_coords)).min()
-         self.r_lon = np.abs(np.diff(lon_coords)).max() / np.abs(np.diff(lon_elev_coords)).min()
+         self.r = np.max((np.abs(np.diff(self.lat_coords)).max(), np.abs(np.diff(self.lon_coords)).max())) / np.min((np.abs(np.diff(lat_elev_coords)).min(), np.abs(np.diff(lon_elev_coords)).min()))
+         self.r_lat = np.abs(np.diff(self.lat_coords)).max() / np.abs(np.diff(lat_elev_coords)).min()
+         self.r_lon = np.abs(np.diff(self.lon_coords)).max() / np.abs(np.diff(lon_elev_coords)).min()
          self.elev_hss = int(self.r * self.cfg.half_side_size) // 2
          self.r = torch.from_numpy(np.atleast_1d(self.r))
          self.r_lat = torch.from_numpy(np.atleast_1d(self.r_lat))
@@ -88,13 +84,13 @@ class DataPreLoader:
          #map padding
          var_data, shift = make_padding(var_data, self.elev_hss)
          self.shift_elev = shift
-         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.precision == 16 else torch.from_numpy(var_data)
+         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
          logging.info(f"Elevation data preparation took {time.process_time() - start_time} seconds")
          return var_data_torch
     
     def time_crop(self, var_data):
-        start_date = datetime.strptime(self.cfg.start_time, '%Y-%m-%d').date()
-        end_date = datetime.strptime(self.cfg.end_time, '%Y-%m-%d').date()
+        start_date = datetime.strptime(self.cfg.train.start_time, '%Y-%m-%d').date()
+        end_date = datetime.strptime(self.cfg.train.end_time, '%Y-%m-%d').date()
         start_index = self.time_coords.searchsorted(start_date)
         end_index = self.time_coords.searchsorted(end_date)
         var_data = var_data[:, start_index:end_index, :, :]
@@ -104,10 +100,10 @@ class DataPreLoader:
         return var_data
     
     def max_window(self, values):           
-        if len(values)< self.cfg.time_agg_window:
+        if len(values)< self.cfg.train.time_agg_window:
             return None
         else:
-            return np.max(sliding_window_view(np.array(values), window_shape = self.cfg.time_agg_window), axis = 1)
+            return np.max(sliding_window_view(np.array(values), window_shape = self.cfg.train.time_agg_window), axis = 1)
             
     def align_time(self, values):
         if len(values)< self.cfg.time_window:
@@ -131,13 +127,14 @@ class DataPreLoader:
         logging.info(f"Closest pixel search took {time.process_time() - start_time} seconds")
         return stations_df
     
+
     def prepare_target_df(self):
-        target_df = polars.read_parquet(self.cfg.path_to_prepared_target_data)
+        target_df = polars.read_parquet(self.cfg.data.path_to_prepared_target_data)
         logging.info(f"Target time bounds {target_df['time'].min()}, {target_df['time'].max()}")
         logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
         logging.info(f"Records before preparation {len(target_df)}")
-        start_date = pd.to_datetime(self.cfg.start_time)
-        end_date = pd.to_datetime(self.cfg.end_time)
+        start_date = pd.to_datetime(self.cfg.train.start_time)
+        end_date = pd.to_datetime(self.cfg.train.end_time)
         target_df = target_df.filter((polars.col('time') >= start_date) & (polars.col('time') < end_date))
         logging.info(f"Target time bounds {target_df['time'].min()}, {target_df['time'].max()}")
         logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
@@ -161,7 +158,7 @@ class DataPreLoader:
 
 
     def target_df_to_array(self):
-        split_date = datetime.strptime(self.cfg.start_of_test, '%Y-%m-%d').date()
+        split_date = datetime.strptime(self.cfg.train.start_of_test, '%Y-%m-%d').date()
         split_index = self.time_coords.searchsorted(split_date)
         train_data_idxs = []
         test_data_idxs = []
@@ -186,8 +183,8 @@ class DataPreLoader:
 
         self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
         self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
-        self.train_data_idxs = self.train_data_idxs[:, ::self.cfg.time_freq]
-        self.test_data_idxs = self.test_data_idxs[:, ::self.cfg.time_freq]
+        self.train_data_idxs = self.train_data_idxs[:, ::self.cfg.train.time_freq]
+        self.test_data_idxs = self.test_data_idxs[:, ::self.cfg.train.time_freq]
         #index shift due to padding
         self.train_data_idxs[0, :] += self.shift[0] #lat
         self.train_data_idxs[1, :] += self.shift[1] #lon
@@ -223,7 +220,7 @@ class DataPreLoader:
         logging.info(f"Balance train: {self.get_class_balance(self.train_data_idxs[3, :])}, balance test:{self.get_class_balance(self.test_data_idxs[3, :])}")
 
     def get_class_balance(self, target_array):
-        positive = np.sum(target_array >= self.cfg.target_threshold)
+        positive = np.sum(target_array >= self.cfg.train.target_threshold)
         all = target_array.shape[0]
         return positive/all
 
