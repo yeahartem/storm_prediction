@@ -1,0 +1,23 @@
+lat_min: -90.0     #have effect only for eval.py
+lat_max: 90.0
+lon_min: -180.0
+lon_max: 180.0
+
+time_start: '2019-01-30'
+time_end: '2019-01-31'
+
+wind_risk_threshold: 20
+
+batch_size_test: 200
+distributed_test: True
+
+data_dir: data/cmip5_world3/      # directory to get climate files for test and inference
+target_data_file: target.parquet  # target data file in data_dir for training for test and inference
+
+path_to_checkpoint: out/checkpoints/epoch=0-step=21023.ckpt
+
+cmip_type: CMIP5
+
+
+
+
