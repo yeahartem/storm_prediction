@@ -5,6 +5,9 @@ time_agg_window: 28   # range in days, used to calculate maximum for every day o
 time_freq: 28         # get sample from target every {time_freq} days
 target_threshold: 20
 
+data_dir: data/cmip6_world/       # directory to get climate files for training
+target_data_file: target.parquet  # target data file in data_dir for training
+
 start_time: '1975-01-01'
 end_time: '2020-12-12'
 start_of_test: '2008-01-01'

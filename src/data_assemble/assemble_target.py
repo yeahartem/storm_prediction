@@ -178,7 +178,7 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
     df = df.join(stations_df_ru, on='station_name', how='left')
     df = df.select(pl.col(["time", "y", "lat", "lon"])).drop_nulls()
     print(df)
-    df.write_parquet(os.path.join(cfg.data.data_dir, cfg.data.prepared_target_data_name + '.pp1'))
+    df.write_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'))
 
     
 
@@ -205,7 +205,7 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
     gc.collect()      
     # df = stations_to_data_grid(dataset_xarray=dataset_xarray, stations_df=df)
     df = df.drop("station_name")
-    df.write_parquet(os.path.join(cfg.data.data_dir, cfg.data.prepared_target_data_name + '.pp2'))
+    df.write_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp2'))
 
 
 
@@ -214,9 +214,9 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
     pre_prepare_target_RU(cfg, dataset_xarray)
     pre_prepare_target_WORLD(cfg, dataset_xarray)
 
-    df_ru = pl.read_parquet(os.path.join(cfg.data.data_dir, cfg.data.prepared_target_data_name + '.pp1'), use_pyarrow=True)
+    df_ru = pl.read_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'), use_pyarrow=True)
     logging.info(f'RU len: {len(df_ru)}')
-    df_world = pl.read_parquet(os.path.join(cfg.data.data_dir, cfg.data.prepared_target_data_name + '.pp2'), use_pyarrow=True)
+    df_world = pl.read_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp2'), use_pyarrow=True)
     logging.info(f'WORLD len: {len(df_world)}')
 
     start_time = time.process_time()
@@ -225,4 +225,4 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
     logging.info(f"Concat took {time.process_time() - start_time} seconds")
     target_df = target_df.drop_nulls()
     logging.info(f'TOTAL len: {len(target_df)}')
-    target_df.write_parquet(os.path.join(cfg.data.data_dir, cfg.data.prepared_target_data_name))
+    target_df.write_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name))

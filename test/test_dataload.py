@@ -48,7 +48,7 @@ class TestClimateToPatches(unittest.TestCase):
                     self.assertTrue((handmade_block.shape == sliding_block.shape), f"at {(i, j, t)} block shape does not coincide with handmade")
                     self.assertTrue((np.allclose(handmade_block, sliding_block)), f"at {(i, j, t)} block values do not coincide with handmade")
         # deleting test files
-        shutil.rmtree(cfg.data.data_dir)
+        shutil.rmtree(cfg.process.data_dir)
     
 
 if __name__ == "__main__":

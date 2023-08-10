@@ -1,8 +1,13 @@
-make_climate_data: false
-make_elevation_data: false
-make_normalization: false
-make_cleaned_weather_data: false
-make_target: false
+data_dir: data/cmip5_world3/ 
+prepared_target_data_name: target.parquet
+
+make_climate_data: true
+make_elevation_data: true
+make_normalization: true
+make_cleaned_weather_data: true
+make_target: true
+
+load_normalization: false
 
 saved_normalized: true #only save to float16 with saved_normalized=true 
 precision: 16 # 32 
@@ -26,8 +31,8 @@ variables:
 - tasmin
 
 time_limits:
-- '2000-01-01'
-- '2010-11-14'
+- '1990-01-01'
+- '2020-11-14'
 start_of_test: '2008-01-01'
 
 target_column: 

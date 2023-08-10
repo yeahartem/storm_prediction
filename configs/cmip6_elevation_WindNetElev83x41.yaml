@@ -1,7 +1,6 @@
 defaults:
   - raw: cmip6_elevation_paths              # paths to raw data to prepare dataset
   - process: cmip6_elevation_dataset        # dataset processing configuration
-  - data: cmip6_processed_data              # paths to processed data to use in train and inference
   - train: train_WindNetElev83x41_test_run  # train configuration and data load configuration
 
 

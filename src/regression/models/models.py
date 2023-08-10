@@ -81,9 +81,9 @@ class WindNet41x41(nn.Module):
     
 
 
-class Linear10x51(nn.Module):
+class Linear83x5(nn.Module):
     def __init__(self) -> None:   
-        super(Linear10x51, self).__init__()        
+        super(Linear83x5, self).__init__()        
 
         self.net = nn.Sequential(
             nn.Flatten(start_dim=1),

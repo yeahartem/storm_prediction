@@ -1,6 +1,7 @@
 import sys,os
 sys.path.append(os.getcwd())
 import warnings
+warnings.filterwarnings("ignore")
 import torch
 import random
 import logging
@@ -16,7 +17,7 @@ import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint, ModelCheckpoint
 from omegaconf.omegaconf import open_dict
 from pytorch_lightning.utilities import rank_zero_only
-warnings.filterwarnings("ignore")
+
 
 
 def get_rundir_name() -> str:

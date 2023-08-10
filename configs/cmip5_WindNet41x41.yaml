@@ -1,14 +1,13 @@
 defaults:
   - raw: cmip5_paths                    # paths to raw data to prepare dataset
   - process: cmip5_dataset              # dataset processing configuration
-  - data: cmip5_processed_data          # paths to processed data to use in train and inference
   - train: train_WindNet41x41_test_run  # train configuration and data load configuration
-  - test: test_WindNet41x41             # test and eval configuration 
+  - eval: test_WindNet41x41             # test and eval configuration 
 
 experiment_name: cmip6_reg_elev
 project_name: Wind-speed-regression
 target_type: wind_ms #*
-cmip_type: CMIP6 #*
+cmip_type: CMIP6 
 
 model_name: WindNet41x41  # {name}{time_window}x{half_side_size}
 time_window: 41               # must match model, odd only

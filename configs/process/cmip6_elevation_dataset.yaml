@@ -1,8 +1,13 @@
+data_dir: data/cmip6_world 
+prepared_target_data_name: target.parquet
+
 make_climate_data: false
 make_elevation_data: true
 make_normalization: false
 make_cleaned_weather_data: false
 make_target: false
+
+load_normalization: true
 
 saved_normalized: true #only save to float16 with saved_normalized=true 
 precision: 16 # 32 

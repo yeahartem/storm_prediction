@@ -4,7 +4,7 @@ import warnings
 import torch
 import logging
 from tqdm import tqdm
-from src.regression.data_load import DataPreLoader, make_padding
+from src.regression.data_load import make_padding
 from src.regression.models.pl_module import WindNetPL
 import hydra
 from omegaconf import DictConfig
@@ -61,21 +61,21 @@ class EvalDataset(torch.utils.data.Dataset):
 
     def load_dataset(self):
         """Load climate data from given folder"""
-        self.time_coords_full = np.load(os.path.join(self.cfg.data.data_dir, 'time.npy')).astype('datetime64[D]')
-        self.lat_coords_full = np.load(os.path.join(self.cfg.data.data_dir, 'lat.npy'))
-        self.lon_coords_full = np.load(os.path.join(self.cfg.data.data_dir, 'lon.npy'))
+        self.time_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'time.npy')).astype('datetime64[D]')
+        self.lat_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'lat.npy'))
+        self.lon_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'lon.npy'))
         self.var_data = np.empty((len(self.cfg.process.variables), len(self.time_coords_full), len(self.lat_coords_full), len(self.lon_coords_full)), dtype=np.float16)
         for i, var in enumerate(self.cfg.process.variables):
-            self.var_data[i] = np.load(os.path.join(self.cfg.data.data_dir, var + f'_{self.cfg.process.precision}.npy'))
+            self.var_data[i] = np.load(os.path.join(self.cfg.eval.data_dir, var + f'_{self.cfg.process.precision}.npy'))
 
     def limit_inference_space(self):
         """Crop data by spatial coordinates"""
-        time_start = pd.to_datetime(self.cfg.test.time_start)
-        time_end = pd.to_datetime(self.cfg.test.time_end)
-        self.lat_min_idx = np.searchsorted(self.lat_coords_full, self.cfg.test.lat_min)
-        self.lat_max_idx = np.searchsorted(self.lat_coords_full, self.cfg.test.lat_max)
-        self.lon_min_idx = np.searchsorted(self.lon_coords_full, self.cfg.test.lon_min)
-        self.lon_max_idx = np.searchsorted(self.lon_coords_full, self.cfg.test.lon_max) 
+        time_start = pd.to_datetime(self.cfg.eval.time_start)
+        time_end = pd.to_datetime(self.cfg.eval.time_end)
+        self.lat_min_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_min)
+        self.lat_max_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_max)
+        self.lon_min_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_min)
+        self.lon_max_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_max) 
         self.time_min_idx = np.searchsorted(self.time_coords_full, time_start)
         self.time_max_idx = np.searchsorted(self.time_coords_full, time_end)
 
@@ -112,7 +112,7 @@ class EvalDataset(torch.utils.data.Dataset):
 
 
 def load_model(cfg: DictConfig):
-    return WindNetPL.load_from_checkpoint(cfg.test.path_to_checkpoint, cfg=cfg, eval=True).half().eval()
+    return WindNetPL.load_from_checkpoint(cfg.eval.path_to_checkpoint, cfg=cfg, eval=True).half().eval()
 
 
 def predict(model, dataset, batch_size=1, distributed=False, device_num=0):    
@@ -167,7 +167,7 @@ def predict(model, dataset, batch_size=1, distributed=False, device_num=0):
 def eval(cfg: DictConfig) -> None:        
     model = load_model(cfg)
     dataset = EvalDataset(cfg)
-    result_df = predict(model, dataset, batch_size=cfg.test.batch_size_test, distributed=cfg.test.distributed_test)
+    result_df = predict(model, dataset, batch_size=cfg.eval.batch_size_test, distributed=cfg.eval.distributed_test)
     os.makedirs(os.path.join(*cfg.path_to_predictions.split('/')[:-1]), exist_ok=True)
     result_df.to_csv(cfg.path_to_predictions, index=False)
     plot_prediction(cfg, result_df, 1)
