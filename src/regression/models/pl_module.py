@@ -12,7 +12,8 @@ from src.regression.models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
 from sklearn.metrics import precision_recall_curve
 import matplotlib.pyplot as plt
-                             
+import numpy as np
+
 class WindNetPL(pl.LightningModule):
 
     def __init__(self, cfg, run_dir=None, eval=False): 
@@ -23,8 +24,8 @@ class WindNetPL(pl.LightningModule):
             self.net = WindNet41x41()
         elif cfg.model_name=='WindNet20x41':
             self.net = WindNet20x41()
-        elif cfg.model_name=='Linear10x51':
-            self.net = Linear10x51()
+        elif cfg.model_name=='Linear83x5':
+            self.net = Linear83x5()
         elif cfg.model_name=="WindNetElev83x41":
              self.net = WindNetElev83x41()
         else:
@@ -189,8 +190,24 @@ class WindNetPL(pl.LightningModule):
         self.test_outputs = []
 
     def on_test_epoch_end(self):
-        preds = torch.stack([x["binary_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().numpy().flatten()
-        target = torch.stack([x["binary_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().numpy().flatten()
+        preds = torch.stack([x["binary_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
+        target = torch.stack([x["binary_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
+        preds_float = torch.stack([x["float_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
+        target_float = torch.stack([x["float_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
+
+        thrs = [10, 12, 15, 17, 20, 23, 25, 27, 30]
+        rmses = []
+        for th in thrs:
+            tgt_th = target_float[torch.where(target_float >= th)[0]]
+            pred_th = preds_float[torch.where(target_float >= th)[0]]
+            rmses.append(np.squeeze(torch.sqrt(torch.mean((pred_th - tgt_th) ** 2)).numpy()))
+        
+        fig, ax = plt.subplots()
+        ax.plot(thrs, rmses, color='purple')
+        ax.set_ylabel('RMSE')
+        ax.set_xlabel('Wind Speed (m/s)')
+        fig.savefig(os.path.join(self.run_dir, 'RMSE_vs_target.png'))   # save the figure to file        
+
         precision, recall, thresholds = precision_recall_curve( target, preds)
         fig, ax = plt.subplots()
         ax.plot(recall, precision, color='purple')
