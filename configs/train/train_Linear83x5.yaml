@@ -1,28 +1,28 @@
-model_name: Linear83x5 # have no effect
-use_elevation: true
+model_name: WindNetElev83x41 # have no effect
+use_elevation: false
 normalize: false      # precision 16 is already normalized
 time_agg_window: 28   # range in days, used to calculate maximum for every day of target
 time_freq: 28         # get sample from target every {time_freq} days
 target_threshold: 20
 
-data_dir: data/cmip6_world/       # directory to get climate files for training
+data_dir: data/cmip6_world       # directory to get climate files for training
 target_data_file: target.parquet  # target data file in data_dir for training
 
-start_time: '2005-01-01'
-end_time: '2009-12-12'
+start_time: '1975-01-01'
+end_time: '2020-12-12'
 start_of_test: '2008-01-01'
 
-batch_size: 200
+batch_size: 6000
 learning_rate: 0.009
-weight_decay: 0.0001
-max_epoch: 2
+weight_decay: 0.0004
+max_epoch: 3
 
 
 optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
 loss_name: 'MSELoss'
 
-num_workers: 0
+num_workers: 8
 gpu_num: 1
 distributed: false
 num_nodes: 1

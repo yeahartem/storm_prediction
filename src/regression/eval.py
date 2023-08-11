@@ -110,7 +110,70 @@ class EvalDataset(torch.utils.data.Dataset):
         coord = np.array([t, lat, lon])
         return item, coord
 
+class EvalDatasetElev(torch.utils.data.Dataset):
 
+    def __init__(self, cfg: DictConfig):
+        self.cfg = cfg
+        self.prepare_data()
+        self.total_index = list(itertools.product(self.time_indexes, self.lat_indexes, self.lon_indexes))
+        logging.info(f"Coordinates to be predicted")
+        logging.info(f"Lat: {min(self.lat_coords)} - {max(self.lat_coords)}")
+        logging.info(f"Lon: {min(self.lon_coords)} - {max(self.lon_coords)}")
+        logging.info(f"Time: {min(self.time_coords)} - {max(self.time_coords)}")
+
+
+    def load_dataset(self):
+        """Load climate data from given folder"""
+        self.time_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'time.npy')).astype('datetime64[D]')
+        self.lat_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'lat.npy'))
+        self.lon_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'lon.npy'))
+        self.var_data = np.empty((len(self.cfg.process.variables), len(self.time_coords_full), len(self.lat_coords_full), len(self.lon_coords_full)), dtype=np.float16)
+        for i, var in enumerate(self.cfg.process.variables):
+            self.var_data[i] = np.load(os.path.join(self.cfg.eval.data_dir, var + f'_{self.cfg.process.precision}.npy'))
+
+    def limit_inference_space(self):
+        """Crop data by spatial coordinates"""
+        time_start = pd.to_datetime(self.cfg.eval.time_start)
+        time_end = pd.to_datetime(self.cfg.eval.time_end)
+        self.lat_min_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_min)
+        self.lat_max_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_max)
+        self.lon_min_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_min)
+        self.lon_max_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_max) 
+        self.time_min_idx = np.searchsorted(self.time_coords_full, time_start)
+        self.time_max_idx = np.searchsorted(self.time_coords_full, time_end)
+
+        self.lat_coords = self.lat_coords_full[self.lat_min_idx:self.lat_max_idx]
+        self.lon_coords = self.lon_coords_full[self.lon_min_idx:self.lon_max_idx]
+        self.time_coords = self.time_coords_full[self.time_min_idx:self.time_max_idx]
+
+        self.lat_indexes = list(range(self.lat_min_idx + self.shift[0], self.lat_max_idx + self.shift[0]))
+        self.lon_indexes = list(range(self.lon_min_idx + self.shift[1], self.lon_max_idx + self.shift[1]))
+        self.time_indexes = list(range(self.time_min_idx + self.cfg.time_window//2, self.time_max_idx + self.cfg.time_window//2)) 
+
+
+    def prepare_data(self):
+        """Prepare data for inference"""
+        self.load_dataset()
+        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
+        self.limit_inference_space()
+        assert len(self.lat_indexes) == len(self.lat_coords), f"{len(self.lat_indexes)} {len(self.lat_coords)}"
+        assert len(self.lon_indexes)== len(self.lon_coords), f"{len(self.lon_indexes)} {len(self.lon_coords)}"
+        assert len(self.time_indexes)== len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
+    
+    def __len__(self):
+        return len(self.total_index)
+
+    def __getitem__(self, idx):
+        t, lat, lon  = self.total_index[idx]
+        item = self.var_data[:,
+                            slice(t - self.cfg.time_window//2, t + self.cfg.time_window//2 + 1),
+                            slice(lat - self.cfg.half_side_size, lat + self.cfg.half_side_size + 1),
+                            slice(lon - self.cfg.half_side_size, lon + self.cfg.half_side_size + 1),
+                            ]
+        item = torch.from_numpy(item).to(torch.float16) #torch.float32
+        coord = np.array([t, lat, lon])
+        return item, coord
+    
 def load_model(cfg: DictConfig):
     return WindNetPL.load_from_checkpoint(cfg.eval.path_to_checkpoint, cfg=cfg, eval=True).half().eval()
 

@@ -129,7 +129,7 @@ class DataPreLoader:
     
 
     def prepare_target_df(self):
-        target_df = polars.read_parquet(self.cfg.train.target_data_file)
+        target_df = polars.read_parquet(os.path.join(self.cfg.train.data_dir, self.cfg.train.target_data_file))
         logging.info(f"Target time bounds {target_df['time'].min()}, {target_df['time'].max()}")
         logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
         logging.info(f"Records before preparation {len(target_df)}")

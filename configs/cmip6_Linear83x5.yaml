@@ -1,0 +1,15 @@
+defaults:
+  - raw: cmip6_elevation_paths              # paths to raw data to prepare dataset
+  - process: cmip6_elevation_dataset        # dataset processing configuration
+  - train: train_Linear83x5  # train configuration and data load configuration
+
+experiment_name: cmip6_linear_model
+project_name: Wind-speed-regression
+target_type: wind_ms #*
+cmip_type: CMIP6 #*
+
+model_name: Linear83x5  # {name}{time_window}x{half_side_size}
+time_window: 83               # must match model, odd only
+half_side_size: 4            # must match model, odd only
+
+#* have no effect, just info 

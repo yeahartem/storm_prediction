@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader, Dataset
 import torch
 from omegaconf import DictConfig
 from src.regression.data_load import DataPreLoader
-from data_load import make_padding_torch
-from src.utils.norm_values import mean_channels, std_channels
+from src.utils.norm_values import mean_channels_cmip6, std_channels_cmip6
+
 
 class WindDataModule(pl.LightningDataModule):
     def __init__(self, cfg: DictConfig, test=False):
@@ -20,15 +20,17 @@ class WindDataModule(pl.LightningDataModule):
         if self.cfg.train.normalize:
             self.transform = torchvision.transforms.Compose(
                 [
-                    torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),
+                    torchvision.transforms.Normalize(mean=mean_channels_cmip6, std=std_channels_cmip6),
                 ]
             )
         else: self.transform = None
         
     def setup(self, stage=None):
         if self.cfg.train.use_elevation:
+            logging.info("Using elevation data")
             DatasetClass = XarrayDatasetElev
         else:
+            logging.info("Not using elevation data")
             DatasetClass = XarrayDataset
 
         if stage == "fit" or stage is None:
@@ -57,6 +59,17 @@ class XarrayDataset(Dataset):
         else:
             self.data_idxs = DPL.train_data_idxs
         self.dtype = dtype
+
+        logging.info(f"Sample shape is {self.get_sample_shape(10)}")
+
+    def get_sample_shape(self, idx): 
+        lat_index, lon_index, time_index, y = self.data_idxs[:, idx]
+        X = self.dataset_torch[:,
+                               slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
+                               slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
+                               slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
+                               ]
+        return X.shape
 
     def __len__(self):
         return self.data_idxs.shape[1]

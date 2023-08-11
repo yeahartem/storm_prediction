@@ -86,11 +86,9 @@ class Linear83x5(nn.Module):
         super(Linear83x5, self).__init__()        
 
         self.net = nn.Sequential(
-            nn.Flatten(start_dim=1),
-            nn.Linear(134946, 200),
-            nn.ReLU(),  
-            nn.BatchNorm1d(200),
-            nn.Linear(200, 1),
+            nn.Conv3d(in_channels=6, out_channels=3, kernel_size=(3, 3, 3), dilation=2, stride=1), 
+            nn.Flatten(start_dim=1), 
+            nn.Linear(5925, 1),
         )
 
     def forward(self, X) -> torch.Tensor:
