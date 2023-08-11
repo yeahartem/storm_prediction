@@ -126,8 +126,8 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
             means = mean_channels_cmip5
         else:
             raise NotImplementedError
-        std = stds[cfg.variables.index(var)]
-        mean = means[cfg.variables.index(var)]
+        std = stds[cfg.process.variables.index(var)]
+        mean = means[cfg.process.variables.index(var)]
     else:
         std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()
         mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()
@@ -211,7 +211,7 @@ def load_dataset(cfg: DictConfig):
     return data_arr
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet41x41")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41")
 def prepare_cmip(cfg: DictConfig):    
     print(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'))
     logging.info(OmegaConf.to_yaml(cfg))
