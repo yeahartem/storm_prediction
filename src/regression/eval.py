@@ -48,7 +48,6 @@ def plot_prediction(cfg: DictConfig, predictions_df: np.ndarray, days: int) -> N
 
     
 class EvalDataset(torch.utils.data.Dataset):
-
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
         self.prepare_data()
@@ -68,33 +67,34 @@ class EvalDataset(torch.utils.data.Dataset):
         for i, var in enumerate(self.cfg.process.variables):
             self.var_data[i] = np.load(os.path.join(self.cfg.eval.data_dir, var + f'_{self.cfg.process.precision}.npy'))
 
+
     def limit_inference_space(self):
         """Crop data by spatial coordinates"""
         time_start = pd.to_datetime(self.cfg.eval.time_start)
         time_end = pd.to_datetime(self.cfg.eval.time_end)
-        self.lat_min_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_min)
-        self.lat_max_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_max)
-        self.lon_min_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_min)
-        self.lon_max_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_max) 
         self.time_min_idx = np.searchsorted(self.time_coords_full, time_start)
         self.time_max_idx = np.searchsorted(self.time_coords_full, time_end)
 
-        self.lat_coords = self.lat_coords_full[self.lat_min_idx:self.lat_max_idx]
-        self.lon_coords = self.lon_coords_full[self.lon_min_idx:self.lon_max_idx]
         self.time_coords = self.time_coords_full[self.time_min_idx:self.time_max_idx]
-
-        self.lat_indexes = list(range(self.lat_min_idx + self.shift[0], self.lat_max_idx + self.shift[0]))
-        self.lon_indexes = list(range(self.lon_min_idx + self.shift[1], self.lon_max_idx + self.shift[1]))
         self.time_indexes = list(range(self.time_min_idx + self.cfg.time_window//2, self.time_max_idx + self.cfg.time_window//2)) 
+        self.lat_indexes = list(range(self.cfg.half_side_size, len(self.lat_coords_full) + self.cfg.half_side_size))
+        self.lon_indexes = list(range(self.cfg.half_side_size, len(self.lon_coords_full) + self.cfg.half_side_size))
+        
+        self.var_data = self.var_data[:, self.time_min_idx:self.time_max_idx, :, :]
+        self.time_indexes = [t_idx - self.time_min_idx for t_idx in self.time_indexes]
+        assert len(self.time_indexes) == len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
+        assert self.var_data.shape[1] == len(self.time_coords), f"{len(self.var_data.shape[1])} {len(self.time_coords)}"
+        logging.info(f"Bounded data shape: {self.var_data.shape}")
+
 
     def prepare_data(self):
         """Prepare data for inference"""
         self.load_dataset()
-        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
         self.limit_inference_space()
-        assert len(self.lat_indexes) == len(self.lat_coords), f"{len(self.lat_indexes)} {len(self.lat_coords)}"
-        assert len(self.lon_indexes)== len(self.lon_coords), f"{len(self.lon_indexes)} {len(self.lon_coords)}"
-        assert len(self.time_indexes)== len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
+        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
+        assert len(self.lat_indexes) == len(self.lat_coords_full), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords_full)}"
+        assert len(self.lon_indexes)== len(self.lon_coords_full), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords_full)}"
+        assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
     
     def __len__(self):
         return len(self.total_index)
@@ -109,16 +109,17 @@ class EvalDataset(torch.utils.data.Dataset):
         item = torch.from_numpy(item).to(torch.float16) #torch.float32
         coord = np.array([t, lat, lon])
         return item, coord
+
+
 
 class EvalDatasetElev(torch.utils.data.Dataset):
-
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
         self.prepare_data()
         self.total_index = list(itertools.product(self.time_indexes, self.lat_indexes, self.lon_indexes))
         logging.info(f"Coordinates to be predicted")
-        logging.info(f"Lat: {min(self.lat_coords)} - {max(self.lat_coords)}")
-        logging.info(f"Lon: {min(self.lon_coords)} - {max(self.lon_coords)}")
+        logging.info(f"Lat: {min(self.lat_coords_full)} - {max(self.lat_coords_full)}")
+        logging.info(f"Lon: {min(self.lon_coords_full)} - {max(self.lon_coords_full)}")
         logging.info(f"Time: {min(self.time_coords)} - {max(self.time_coords)}")
 
 
@@ -130,55 +131,89 @@ class EvalDatasetElev(torch.utils.data.Dataset):
         self.var_data = np.empty((len(self.cfg.process.variables), len(self.time_coords_full), len(self.lat_coords_full), len(self.lon_coords_full)), dtype=np.float16)
         for i, var in enumerate(self.cfg.process.variables):
             self.var_data[i] = np.load(os.path.join(self.cfg.eval.data_dir, var + f'_{self.cfg.process.precision}.npy'))
+        logging.info(f"Climate shape: {self.var_data.shape}")
+
+
+    def load_evevation(self):
+        """Load elevation data from given folder"""
+        lat_elev_coords = np.load(os.path.join(self.cfg.eval.data_dir, 'elev_lat.npy'))
+        lon_elev_coords = np.load(os.path.join(self.cfg.eval.data_dir, 'elev_lon.npy'))
+        dtype = np.float16
+        self.elev_data = np.empty((len(lat_elev_coords), len(lon_elev_coords)), dtype=dtype)
+        elevation_path = os.path.join(self.cfg.eval.data_dir, f'elev_{16}.npy')
+        assert os.path.isfile(elevation_path), f"Elevation file {elevation_path} does not exist"
+        self.elev_data[...] = np.load(elevation_path)
+        self.r = np.max((np.abs(np.diff(self.lat_coords_full)).max(), np.abs(np.diff(self.lon_coords_full)).max())) / np.min((np.abs(np.diff(lat_elev_coords)).min(), np.abs(np.diff(lon_elev_coords)).min()))
+        self.r_lat = np.abs(np.diff(self.lat_coords_full)).max() / np.abs(np.diff(lat_elev_coords)).min()
+        self.r_lon = np.abs(np.diff(self.lon_coords_full)).max() / np.abs(np.diff(lon_elev_coords)).min()
+        self.elev_hss = int(self.r * self.cfg.half_side_size) // 2
+        self.r = torch.from_numpy(np.atleast_1d(self.r))
+        self.r_lat = torch.from_numpy(np.atleast_1d(self.r_lat))
+        self.r_lon = torch.from_numpy(np.atleast_1d(self.r_lon))
+        logging.info(f"Elevation shape: {self.elev_data.shape}")
+
 
     def limit_inference_space(self):
         """Crop data by spatial coordinates"""
         time_start = pd.to_datetime(self.cfg.eval.time_start)
         time_end = pd.to_datetime(self.cfg.eval.time_end)
-        self.lat_min_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_min)
-        self.lat_max_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_max)
-        self.lon_min_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_min)
-        self.lon_max_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_max) 
         self.time_min_idx = np.searchsorted(self.time_coords_full, time_start)
         self.time_max_idx = np.searchsorted(self.time_coords_full, time_end)
 
-        self.lat_coords = self.lat_coords_full[self.lat_min_idx:self.lat_max_idx]
-        self.lon_coords = self.lon_coords_full[self.lon_min_idx:self.lon_max_idx]
         self.time_coords = self.time_coords_full[self.time_min_idx:self.time_max_idx]
-
-        self.lat_indexes = list(range(self.lat_min_idx + self.shift[0], self.lat_max_idx + self.shift[0]))
-        self.lon_indexes = list(range(self.lon_min_idx + self.shift[1], self.lon_max_idx + self.shift[1]))
         self.time_indexes = list(range(self.time_min_idx + self.cfg.time_window//2, self.time_max_idx + self.cfg.time_window//2)) 
+        self.lat_indexes = list(range(self.cfg.half_side_size, len(self.lat_coords_full) + self.cfg.half_side_size))
+        self.lon_indexes = list(range(self.cfg.half_side_size, len(self.lon_coords_full) + self.cfg.half_side_size))
+        
+        self.var_data = self.var_data[:, self.time_min_idx - self.cfg.time_window//2:self.time_max_idx + self.cfg.time_window//2, :, :]
+        self.time_indexes = [t_idx - self.time_min_idx for t_idx in self.time_indexes]
+        if isinstance(self.time_coords, list) and isinstance(self.time_indexes, list):
+            assert len(self.time_indexes) == len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
+            assert self.var_data.shape[1] == len(self.time_coords), f"{len(self.var_data.shape[1])} {len(self.time_coords)}"
+        logging.info(f"Bounded data shape: {self.var_data.shape}")
 
 
     def prepare_data(self):
         """Prepare data for inference"""
         self.load_dataset()
-        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
+        self.load_evevation()
         self.limit_inference_space()
-        assert len(self.lat_indexes) == len(self.lat_coords), f"{len(self.lat_indexes)} {len(self.lat_coords)}"
-        assert len(self.lon_indexes)== len(self.lon_coords), f"{len(self.lon_indexes)} {len(self.lon_coords)}"
-        assert len(self.time_indexes)== len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
+        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
+        self.elev_data, self.shift_elev = make_padding(self.elev_data, self.elev_hss)
+        assert len(self.lat_indexes) == len(self.lat_coords_full), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords_full)}"
+        assert len(self.lon_indexes)== len(self.lon_coords_full), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords_full)}"
+        assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
     
     def __len__(self):
         return len(self.total_index)
 
     def __getitem__(self, idx):
         t, lat, lon  = self.total_index[idx]
-        item = self.var_data[:,
+        X = self.var_data[:,
                             slice(t - self.cfg.time_window//2, t + self.cfg.time_window//2 + 1),
                             slice(lat - self.cfg.half_side_size, lat + self.cfg.half_side_size + 1),
                             slice(lon - self.cfg.half_side_size, lon + self.cfg.half_side_size + 1),
                             ]
-        item = torch.from_numpy(item).to(torch.float16) #torch.float32
+        
+        X = torch.from_numpy(X).to(torch.float16) 
+
+        lat_index_elev = int((lat - self.shift[0]) * self.r_lat) + self.shift_elev[0]
+        lon_index_elev = int((lon - self.shift[1]) * self.r_lon) + self.shift_elev[1]
+        X_elev = self.elev_data[
+                                slice(lat_index_elev - self.elev_hss, lat_index_elev + self.elev_hss + 1),
+                                slice(lon_index_elev - self.elev_hss, lon_index_elev + self.elev_hss + 1),
+                                ]
+        X_elev = torch.from_numpy(X_elev).to(torch.float16) 
+        X_elev = X_elev.view(1, X_elev.shape[-2], X_elev.shape[-1])
         coord = np.array([t, lat, lon])
-        return item, coord
+        return (X, X_elev), coord
+
     
 def load_model(cfg: DictConfig):
     return WindNetPL.load_from_checkpoint(cfg.eval.path_to_checkpoint, cfg=cfg, eval=True).half().eval()
 
 
-def predict(model, dataset, batch_size=1, distributed=False, device_num=0):    
+def predict(model, dataset, use_elevation, batch_size=1, distributed=False, device_num=0):    
     if torch.cuda.is_available():
         torch.cuda.set_device(device_num)
         device = torch.device("cuda") 
@@ -203,7 +238,10 @@ def predict(model, dataset, batch_size=1, distributed=False, device_num=0):
             data = batch[0]
             coords_idxs = batch[1]
             if not distributed:
-                data = data.to(device)
+                if use_elevation:
+                    data = [t.to(device) for t in data]
+                else:
+                    data = data.to(device)
             prediction = model(data)
             predictions_list = predictions_list + list(prediction.cpu().numpy())
             coords_indxs_list.append(coords_idxs)
@@ -229,14 +267,18 @@ def predict(model, dataset, batch_size=1, distributed=False, device_num=0):
 
 def eval(cfg: DictConfig) -> None:        
     model = load_model(cfg)
-    dataset = EvalDataset(cfg)
-    result_df = predict(model, dataset, batch_size=cfg.eval.batch_size_test, distributed=cfg.eval.distributed_test)
+    if cfg.eval.use_elevation:
+        dataset = EvalDatasetElev(cfg)
+    else:
+        dataset = EvalDataset(cfg)
+
+    result_df = predict(model, dataset, use_elevation=cfg.eval.use_elevation, batch_size=cfg.eval.batch_size_test, distributed=cfg.eval.distributed_test)
     os.makedirs(os.path.join(*cfg.path_to_predictions.split('/')[:-1]), exist_ok=True)
     result_df.to_csv(cfg.path_to_predictions, index=False)
     plot_prediction(cfg, result_df, 1)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet41x41")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41.yaml")
 def main(cfg: DictConfig):    
     eval(cfg)
 
