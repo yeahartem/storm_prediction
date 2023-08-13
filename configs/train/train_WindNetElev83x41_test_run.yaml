@@ -12,7 +12,7 @@ start_time: '2005-01-01'          # Time limits
 end_time: '2009-12-12'
 start_of_test: '2008-01-01'
 
-batch_size: 200
+batch_size: 90
 learning_rate: 0.009
 weight_decay: 0.0001
 max_epoch: 2

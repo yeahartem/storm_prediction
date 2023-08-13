@@ -6,7 +6,7 @@ import random
 import logging
 import pytorch_lightning as pl
 from src.regression.models.pl_module import WindNetPL
-from datamodule import WindDataModuleAlt
+from datamodule import WindDataModule
 from datetime import datetime
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -36,8 +36,8 @@ def test(cfg: DictConfig) -> None:
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
                                project=cfg.project_name,
                                name=cfg.experiment_name)
-    dm = WindDataModuleAlt(cfg, test=True)
-    model = WindNetPL(cfg, run_dir, eval=True)
+    dm = WindDataModule(cfg, test=True)
+    model = WindNetPL(cfg, run_dir)
     model.load_from_checkpoint(os.path.join(os.getcwd(), cfg.eval.path_to_checkpoint), cfg=cfg)
 
     wandb_logger.watch(model, log='all', log_freq=100)       
@@ -45,16 +45,17 @@ def test(cfg: DictConfig) -> None:
                          accelerator="gpu",
                          precision="16-mixed",
                          benchmark=True,
-                         devices=[0],
+                         devices=cfg.eval.gpu_num,
                          default_root_dir=run_dir,
                          logger=wandb_logger,
-                         limit_test_batches=1000) 
+                         #limit_test_batches=200
+                        )
     
     logging.info(f"Time to start test {time.process_time() - start_time} seconds")
     trainer.test(model, dm)
+ 
 
-
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/train_configs"), config_name="cmip6_conv_w_reg.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41.yaml")
 def main(cfg: DictConfig):    
     test(cfg)
     logging.info('Test finished!')

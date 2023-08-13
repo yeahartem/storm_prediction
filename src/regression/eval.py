@@ -40,7 +40,7 @@ def plot_prediction(cfg: DictConfig, predictions_df: np.ndarray, days: int) -> N
         plt.gca().invert_yaxis()
         cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
         fig.colorbar(img, cax=cax)
-        savepath = os.path.join(*cfg.path_to_predictions.split('/')[:-1], f'wind_max_{pd.to_datetime(day).date()}.png')
+        savepath = os.path.join(*cfg.eval.path_to_predictions.split('/')[:-1], f'wind_max_{pd.to_datetime(day).date()}.png')
         plt.savefig(savepath, dpi=200) 
         logging.info(f"Plot saved")
         plt.clf()
@@ -213,20 +213,21 @@ def load_model(cfg: DictConfig):
     return WindNetPL.load_from_checkpoint(cfg.eval.path_to_checkpoint, cfg=cfg, eval=True).half().eval()
 
 
-def predict(model, dataset, use_elevation, batch_size=1, distributed=False, device_num=0):    
+def predict(model, dataset, use_elevation, batch_size=1, distributed=False, device_num=0, num_workers=0):    
     if torch.cuda.is_available():
         torch.cuda.set_device(device_num)
         device = torch.device("cuda") 
     else:
         device = torch.device("cpu")
+    logging.info(f'Using {device}')
     if distributed:
         model = nn.DataParallel(model)
     else:
         model.to(device)
-
+    
     number_of_points = len(dataset.lat_indexes) * len(dataset.lon_indexes) * len(dataset.time_indexes)
     logging.info((f"Number of points to predict: {number_of_points}"))
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, pin_memory=True, num_workers=12)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, pin_memory=True, num_workers=num_workers)
     predictions_list = []
     coords_list = []  
     coords_indxs_list =  []
@@ -243,7 +244,9 @@ def predict(model, dataset, use_elevation, batch_size=1, distributed=False, devi
                 else:
                     data = data.to(device)
             prediction = model(data)
-            predictions_list = predictions_list + list(prediction.cpu().numpy())
+            prediction = prediction.detach().cpu()
+            prediction = prediction.numpy()
+            predictions_list = predictions_list + list(prediction)
             coords_indxs_list.append(coords_idxs)
     logging.info("Inference finished")
 
@@ -251,16 +254,16 @@ def predict(model, dataset, use_elevation, batch_size=1, distributed=False, devi
         for t, lat, lon, in coords_idxs:
             coords = [dataset.lat_coords_full[lat - dataset.shift[0]],
                       dataset.lon_coords_full[lon - dataset.shift[1]],
-                      dataset.time_coords_full[t - dataset.cfg.time_window//2]]
+                      dataset.time_coords[t - dataset.cfg.time_window//2]]
             coords_list.append(coords)
 
     predictions = np.concatenate(predictions_list, axis=0)
     logging.info(f"Predictions max value: {predictions.max()}, min value: {predictions.min()}")
     logging.info(f"Predictions mean value: {predictions.mean()}, std value: {predictions.std()}")
     result_df = pd.DataFrame({"date": [item[2] for item in coords_list],
-                            "lat": [item[0] for item in coords_list],
-                            "lon": [item[1] for item in coords_list],
-                            "prediction": predictions.flatten().astype(np.float64)
+                              "lat": [item[0] for item in coords_list],
+                              "lon": [item[1] for item in coords_list],
+                              "prediction": predictions.flatten().astype(np.float64)
                            })
     return result_df
 
@@ -272,9 +275,14 @@ def eval(cfg: DictConfig) -> None:
     else:
         dataset = EvalDataset(cfg)
 
-    result_df = predict(model, dataset, use_elevation=cfg.eval.use_elevation, batch_size=cfg.eval.batch_size_test, distributed=cfg.eval.distributed_test)
-    os.makedirs(os.path.join(*cfg.path_to_predictions.split('/')[:-1]), exist_ok=True)
-    result_df.to_csv(cfg.path_to_predictions, index=False)
+    result_df = predict(model, dataset,
+                        use_elevation=cfg.eval.use_elevation,\
+                        batch_size=cfg.eval.batch_size_test,
+                        distributed=cfg.eval.distributed_test,
+                        num_workers=cfg.eval.num_workers)
+                        
+    os.makedirs(os.path.join(*cfg.eval.path_to_predictions.split('/')[:-1]), exist_ok=True)
+    result_df.to_csv(cfg.eval.path_to_predictions, index=False)
     plot_prediction(cfg, result_df, 1)
 
 
