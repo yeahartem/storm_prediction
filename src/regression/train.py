@@ -34,7 +34,6 @@ def log_model_arch(model):
 def train_regression(cfg: DictConfig) -> None: 
     logging.info(f"Starting in {os.getcwd()}")
     start_time = time.process_time()  
-    os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
     os.environ['WANDB_MODE'] = 'offline'
     os.environ['WANDB_DIR'] = 'out/wandb'
     os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'

@@ -36,7 +36,7 @@ Example:
 python run.py --config-path configs --config-name train_WindNetElev83x41_test_run.yaml
 ```
 
-# Run inference: SEVA, PLEASE UPDATE THAT ONCE YOU FINISH WITH INFER REWORKING!
+# Run inference:
 **Prior to inferring run `preprocess.py`** to prepare data!
 For  
 ```
@@ -44,8 +44,9 @@ python run.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG 
 ```
 Example:
 ```
-python run.py --config-path infer_configs/ --config-name **Before training run `preprocess.py`** to prepare data!
+python run.py --config-path configs/ --config-name cmip5_WindNet41x41.yaml
 ```
+
 # Docker:
 
 From repo folder run:
