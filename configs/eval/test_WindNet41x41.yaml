@@ -7,17 +7,18 @@ time_start: '2019-01-30'
 time_end: '2019-01-31'
 
 wind_risk_threshold: 20
+use_elevation: false
 
-num_workers: 64
+num_workers_eval: 64
 batch_size_test: 50 
 distributed_test: true
-gpu_num: 4
+gpu_num: 8
 
 
 data_dir: data/cmip5_world3/      # directory to get climate files for test and inference
 target_data_file: target.parquet  # target data file in data_dir for training for test and inference
 
-path_to_checkpoint: out/checkpoints/epoch=0-step=21023.ckpt
+path_to_checkpoint: out/checkpoints/WindNet41x41_cmip5.ckpt
 path_to_predictions: out/predictions/result_world.csv
 output_file: out/predictions/output_file_world.kmlz
 cmip_type: CMIP5

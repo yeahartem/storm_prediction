@@ -56,8 +56,8 @@ def risk_estimation(cfg: DictConfig) -> None:
     df = df.drop(columns=['lat', 'lon'])
     gdf = GeoDataFrame(df, crs="EPSG:4326", geometry=geometry)
     fiona.supported_drivers['KML'] = 'rw'
-    gdf.to_file(cfg.output_file, driver='KML')
-    logging.info(f"Saved to {cfg.output_file}")
+    gdf.to_file(cfg.eval.output_file, driver='KML')
+    logging.info(f"Saved to {cfg.eval.output_file}")
     logging.info(f"Total time spent {time.process_time() - start_time} seconds")
 
 

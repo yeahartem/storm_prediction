@@ -2,10 +2,8 @@
 
 #SBATCH --job-name=wind_gpu_train             # Job name
 #SBATCH --partition=ais-gpu                   # Queue name 
-#SBATCH --mail-type=END,FAIL                 # Mail events (NONE, BEGIN, END, FAIL, ALL)
-#SBATCH --mail-user=v.morozov@skoltech.ru   # Where to send mail
 #SBATCH --nodes=1                       
-#SBATCH --ntasks-per-node=6                     
+#SBATCH --ntasks-per-node=8                     
 #SBATCH --cpus-per-task=8     
 #SBATCH --gpus-per-task=1
 #SBATCH --mem=930G   

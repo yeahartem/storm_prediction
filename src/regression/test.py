@@ -55,7 +55,7 @@ def test(cfg: DictConfig) -> None:
     trainer.test(model, dm)
  
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet41x41.yaml")
 def main(cfg: DictConfig):    
     test(cfg)
     logging.info('Test finished!')

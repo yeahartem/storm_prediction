@@ -96,7 +96,7 @@ class XarrayDataset(Dataset):
 
 class XarrayDatasetElev(XarrayDataset):
     def __init__(self, DPL, test=False, dtype=torch.float16, ):
-        super(XarrayDatasetElev, self).__init__(DPL, dtype)
+        super(XarrayDatasetElev, self).__init__(DPL=DPL, dtype=dtype, test=test)
         self.elevation_torch = DPL.elevation_torch
         self.elev_hss = DPL.elev_hss
         self.r_lat = DPL.r_lat

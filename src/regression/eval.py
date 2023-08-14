@@ -53,8 +53,8 @@ class EvalDataset(torch.utils.data.Dataset):
         self.prepare_data()
         self.total_index = list(itertools.product(self.time_indexes, self.lat_indexes, self.lon_indexes))
         logging.info(f"Coordinates to be predicted")
-        logging.info(f"Lat: {min(self.lat_coords)} - {max(self.lat_coords)}")
-        logging.info(f"Lon: {min(self.lon_coords)} - {max(self.lon_coords)}")
+        logging.info(f"Lat: {min(self.lat_coords_full)} - {max(self.lat_coords_full)}")
+        logging.info(f"Lon: {min(self.lon_coords_full)} - {max(self.lon_coords_full)}")
         logging.info(f"Time: {min(self.time_coords)} - {max(self.time_coords)}")
 
 
@@ -279,14 +279,14 @@ def eval(cfg: DictConfig) -> None:
                         use_elevation=cfg.eval.use_elevation,\
                         batch_size=cfg.eval.batch_size_test,
                         distributed=cfg.eval.distributed_test,
-                        num_workers=cfg.eval.num_workers)
+                        num_workers=cfg.eval.num_workers_eval)
                         
     os.makedirs(os.path.join(*cfg.eval.path_to_predictions.split('/')[:-1]), exist_ok=True)
     result_df.to_csv(cfg.eval.path_to_predictions, index=False)
     plot_prediction(cfg, result_df, 1)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet41x41.yaml")
 def main(cfg: DictConfig):    
     eval(cfg)
 

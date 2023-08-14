@@ -4,7 +4,7 @@ use_elevation: True
 
 wind_risk_threshold: 20
 
-num_workers: 64
+num_workers_eval: 64
 batch_size_test: 90 
 distributed_test: true
 gpu_num: 6
