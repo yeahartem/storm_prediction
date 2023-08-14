@@ -31,8 +31,8 @@ variables:
 - tasmin
 
 time_limits:
-- '1990-01-01'
-- '2020-11-14'
+- '2022-01-01'
+- '2025-01-01'
 start_of_test: '2008-01-01'
 
 target_column: 
