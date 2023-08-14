@@ -16,7 +16,7 @@ This part uses `configs/train` folder. This part describes training and datamodu
 # Data preparation:
 This step must be taken prior to **both** training (`train.py`) and inferring (`run.py`). Config for `preprocess.py` must be taken from `configs` folder. An example is `configs/train_WindNetElev83x41_test_run.yaml`. See Section **Configs** for reference.
 
-This step creates folder under the name specified in `cfg.process.data_dir` attribute. This folder will contain coordinates, preprocessed data and **preprocessed target data** in `target.parquet`, `target.parquet.pp1`, `target.parquer.pp2`. See **Configs** section for reference. Further, preprocessed data from this folder will be used to be assembled into data required for training and inferring.
+This step creates folder under the name specified in `cfg.process.data_dir` attribute. This folder will contain coordinates, preprocessed data and **preprocessed target data** in `target.parquet`, `target.parquet.pp1`, `target.parquet.pp2`. See **Configs** section for reference. Further, preprocessed data from this folder will be used to be assembled into data required for training and inferring.
 ```
 python preprocess.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG NAME>
 ```
@@ -38,13 +38,14 @@ python run.py --config-path configs --config-name train_WindNetElev83x41_test_ru
 
 # Run inference:
 **Prior to inferring run `preprocess.py`** to prepare data!
-For  
+Configure evalutaion process by providing a path to eval config if general config in `configs` folder, e.g., `configs/cmip6_elevation_WindNetElev83x41.yaml`, attribute `defaults.eval`.
+In `configs/eval` configuration file you can select inferring period, or pass it through command line as in example below. See Hydra docs for reference https://hydra.cc/docs/advanced/override_grammar/basic/
 ```
 python run.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG NAME>
 ```
 Example:
 ```
-python run.py --config-path configs/ --config-name cmip5_WindNet41x41.yaml
+python run.py --config-path configs/ --config-name cmip5_WindNet41x41.yaml time_start='2019-01-30' time_end='2019-01-31'
 ```
 
 # Docker:
@@ -94,18 +95,4 @@ Example:
 Binary target expects:
 * Climate data in netcdf format. One file per climate variable.
 * Target data in parquet format, 'y' column is the target, where values is float.
-* Normalization values in .npy format, std and mean separately (use only 32 precision values)
 
-
-# How to prepare data from source:
-
-* `data_meteo_full.parquet` may be created from `data_meteo_full.csv` using `src/data_utils/parquet.py` script
-* `weatherstation_list.json` should be downloaded separately
-*  CMIP climate data files in netcdf format
-* `preprocess.py` script should be run to prepare data for training or inferring
-
-## Infer
-* Run `preprocess.py` to prepare data for training or inferring
-* Run `run.py`. It has config file like `configs/infer_configs/infer_world_reg_test.taml`
-* Output will be saved into `out`
-* Here you will find `.kml` file with estimated risks. Also, there will be raw inference from which you may want to get any statistic
