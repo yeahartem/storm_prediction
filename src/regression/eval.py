@@ -80,10 +80,11 @@ class EvalDataset(torch.utils.data.Dataset):
         self.lat_indexes = list(range(self.cfg.half_side_size, len(self.lat_coords_full) + self.cfg.half_side_size))
         self.lon_indexes = list(range(self.cfg.half_side_size, len(self.lon_coords_full) + self.cfg.half_side_size))
         
-        self.var_data = self.var_data[:, self.time_min_idx:self.time_max_idx, :, :]
+        self.var_data = self.var_data[:, self.time_min_idx - self.cfg.time_window//2:self.time_max_idx + self.cfg.time_window//2, :, :]
         self.time_indexes = [t_idx - self.time_min_idx for t_idx in self.time_indexes]
-        assert len(self.time_indexes) == len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
-        assert self.var_data.shape[1] == len(self.time_coords), f"{len(self.var_data.shape[1])} {len(self.time_coords)}"
+        if isinstance(self.time_coords, list) and isinstance(self.time_indexes, list):
+            assert len(self.time_indexes) == len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
+            assert self.var_data.shape[1] == len(self.time_coords), f"{len(self.var_data.shape[1])} {len(self.time_coords)}"
         logging.info(f"Bounded data shape: {self.var_data.shape}")
 
 

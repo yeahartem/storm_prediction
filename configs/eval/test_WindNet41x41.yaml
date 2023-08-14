@@ -1,11 +1,11 @@
 time_start: '2019-01-30'
-time_end: '2019-01-31'
+time_end: '2019-03-31'
 
 wind_risk_threshold: 20
 use_elevation: false
 
-num_workers_eval: 64
-batch_size_test: 50 
+num_workers_eval: 32
+batch_size_test: 600 
 distributed_test: true
 gpu_num: 8
 

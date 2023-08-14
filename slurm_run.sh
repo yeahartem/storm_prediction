@@ -2,6 +2,7 @@
 
 #SBATCH --job-name=wind_gpu_train             # Job name
 #SBATCH --partition=ais-gpu                   # Queue name 
+
 #SBATCH --nodes=1                       
 #SBATCH --ntasks-per-node=8                     
 #SBATCH --cpus-per-task=8     
