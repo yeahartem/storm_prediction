@@ -16,7 +16,7 @@ This part uses `configs/train` folder. This part describes training and datamodu
 # Data preparation:
 This step must be taken prior to **both** training (`train.py`) and inferring (`run.py`). Config for `preprocess.py` must be taken from `configs` folder. An example is `configs/train_WindNetElev83x41_test_run.yaml`. See Section **Configs** for reference.
 
-This step creates folder under the name specified in `cfg.process.data_dir` attribute. This folder will contain coordinates, preprocessed data and **preprocessed target data** in `target.parquet`, `target.parquet.pp1`, `target.parquer.pp2`. See **Configs** section for reference. Further, preprocessed data from this folder will be used to be assembled into data required for training and inferring.
+This step creates folder under the name specified in `cfg.process.data_dir` attribute. This folder will contain coordinates, preprocessed data and **preprocessed target data** in `target.parquet`, `target.parquet.pp1`, `target.parquet.pp2`. See **Configs** section for reference. Further, preprocessed data from this folder will be used to be assembled into data required for training and inferring.
 ```
 python preprocess.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG NAME>
 ```
