@@ -44,10 +44,19 @@ class WindDataModule(pl.LightningDataModule):
         return DataLoader(dataset=self.dataset_train, batch_size=self.cfg.train.batch_size, num_workers=self.cfg.train.num_workers, pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(dataset=self.dataset_val, batch_size=self.cfg.train.batch_size, num_workers=self.cfg.train.num_workers, pin_memory=True)
+        return DataLoader(dataset=self.dataset_val,
+                          batch_size=self.cfg.train.batch_size,
+                          num_workers=self.cfg.train.num_workers,
+                          pin_memory=True,
+                          drop_last=True)
 
     def test_dataloader(self):
-        return DataLoader(dataset=self.dataset_test, batch_size=self.cfg.train.batch_size, num_workers=self.cfg.train.num_workers, pin_memory=True)
+        return DataLoader(dataset=self.dataset_test,
+                          batch_size=self.cfg.train.batch_size,
+                          num_workers=self.cfg.train.num_workers,
+                          pin_memory=True,
+                          drop_last=True,
+                          )
 
 
 class XarrayDataset(Dataset):

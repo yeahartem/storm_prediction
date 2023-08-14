@@ -39,7 +39,7 @@ supported_drivers['LIBKML'] = 'rw'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="cmip5_w_eval.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="сmip6_elevation_WindNetElev83x41.yaml")
 def main(cfg: DictConfig):    
     eval(cfg)
     risk_estimation(cfg)

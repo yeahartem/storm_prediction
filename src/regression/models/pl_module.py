@@ -158,11 +158,11 @@ class WindNetPL(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
 
-        binary_target = float_to_binary(target, thresh=self.cfg.train.target_threshold)
-        binary_preds = float_to_score(predictions, thresh=self.cfg.train.target_threshold)
+        binary_target = float_to_binary(target, thresh=self.cfg.eval.wind_risk_threshold)
+        binary_preds = float_to_score(predictions, thresh=self.cfg.eval.wind_risk_threshold)
         self.test_loss(loss)
         self.test_MAE(predictions, target)
-        self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.train.target_threshold))
+        self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.eval.wind_risk_threshold))
         self.test_AP( binary_preds, binary_target)
         self.test_precision(binary_preds,binary_target)
         self.test_recall(binary_preds, binary_target)
@@ -178,6 +178,8 @@ class WindNetPL(pl.LightningModule):
             {
                 "loss": loss,
                 "binary_preds": binary_preds,
+                "float_preds": predictions,
+                "float_target": target,
                 "binary_target": binary_target,
             }
         )

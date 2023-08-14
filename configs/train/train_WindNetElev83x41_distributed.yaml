@@ -8,11 +8,11 @@ target_threshold: 20
 data_dir: data/cmip6_world/       # directory to get climate files for training
 target_data_file: target.parquet  # target data file in data_dir for training
 
-start_time: '1975-01-01'
-end_time: '2020-12-12'
+start_time: '2007-01-01'
+end_time: '2009-12-12'
 start_of_test: '2008-01-01'
 
-batch_size: 120
+batch_size: 90
 learning_rate: 0.009
 weight_decay: 0.0001
 max_epoch: 3
