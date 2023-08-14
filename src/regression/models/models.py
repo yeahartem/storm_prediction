@@ -249,3 +249,73 @@ class WindNetElev83x41(nn.Module):
 
          output = self.net_combined(torch.cat((clim,elev), dim=1))
          return output
+     
+
+class WindNet28x47(nn.Module):
+    def __init__(self) -> None:        
+        super(WindNet28x47, self).__init__()
+
+        self.net1 = nn.Sequential(
+            nn.Conv3d(in_channels=6, out_channels=100, kernel_size=(1, 5, 5)), 
+            nn.ReLU(),
+            nn.InstanceNorm3d(100),
+            nn.Conv3d(in_channels=100, out_channels=100, kernel_size=(1, 5, 5), groups=100),
+            nn.Conv3d(in_channels=100, out_channels=100, kernel_size=(1, 1, 1)),
+            nn.ReLU(),
+            nn.InstanceNorm3d(100),
+            nn.Conv3d(in_channels=100, out_channels=100, kernel_size=(1, 5, 5), groups=100),
+            nn.Conv3d(in_channels=100, out_channels=180, kernel_size=(1, 1, 1)),
+            nn.ReLU(),
+            nn.MaxPool3d((1, 3, 3), stride=(2, 2, 2)),
+            nn.InstanceNorm3d(180),
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 3, 3), groups=180),
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
+            nn.ReLU(),
+            nn.InstanceNorm3d(180),
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 3, 3), groups=180),
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
+            nn.MaxPool3d((3, 3, 3), stride=(2, 2, 2)))
+        
+        self.block1 = nn.Sequential(
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
+            nn.ReLU(),
+            nn.InstanceNorm3d(180))
+        
+        self.block2 = nn.Sequential(
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
+            nn.ReLU(),
+            nn.InstanceNorm3d(180))
+        
+        self.block3 = nn.Sequential(
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
+            nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
+            nn.ReLU(),
+            nn.InstanceNorm3d(180))
+        
+        self.head = nn.Sequential(
+            nn.Conv3d(in_channels=180, out_channels=60, kernel_size=(3, 3, 3), groups=60),
+            nn.ReLU(),
+            nn.InstanceNorm3d(60),
+            nn.Conv3d(in_channels=60, out_channels=30, kernel_size=(3, 3, 3), groups=30),
+            nn.MaxPool3d((2, 3, 3), stride=(1, 1, 1)),
+            nn.Conv3d(in_channels=30, out_channels=30, kernel_size=(1, 1, 1)),
+            nn.MaxPool3d((1, 3, 3), stride=(1, 1, 1)),
+            nn.ReLU(),
+            nn.InstanceNorm3d(30),
+            nn.Flatten(start_dim=1),
+            nn.Dropout(0.4),
+            nn.Linear(3000, 128),
+            nn.ReLU(),  
+            nn.BatchNorm1d(128),
+            nn.Linear(128, 1)
+        )
+        
+    def forward(self, X) -> torch.Tensor:
+        X = self.net1(X)
+        X = self.block1(X) + X
+        X = self.block2(X) + X
+        X = self.block3(X) + X
+        X = self.head(X)
+        return X

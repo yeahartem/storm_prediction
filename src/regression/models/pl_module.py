@@ -28,6 +28,8 @@ class WindNetPL(pl.LightningModule):
             self.net = Linear83x5()
         elif cfg.model_name=="WindNetElev83x41":
              self.net = WindNetElev83x41()
+        elif cfg.model_name=="WindNet28x47":
+             self.net = WindNet28x47()
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
 
@@ -243,7 +245,7 @@ class WindNetPL(pl.LightningModule):
                 }
             
             elif self.scheduler_name == "OneCycleLR":
-                scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=1e-3, total_steps=self.trainer.estimated_stepping_batches)
+                scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=2e-3, total_steps=self.trainer.estimated_stepping_batches)
                 return {
                     'optimizer': optimizer,
                     'lr_scheduler': {

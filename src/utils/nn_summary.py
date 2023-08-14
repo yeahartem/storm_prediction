@@ -18,11 +18,11 @@ def train_regression(cfg) -> None:
     run_dir = get_rundir_name()  
 
     model = WindNetPL(cfg, run_dir)
-    #clim = [6, 83, 83, 83]
-    #elev = [1, 2769, 2769]
-    summary(model, [6, 83, 8, 8])
+    clim = [6, 83, 83, 83]
+    elev = [1, 2769, 2769]
+    summary(model, elev)
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_Linear83x5")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41")
 def main(cfg):    
     train_regression(cfg)
 
