@@ -61,6 +61,9 @@ class WindNetPL(pl.LightningModule):
         self.val_AP = torchmetrics.AveragePrecision(num_classes=1, task='binary')
         self.test_AP = torchmetrics.AveragePrecision(num_classes=1, task='binary')
 
+        self.test_auroc = torchmetrics.AUROC(task="binary")
+
+
         self.train_MAE = torchmetrics.MeanAbsoluteError()
         self.val_MAE = torchmetrics.MeanAbsoluteError()
         self.test_MAE = torchmetrics.MeanAbsoluteError()
@@ -161,25 +164,31 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
 
         binary_target = float_to_binary(target, thresh=self.cfg.train.target_threshold)
-        binary_preds = float_to_score(predictions, thresh=self.cfg.train.target_threshold)
+        score_preds = float_to_score(predictions, thresh=self.cfg.train.target_threshold)
+        binary_preds = float_to_binary(predictions, thresh=self.cfg.train.target_threshold)
+
         self.test_loss(loss)
         self.test_MAE(predictions, target)
         self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.train.target_threshold))
-        self.test_AP( binary_preds, binary_target)
+        self.test_AP(score_preds, binary_target)
         self.test_precision(binary_preds,binary_target)
         self.test_recall(binary_preds, binary_target)
+        self.test_auroc(score_preds, binary_target)
         
         self.log("test/loss", self.test_loss, prog_bar=True)
-        self.log("test/MAE", self.test_MAE, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/MAE", self.test_MAE, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("test/AP", self.test_AP, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("test/recall", self.val_recall, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/precision", self.test_precision, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("test/recall", self.test_recall, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("test/AUROC", self.test_auroc, on_epoch=True)
+
         
         output = OrderedDict(
             {
                 "loss": loss,
                 "binary_preds": binary_preds,
+                "score_preds": score_preds,
                 "float_preds": predictions,
                 "float_target": target,
                 "binary_target": binary_target,

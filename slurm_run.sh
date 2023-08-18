@@ -4,8 +4,8 @@
 #SBATCH --partition=ais-gpu                   # Queue name 
 
 #SBATCH --nodes=1                       
-#SBATCH --ntasks-per-node=8                     
-#SBATCH --cpus-per-task=8     
+#SBATCH --ntasks-per-node=3                   
+#SBATCH --cpus-per-task=16     
 #SBATCH --gpus-per-task=1
 #SBATCH --mem=930G   
 

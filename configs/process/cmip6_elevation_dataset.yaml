@@ -30,8 +30,8 @@ variables:                                      #CMIP variable names to use
 - tasmax
 - tasmin
 time_limits:                                    #Time limits for target and climate data
-- '2000-01-01'
-- '2010-11-14'
+- '1965-01-01'
+- '2023-12-12'
 start_of_test: '2008-01-01'                     #Train-test temporal separation
 
 target_column:                                  #Target variable columns from weather stations

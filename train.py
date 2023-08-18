@@ -7,7 +7,7 @@ from src.regression.train import train_regression, get_rundir_name
 
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev28x47")
 def main(cfg: DictConfig):    
     train_regression(cfg)
     logging.info('Train finished!')

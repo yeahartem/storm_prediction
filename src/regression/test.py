@@ -16,9 +16,10 @@ import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint
 print(os.getcwd())
 warnings.filterwarnings("ignore")
-torch.manual_seed(112)
-random.seed(112)
-os.environ['WANDB_MODE'] = 'offline'
+
+os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
+
+os.environ['WANDB_MODE'] = 'online'
 os.environ['WANDB_DIR'] = 'out/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
 os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
@@ -47,6 +48,7 @@ def test(cfg: DictConfig) -> None:
                          benchmark=True,
                          devices=cfg.eval.gpu_num,
                          default_root_dir=run_dir,
+                         strategy=cfg.eval.strategy if cfg.eval.distributed_test else 'auto',
                          logger=wandb_logger,
                          #limit_test_batches=200
                         )
@@ -55,7 +57,7 @@ def test(cfg: DictConfig) -> None:
     trainer.test(model, dm)
  
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet41x41.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet28x47.yaml")
 def main(cfg: DictConfig):    
     test(cfg)
     logging.info('Test finished!')

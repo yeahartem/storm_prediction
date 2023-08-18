@@ -55,7 +55,7 @@ class DataPreLoader:
             var_data[i] = np.load(os.path.join(self.cfg.train.data_dir, var + f'_{self.cfg.process.precision}.npy'))
         logging.info(f"CMIP data loaded {var_data.shape}")
         #map padding
-        var_data = self.time_crop(var_data)
+        # var_data = self.time_crop(var_data)
         var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
         # shift_fixed =  self.cfg.half_side_size + self.cfg.half_side_size//2
         # self.shift = [shift_fixed, shift_fixed]
@@ -176,8 +176,10 @@ class DataPreLoader:
                     dates_test = clipped_dates[clipped_dates >= split_index]
                     y_train = y[:len(dates_train)]
                     y_test = y[len(dates_train):len(clipped_dates)]
+                    
                     arr_train = np.stack([np.full(len(dates_train), lat, dtype=np.int16), np.full(len(dates_train), lon, dtype=np.int16), dates_train, y_train])
                     arr_test = np.stack([np.full(len(dates_test), lat, dtype=np.int16), np.full(len(dates_test), lon, dtype=np.int16), dates_test, y_test])
+                    
                     train_data_idxs.append(arr_train)
                     test_data_idxs.append(arr_test)
 
