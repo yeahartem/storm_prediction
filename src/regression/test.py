@@ -59,6 +59,8 @@ def test(cfg: DictConfig) -> None:
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet28x47.yaml")
 def main(cfg: DictConfig):    
+    cfg.eval.time_start = cfg.time_start   
+    cfg.eval.time_end = cfg.time_end
     test(cfg)
     logging.info('Test finished!')
 

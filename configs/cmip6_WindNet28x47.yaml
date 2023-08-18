@@ -1,10 +1,10 @@
 defaults:
   - raw: cmip6_elevation_paths              # paths to raw data to prepare dataset
-  - process: cmip6_elevation_dataset        # dataset processing configuration
+  - process: cmip6_dataset        # dataset processing configuration
   - train: train_WindNet28x47  # train configuration and data load configuration
   - eval: test_WindNet28x47.yaml
 
-experiment_name: cmip6_linear_model
+experiment_name: cmip6_light_conv
 project_name: Wind-speed-regression
 target_type: wind_ms #*
 cmip_type: CMIP6 #*

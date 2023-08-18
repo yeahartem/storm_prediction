@@ -25,7 +25,8 @@ class DataPreLoader:
         self.lat_coords = np.load(os.path.join(cfg.train.data_dir, 'lat.npy'))
         self.lon_coords = np.load(os.path.join(cfg.train.data_dir, 'lon.npy'))
         self.dataset_torch = self.load_climate_data()
-        self.elevation_torch = self.load_elevation_data()
+        if self.cfg.train.use_elevation:
+            self.elevation_torch = self.load_elevation_data()
 
         if self.data_exists():
             self.load_data()

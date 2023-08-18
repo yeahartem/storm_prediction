@@ -10,7 +10,9 @@ target_type: wind_ms #*
 cmip_type: CMIP6 #*
 
 model_name: WindNetElev83x41  # {name}{time_window}x{half_side_size}
-time_window: 83               # must match model, odd only
-half_side_size: 41            # must match model, odd only
+time_window: 28               # must match model, odd only
+half_side_size: 47            # must match model, odd only
 
+time_start: '1950-01-01'
+time_end: '2021-01-01'
 #* have no effect, just info 

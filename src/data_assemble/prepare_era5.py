@@ -1,168 +1,269 @@
-import glob
-import os
-
+import sys,os
+sys.path.append(os.getcwd())
 import numpy as np
 import xarray as xr
-from tqdm import tqdm
+import pandas as pd
+import logging
+import dask
+import hydra
+from omegaconf import DictConfig, OmegaConf, ListConfig
+from omegaconf.errors import ConfigAttributeError
+from src.data_assemble.assemble_target import clean_weather_data_RU, clean_weather_data_WORLD, make_target
+import time
+from datetime import datetime
+from omegaconf.omegaconf import open_dict
+from src.utils.norm_values import mean_channels_cmip6, std_channels_cmip6, mean_channels_cmip5, std_channels_cmip5
+import warnings
+warnings.filterwarnings("ignore")
 
-from src.utils.data_utils import DEFAULT_PRESSURE_LEVELS, NAME_TO_VAR
-HOURS_PER_YEAR = 8760  
+class ERA5File():
+    """Parse the filename of an ERA5 file to get the model name and experiment name.
+        e.g. filename = 'daily_mean_surface_pressure_2014_09.nc' """
 
-def nc2np(path, variables, years, save_dir, partition, num_shards_per_year):
-    os.makedirs(os.path.join(save_dir, partition), exist_ok=True)
+    def __init__(self, path=None):
+        if path:
+            self.filename = os.path.basename(path)
+            self.path = path
+            self.variable_name = '_'.join(self.filename.split('_')[1:-2])
+            self.variable_table = self.filename.split('_')[0]
+            if self.variable_table != 'daily':
+                raise NotImplementedError(f'Only daily data is supported. This file is {self.variable_table}')
+            self.experiment_name = 'ERA5'
+            self.year = self.filename.split('_')[-2]
+            self.month = self.filename.split('_')[-1]
+        # logging.debug(f'CMIP5File: {self}')
 
-    if partition == "train":
-        normalize_mean = {}
-        normalize_std = {}
-    climatology = {}
+    def __str__(self):
+        return self.filename()
 
-    constants = xr.open_mfdataset(os.path.join(path, "constants.nc"), combine="by_coords", parallel=True)
-    constant_fields = ["land_sea_mask", "orography", "lattitude"]
-    constant_values = {}
-    for f in constant_fields:
-        constant_values[f] = np.expand_dims(constants[NAME_TO_VAR[f]].to_numpy(), axis=(0, 1)).repeat(
-            HOURS_PER_YEAR, axis=0
-        )
-        if partition == "train":
-            normalize_mean[f] = constant_values[f].mean(axis=(0, 2, 3))
-            normalize_std[f] = constant_values[f].std(axis=(0, 2, 3))
+    def __repr__(self):
+        return self.filename()
+    
+    def filename(self):
+        return f"{self.variable_name}_{self.variable_table}_{self.model_name}_{self.experiment_name}_{self.ensemble_member}_{self.temporal_subset}.nc"
+    
 
-    for year in tqdm(years):
-        np_vars = {}
-
-        for f in constant_fields:
-            np_vars[f] = constant_values[f]
-
-        for var in variables:
-            ps = glob.glob(os.path.join(path, var, f"*{year}*.nc"))
-            ds = xr.open_mfdataset(ps, combine="by_coords", parallel=True) 
-            code = NAME_TO_VAR[var]
-
-            if len(ds[code].shape) == 3:  # surface level variables
-                ds[code] = ds[code].expand_dims("val", axis=1)
-                # remove the last 24 hours if this year has 366 days
-                np_vars[var] = ds[code].to_numpy()[:HOURS_PER_YEAR]
-
-                if partition == "train":  
-                    var_mean_yearly = np_vars[var].mean(axis=(0, 2, 3))
-                    var_std_yearly = np_vars[var].std(axis=(0, 2, 3))
-                    if var not in normalize_mean:
-                        normalize_mean[var] = [var_mean_yearly]
-                        normalize_std[var] = [var_std_yearly]
-                    else:
-                        normalize_mean[var].append(var_mean_yearly)
-                        normalize_std[var].append(var_std_yearly)
-
-                clim_yearly = np_vars[var].mean(axis=0)
-                if var not in climatology:
-                    climatology[var] = [clim_yearly]
-                else:
-                    climatology[var].append(clim_yearly)
-
-            else:  
-                assert len(ds[code].shape) == 4
-                all_levels = ds["level"][:].to_numpy()
-                all_levels = np.intersect1d(all_levels, DEFAULT_PRESSURE_LEVELS)
-                for level in all_levels:
-                    ds_level = ds.sel(level=[level])
-                    level = int(level)
-                    np_vars[f"{var}_{level}"] = ds_level[code].to_numpy()[:HOURS_PER_YEAR]
-
-                    if partition == "train":  # compute mean and std of each var in each year
-                        var_mean_yearly = np_vars[f"{var}_{level}"].mean(axis=(0, 2, 3))
-                        var_std_yearly = np_vars[f"{var}_{level}"].std(axis=(0, 2, 3))
-                        if var not in normalize_mean:
-                            normalize_mean[f"{var}_{level}"] = [var_mean_yearly]
-                            normalize_std[f"{var}_{level}"] = [var_std_yearly]
-                        else:
-                            normalize_mean[f"{var}_{level}"].append(var_mean_yearly)
-                            normalize_std[f"{var}_{level}"].append(var_std_yearly)
-
-                    clim_yearly = np_vars[f"{var}_{level}"].mean(axis=0)
-                    if f"{var}_{level}" not in climatology:
-                        climatology[f"{var}_{level}"] = [clim_yearly]
-                    else:
-                        climatology[f"{var}_{level}"].append(clim_yearly)
-
-        assert HOURS_PER_YEAR % num_shards_per_year == 0
-        num_hrs_per_shard = HOURS_PER_YEAR // num_shards_per_year
-        for shard_id in range(num_shards_per_year):
-            start_id = shard_id * num_hrs_per_shard
-            end_id = start_id + num_hrs_per_shard
-            sharded_data = {k: np_vars[k][start_id:end_id] for k in np_vars.keys()}
-            np.savez(
-                os.path.join(save_dir, partition, f"{year}_{shard_id}.npz"),
-                **sharded_data,
-            )
-
-    if partition == "train":
-        for var in normalize_mean.keys():
-            if var not in constant_fields:
-                normalize_mean[var] = np.stack(normalize_mean[var], axis=0)
-                normalize_std[var] = np.stack(normalize_std[var], axis=0)
-
-        for var in normalize_mean.keys():  # aggregate over the years
-            if var not in constant_fields:
-                mean, std = normalize_mean[var], normalize_std[var]
-                variance = (std**2).mean(axis=0) + (mean**2).mean(axis=0) - mean.mean(axis=0) ** 2
-                std = np.sqrt(variance)
-                mean = mean.mean(axis=0)
-                normalize_mean[var] = mean
-                normalize_std[var] = std
-
-        np.savez(os.path.join(save_dir, "normalize_mean.npz"), **normalize_mean)
-        np.savez(os.path.join(save_dir, "normalize_std.npz"), **normalize_std)
-
-    for var in climatology.keys():
-        climatology[var] = np.stack(climatology[var], axis=0)
-    climatology = {k: np.mean(v, axis=0) for k, v in climatology.items()}
-    np.savez(
-        os.path.join(save_dir, partition, "climatology.npz"),
-        **climatology,
-    )
+def get_cmip5_files(folder: str, variables) -> list:
+    """Get all the CMIP5 files in the directories in folders list"""
+    if isinstance(variables, str):
+        variables = [variables]
+    if isinstance(folder, (list, ListConfig)):
+        folder = folder[0]
+    files = []
+    print(folder)
+    for root, dirs, filenames in os.walk(folder):
+        for filename in filenames:
+            if filename.endswith('.nc'):                
+                file = CMIP5File(os.path.join(root, filename))
+                if file.variable_name in variables:
+                    files.append(file)
+    return files
 
 
-def main(
-    root_dir = '/home/teshbek/Datasets/era5',
-    save_dir = './data/era5_npz',
-    variables = [
-        "2m_temperature",
-        "10m_u_component_of_wind",
-        "10m_v_component_of_wind",
-        "toa_incident_solar_radiation",
-        "total_precipitation",
-        "geopotential",
-        "u_component_of_wind",
-        "v_component_of_wind",
-        "temperature",
-        "relative_humidity",
-        "specific_humidity",
-    ],
-    start_train_year = 1980,
-    start_val_year = 2000,
-    start_test_year = 2010,
-    end_year = 2020,
-    num_shards = 10,
-):
-    assert start_val_year > start_train_year and start_test_year > start_val_year and end_year > start_test_year
-    train_years = range(start_train_year, start_val_year)
-    val_years = range(start_val_year, start_test_year)
-    test_years = range(start_test_year, end_year)
+def process_coords(ds, concat_dim='time', drop=True):    
+    coord_vars = ['height']
+    if drop:
+        return ds.drop_vars(coord_vars, errors="ignore")
+    else:
+        return ds.set_coords(coord_vars)    
 
-    os.makedirs(save_dir, exist_ok=True)
+def erase_leap_years(data_arr):
+    return data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
 
-    nc2np(root_dir, variables, train_years, save_dir, "train", num_shards)
-    nc2np(root_dir, variables, val_years, save_dir, "val", num_shards)
-    nc2np(root_dir, variables, test_years, save_dir, "test", num_shards)
+def climate_to_npy(files: list, var: str, cfg, save: bool = True):
+    """Convert climate data to nc files."""
 
-    ps = glob.glob(os.path.join(root_dir, variables[0], f"*{train_years[0]}*.nc"))
-    x = xr.open_mfdataset(ps[0], parallel=True)
-    lat = x["lat"].to_numpy()
-    lon = x["lon"].to_numpy()
-    np.save(os.path.join(save_dir, "lat.npy"), lat)
-    np.save(os.path.join(save_dir, "lon.npy"), lon)
+    assert (cfg.process.precision == 16 and cfg.process.saved_normalized) or (cfg.process.precision == 32 and not cfg.process.saved_normalized), \
+    ''' 16 bit precision works only normalized,
+        32 bit precision should be used with saved_normalized=False.'''
+
+    experiment_name = cfg.experiment_name
+    train_coords = cfg.process.coords
+    rect_coords = list(train_coords.values()) #rect_coords = [min_lat, max_lat, min_lon, max_lon]    
+    time_range = [np.datetime64(pd.to_datetime(t)) for t in cfg.process.get("time_limits")]
+    file_paths = [file.path for file in files]
+
+    if not experiment_name:
+        experiment_name = files[0].experiment_name
+    try:
+        data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, engine='scipy', drop_variables=['height'])
+    except TypeError:
+        data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, drop_variables=['height'])
+    
+    if time_range:
+        data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
+    data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
+    data_arr = data_arr.sortby(data_arr.lon)
+    if cfg.process.spatial_crop:
+        data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
+    # Remove leap days
+    data_arr = erase_leap_years(data_arr)
+
+    if cfg.process.precision == 16:
+        dtype = np.float16
+    elif cfg.process.precision == 32:
+        dtype = np.float32
+    else:
+        raise NotImplementedError
+    
+    #Calculate mean and std on train data
+    if cfg.process.start_of_test:
+        split_date = datetime.strptime(cfg.process.start_of_test, '%Y-%m-%d').date()
+    else:
+        split_date = time_range[1].astype(datetime).date()
+
+    if cfg.process.load_normalization:
+        if cfg.cmip_type == 'CMIP6':
+            stds = std_channels_cmip6
+            means = mean_channels_cmip6
+        elif cfg.cmip_type == 'CMIP5':
+            stds = std_channels_cmip5
+            means = mean_channels_cmip5
+        else:
+            raise NotImplementedError
+        std = stds[cfg.process.variables.index(var)]
+        mean = means[cfg.process.variables.index(var)]
+    else:
+        std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()
+        mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()
+
+    if save:
+        logging.info(f"Saving: {var}")
+        if cfg.process.saved_normalized:
+            data = data_arr[var].data
+            data = np.divide((data - data.mean()), data.std())
+            np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data.astype(dtype))
+        else:
+            np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data_arr[var].data.astype(dtype))
+        time = data_arr[var]["time"].to_numpy()       
+        lat = data_arr[var]["lat"].to_numpy()
+        lon = data_arr[var]["lon"].to_numpy()
+        np.save(os.path.join(cfg.process.data_dir, "time.npy"), time)
+        np.save(os.path.join(cfg.process.data_dir, "lat.npy"), lat)
+        np.save(os.path.join(cfg.process.data_dir, "lon.npy"), lon)
+        logging.info(f"Coords saved: time {time.min()}-{time.max()}, lat {lat.min()}-{lat.max()} step {lat[0]-lat[1]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
+    return mean, std
+
+def elevation_to_npy(file: str, cfg, save: bool = True):
+    """Convert elevation data to nc files."""
+    var = 'topo'
+    assert (cfg.process.precision == 16 and cfg.process.saved_normalized) or (cfg.process.precision == 32 and not cfg.process.saved_normalized), \
+    ''' 16 bit precision works only normalized,
+        32 bit precision should be used with saved_normalized=False.'''
+    train_coords = cfg.process.coords
+    rect_coords = list(train_coords.values()) #rect_coords = [min_lat, max_lat, min_lon, max_lon]    
+    try:
+        data_arr = xr.open_mfdataset(file, preprocess=process_coords, parallel=True, engine='scipy')
+    except TypeError:
+        data_arr = xr.open_mfdataset(file, preprocess=process_coords, parallel=True)
+    data_arr = data_arr.rename({"X": 'lon', "Y": 'lat'})
+    data_arr = data_arr.fillna(0)
+    if cfg.process.spatial_crop:
+        data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
+    if cfg.process.precision == 16:
+        dtype = np.float16
+    elif cfg.process.precision == 32:
+        dtype = np.float32
+    else:
+        raise NotImplementedError
+    #Calculate mean and std
+    std = data_arr[var].std().compute()
+    mean = data_arr[var].mean().compute()
+
+    if save:
+        logging.info(f"Saving: {var}")
+        if cfg.process.saved_normalized:
+            data = data_arr[var].data
+            data = np.divide((data - data.mean()), data.std())
+            np.save(os.path.join(cfg.process.data_dir, f"elev_{cfg.process.precision}.npy"), data.astype(dtype))
+        else:
+            np.save(os.path.join(cfg.process.data_dir, f"elev_{cfg.process.precision}.npy"), data_arr[var].data.astype(dtype))
+        lat = data_arr[var]["lat"].to_numpy()
+        lon = data_arr[var]["lon"].to_numpy()
+        np.save(os.path.join(cfg.process.data_dir, "elev_lat.npy"), lat)
+        np.save(os.path.join(cfg.process.data_dir, "elev_lon.npy"), lon)
+        logging.info(f"Coords saved: lat {lat.min()}-{lat.max()} step {lat[1]-lat[0]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
+    return mean, std
+
+
+def save_normalization_values(mean_channels: np.array, std_channels: np.array, cfg: DictConfig, prefix: str = ''):
+    """Save normalization values for the climate data in given folder"""
+    for i in zip(mean_channels, std_channels):
+        print(f" mean: {i[0]}, std:  {i[1]}")
+    np.save(os.path.join(cfg.process.data_dir, prefix + "mean_32.npy"), mean_channels.astype(np.float32))
+    np.save(os.path.join(cfg.process.data_dir, prefix + "std_32.npy"), std_channels.astype(np.float32))
+    
+
+def load_dataset(cfg: DictConfig):
+    """Load climate data from folder in cfg.raw.paths_to_climate_files_folders"""
+    files = get_cmip5_files(cfg.raw.paths_to_climate_files_folders, cfg.process.variables)
+    file_paths = [file.path for file in files]
+    logging.info(f'loading {file_paths}')
+    try:
+        data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, engine='scipy', preprocess=process_coords, drop_variables=['height']) 
+    except TypeError:
+        data_arr = xr.open_mfdataset(file_paths, combine="by_coords", parallel=True, preprocess=process_coords, drop_variables=['height']) 
+    return data_arr
+
+
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41")
+def prepare_cmip(cfg: DictConfig):    
+    print(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'))
+    logging.info(OmegaConf.to_yaml(cfg))
+    logging.info(f"Starting climate data processing")    
+    os.makedirs(cfg.process.data_dir, exist_ok=True)
+
+    #save netcdf files to npy and get normalization values
+    mean_channels, std_channels = [], []
+    if cfg.process.make_climate_data:
+        for folder in cfg.raw.paths_to_climate_files_folders:
+            for var in cfg.process.variables:
+                logging.info(f"{var} in work")
+                files = get_cmip5_files(folder, var)
+                mean, std = climate_to_npy(files, var, cfg)
+                mean_channels.append(mean)
+                std_channels.append(std)
+                logging.info(f"{var} data saved to {cfg.process.data_dir}")
+    #elevation
+    if cfg.process.make_elevation_data:
+        mean_elev, std_elev = elevation_to_npy(cfg.raw.path_to_elevation, cfg)
+        save_normalization_values(np.array([mean_elev]), np.array([std_elev]), cfg, prefix='elev_')
+        logging.info(f"elevation data saved to {cfg.process.data_dir}")
+
+    #save normalization values
+    if cfg.process.make_normalization and cfg.process.make_climate_data:
+        save_normalization_values(np.array(mean_channels), np.array(std_channels), cfg)
+        logging.info(f"Normalization values saved to {cfg.process.data_dir}")
+    elif cfg.process.make_normalization:
+        for folder in cfg.raw.paths_to_climate_files_folders:
+            for var in cfg.process.variables:
+                logging.info(f"{var} in work")
+                files = get_cmip5_files(folder, var)
+                mean, std = climate_to_npy(files, var, cfg, False)
+                mean_channels.append(mean)
+                std_channels.append(std)
+
+        save_normalization_values(np.array(mean_channels), np.array(std_channels), cfg)
+        logging.info(f"Normalization values saved to {cfg.process.data_dir}")
+    
+    #save cleaned target data
+    if cfg.process.make_cleaned_weather_data:
+        start_time = time.process_time()
+        clean_weather_data_RU(cfg.raw.path_to_weather_stations_data)
+        logging.info(f"Ru data clean took {time.process_time() - start_time} seconds")
+        start_time = time.process_time()
+        clean_weather_data_WORLD(cfg.raw.path_to_world_weather_stations_data)
+        logging.info(f"World data clean took {time.process_time() - start_time} seconds")
+
+    #save target data   
+    if cfg.process.make_target:
+        make_target(cfg, load_dataset(cfg))        
+        logging.info(f"Target data saved to {cfg.process.data_dir} as {cfg.process.prepared_target_data_name}")
+
+    with open(os.path.join(cfg.process.data_dir, 'dataset_config.yaml'), 'w') as file:
+        OmegaConf.save(cfg, file)
 
 
 if __name__ == "__main__":
-    main()
-
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
+    prepare_cmip()
