@@ -13,7 +13,7 @@ model_name: WindNet28x47  # {name}{time_window}x{half_side_size}
 time_window: 28               # must match model, odd only
 half_side_size: 47            # must match model, odd only
 
-time_start: '2000-01-01'
-time_end: '2020-01-01'
+start_date: '2019-01-30'                   #for eval only
+end_date: '2019-03-31'
 
 #* have no effect, just info ß

@@ -53,10 +53,19 @@ class EvalDataset(torch.utils.data.Dataset):
         self.prepare_data()
         self.total_index = list(itertools.product(self.time_indexes, self.lat_indexes, self.lon_indexes))
         logging.info(f"Coordinates to be predicted")
-        logging.info(f"Lat: {min(self.lat_coords_full)} - {max(self.lat_coords_full)}")
-        logging.info(f"Lon: {min(self.lon_coords_full)} - {max(self.lon_coords_full)}")
+        logging.info(f"Lat: {min(self.lat_coords)} - {max(self.lat_coords)}")
+        logging.info(f"Lon: {min(self.lon_coords)} - {max(self.lon_coords)}")
         logging.info(f"Time: {min(self.time_coords)} - {max(self.time_coords)}")
 
+    def prepare_data(self):
+        """Prepare data for inference"""
+        self.load_dataset()
+        self.limit_inference_time()
+        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
+        self.limit_inference_space()
+        assert len(self.lat_indexes) == len(self.lat_coords), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords)}"
+        assert len(self.lon_indexes)== len(self.lon_coords), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords)}"
+        assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
 
     def load_dataset(self):
         """Load climate data from given folder"""
@@ -67,11 +76,10 @@ class EvalDataset(torch.utils.data.Dataset):
         for i, var in enumerate(self.cfg.process.variables):
             self.var_data[i] = np.load(os.path.join(self.cfg.eval.data_dir, var + f'_{self.cfg.process.precision}.npy'))
 
-
-    def limit_inference_space(self):
+    def limit_inference_time(self):
         """Crop data by spatial coordinates"""
-        time_start = pd.to_datetime(self.cfg.eval.time_start)
-        time_end = pd.to_datetime(self.cfg.eval.time_end)
+        time_start = pd.to_datetime(self.cfg.start_date)
+        time_end = pd.to_datetime(self.cfg.end_date)
         self.time_min_idx = np.searchsorted(self.time_coords_full, time_start)
         self.time_max_idx = np.searchsorted(self.time_coords_full, time_end)
 
@@ -88,15 +96,31 @@ class EvalDataset(torch.utils.data.Dataset):
         logging.info(f"Bounded data shape: {self.var_data.shape}")
 
 
-    def prepare_data(self):
-        """Prepare data for inference"""
-        self.load_dataset()
-        self.limit_inference_space()
-        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
-        assert len(self.lat_indexes) == len(self.lat_coords_full), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords_full)}"
-        assert len(self.lon_indexes)== len(self.lon_coords_full), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords_full)}"
-        assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
-    
+    def limit_inference_space(self):
+        """Crop data by spatial coordinates"""
+        #find bounding indexes 
+        self.lat_min_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_min)
+        self.lat_max_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_max)
+        self.lon_min_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_min)
+        self.lon_max_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_max)
+        self.lat_coords = self.lat_coords_full[self.lat_min_idx:self.lat_max_idx]
+        self.lon_coords = self.lon_coords_full[self.lon_min_idx:self.lon_max_idx]
+        #list of indexes with padding shift
+        self.lat_indexes = list(range(self.lat_min_idx + self.shift[0], self.lat_max_idx + self.shift[0]))
+        self.lon_indexes = list(range(self.lon_min_idx + self.shift[1], self.lon_max_idx + self.shift[1]))
+        #crop data by indexes 
+        self.var_data = self.var_data[
+                                      :,
+                                      :,
+                                      self.lat_min_idx-self.cfg.half_side_size:self.lat_max_idx+self.cfg.half_side_size,
+                                      self.lon_min_idx-self.cfg.half_side_size:self.lon_max_idx+self.cfg.half_side_size
+                                      ]
+        self.lat_indexes = [l_idx - self.lat_min_idx for l_idx in self.lat_indexes]
+        self.lon_indexes = [l_idx - self.lon_min_idx for l_idx in self.lon_indexes]
+        assert len(self.lat_indexes) == len(self.lat_coords), f"{len(self.lat_indexes)} {len(self.lat_coords)}"
+        assert len(self.lon_indexes)== len(self.lon_coords), f"{len(self.lon_indexes)} {len(self.lon_coords)}"
+        assert len(self.time_indexes)== len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
+
     def __len__(self):
         return len(self.total_index)
 
@@ -112,28 +136,28 @@ class EvalDataset(torch.utils.data.Dataset):
         return item, coord
 
 
-
-class EvalDatasetElev(torch.utils.data.Dataset):
+#########################################################
+class EvalDatasetElev(EvalDataset):
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg
         self.prepare_data()
         self.total_index = list(itertools.product(self.time_indexes, self.lat_indexes, self.lon_indexes))
         logging.info(f"Coordinates to be predicted")
-        logging.info(f"Lat: {min(self.lat_coords_full)} - {max(self.lat_coords_full)}")
-        logging.info(f"Lon: {min(self.lon_coords_full)} - {max(self.lon_coords_full)}")
+        logging.info(f"Lat: {min(self.lat_coords)} - {max(self.lat_coords)}")
+        logging.info(f"Lon: {min(self.lon_coords)} - {max(self.lon_coords)}")
         logging.info(f"Time: {min(self.time_coords)} - {max(self.time_coords)}")
 
-
-    def load_dataset(self):
-        """Load climate data from given folder"""
-        self.time_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'time.npy')).astype('datetime64[D]')
-        self.lat_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'lat.npy'))
-        self.lon_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'lon.npy'))
-        self.var_data = np.empty((len(self.cfg.process.variables), len(self.time_coords_full), len(self.lat_coords_full), len(self.lon_coords_full)), dtype=np.float16)
-        for i, var in enumerate(self.cfg.process.variables):
-            self.var_data[i] = np.load(os.path.join(self.cfg.eval.data_dir, var + f'_{self.cfg.process.precision}.npy'))
-        logging.info(f"Climate shape: {self.var_data.shape}")
-
+    def prepare_data(self):
+        """Prepare data for inference"""
+        self.load_dataset()
+        self.load_evevation()
+        self.limit_inference_time()
+        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
+        self.limit_inference_space()
+        self.elev_data, self.shift_elev = make_padding(self.elev_data, self.elev_hss)
+        assert len(self.lat_indexes) == len(self.lat_coords_full), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords_full)}"
+        assert len(self.lon_indexes)== len(self.lon_coords_full), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords_full)}"
+        assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
 
     def load_evevation(self):
         """Load elevation data from given folder"""
@@ -153,38 +177,6 @@ class EvalDatasetElev(torch.utils.data.Dataset):
         self.r_lon = torch.from_numpy(np.atleast_1d(self.r_lon))
         logging.info(f"Elevation shape: {self.elev_data.shape}")
 
-
-    def limit_inference_space(self):
-        """Crop data by spatial coordinates"""
-        time_start = pd.to_datetime(self.cfg.eval.time_start)
-        time_end = pd.to_datetime(self.cfg.eval.time_end)
-        self.time_min_idx = np.searchsorted(self.time_coords_full, time_start)
-        self.time_max_idx = np.searchsorted(self.time_coords_full, time_end)
-
-        self.time_coords = self.time_coords_full[self.time_min_idx:self.time_max_idx]
-        self.time_indexes = list(range(self.time_min_idx + self.cfg.time_window//2, self.time_max_idx + self.cfg.time_window//2)) 
-        self.lat_indexes = list(range(self.cfg.half_side_size, len(self.lat_coords_full) + self.cfg.half_side_size))
-        self.lon_indexes = list(range(self.cfg.half_side_size, len(self.lon_coords_full) + self.cfg.half_side_size))
-        
-        self.var_data = self.var_data[:, self.time_min_idx - self.cfg.time_window//2:self.time_max_idx + self.cfg.time_window//2, :, :]
-        self.time_indexes = [t_idx - self.time_min_idx for t_idx in self.time_indexes]
-        if isinstance(self.time_coords, list) and isinstance(self.time_indexes, list):
-            assert len(self.time_indexes) == len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
-            assert self.var_data.shape[1] == len(self.time_coords), f"{len(self.var_data.shape[1])} {len(self.time_coords)}"
-        logging.info(f"Bounded data shape: {self.var_data.shape}")
-
-
-    def prepare_data(self):
-        """Prepare data for inference"""
-        self.load_dataset()
-        self.load_evevation()
-        self.limit_inference_space()
-        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
-        self.elev_data, self.shift_elev = make_padding(self.elev_data, self.elev_hss)
-        assert len(self.lat_indexes) == len(self.lat_coords_full), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords_full)}"
-        assert len(self.lon_indexes)== len(self.lon_coords_full), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords_full)}"
-        assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
-    
     def __len__(self):
         return len(self.total_index)
 
@@ -253,8 +245,8 @@ def predict(model, dataset, use_elevation, batch_size=1, distributed=False, devi
 
     for coords_idxs in coords_indxs_list:
         for t, lat, lon, in coords_idxs:
-            coords = [dataset.lat_coords_full[lat - dataset.shift[0]],
-                      dataset.lon_coords_full[lon - dataset.shift[1]],
+            coords = [dataset.lat_coords[lat - dataset.shift[0]],
+                      dataset.lon_coords[lon - dataset.shift[1]],
                       dataset.time_coords[t - dataset.cfg.time_window//2]]
             coords_list.append(coords)
 

@@ -13,6 +13,8 @@ model_name: WindNetElev83x41  # {name}{time_window}x{half_side_size}
 time_window: 28               # must match model, odd only
 half_side_size: 47            # must match model, odd only
 
-time_start: '1950-01-01'
-time_end: '2021-01-01'
+start_date: '2019-01-30'                   #for eval only
+end_date: '2019-03-31'
+
+
 #* have no effect, just info 
