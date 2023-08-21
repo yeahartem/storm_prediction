@@ -4,7 +4,7 @@ defaults:
   - train: train_WindNet28x47  # train configuration and data load configuration
   - eval: test_WindNet28x47.yaml
 
-experiment_name: cmip6_light_conv
+experiment_name: cmip6_lightconv_2vars_quantile
 project_name: Wind-speed-regression
 target_type: wind_ms #*
 cmip_type: CMIP6 #*
@@ -12,5 +12,8 @@ cmip_type: CMIP6 #*
 model_name: WindNet28x47  # {name}{time_window}x{half_side_size}
 time_window: 28               # must match model, odd only
 half_side_size: 47            # must match model, odd only
+
+time_start: '2000-01-01'
+time_end: '2020-01-01'
 
 #* have no effect, just info ß

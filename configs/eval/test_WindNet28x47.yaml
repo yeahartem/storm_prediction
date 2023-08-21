@@ -10,7 +10,7 @@ distributed_test: true
 strategy: ddp
 gpu_num: 3
 
-data_dir: data/cmip6_world/      # directory to get climate files for test and inference
+data_dir: data/cmip6_world2/      # directory to get climate files for test and inference
 target_data_file: target.parquet  # target data file in data_dir for training for test and inference
 
 path_to_checkpoint: /trinity/home/v.morozov/WindN/out/2023-08-16/14-03-24/epoch=2-step=56961.ckpt

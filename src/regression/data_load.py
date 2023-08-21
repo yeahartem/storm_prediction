@@ -105,6 +105,7 @@ class DataPreLoader:
             return None
         else:
             return np.max(sliding_window_view(np.array(values), window_shape = self.cfg.train.time_agg_window), axis = 1)
+            # return np.quantile(sliding_window_view(np.array(values), window_shape = self.cfg.train.time_agg_window), 0.95, axis = 1)
             
     def align_time(self, values):
         if len(values)< self.cfg.time_window:
@@ -221,6 +222,8 @@ class DataPreLoader:
         logging.info(f"Target min: {self.train_data_idxs[3, :].min()}, target max: {self.train_data_idxs[3, :].max()}")
         logging.info(f"Target mean: {self.train_data_idxs[3, :].mean()}, target std: {self.train_data_idxs[3, :].std()}")
         logging.info(f"Balance train: {self.get_class_balance(self.train_data_idxs[3, :])}, balance test:{self.get_class_balance(self.test_data_idxs[3, :])}")
+        for i, var in enumerate(self.cfg.process.variables):
+            logging.info(f"{var} mean: {self.dataset_torch[i].mean()}, std: {self.dataset_torch[i].std()}")
 
     def get_class_balance(self, target_array):
         positive = np.sum(target_array >= self.cfg.train.target_threshold)

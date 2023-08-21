@@ -12,7 +12,7 @@ from src.utils.norm_values import mean_channels_cmip6, std_channels_cmip6
 
 
 class WindDataModule(pl.LightningDataModule):
-    def __init__(self, cfg: DictConfig, test=False):
+    def __init__(self, cfg: DictConfig):
         super().__init__()
         self.cfg = cfg      
         self.DPL = DataPreLoader(cfg)
@@ -34,14 +34,17 @@ class WindDataModule(pl.LightningDataModule):
             DatasetClass = XarrayDataset
 
         if stage == "fit" or stage is None:
-            self.dataset_train = DatasetClass(self.DPL, test=False)
-            self.dataset_val = DatasetClass(self.DPL, test=True)
-        if stage == "test" or stage is None:
-            self.dataset_test = DatasetClass(self.DPL, test=True)
+            self.dataset_train = DatasetClass(DPL=self.DPL, test=False)
+            self.dataset_val = DatasetClass(DPL=self.DPL, test=True)
+        if stage == "test":
+            self.dataset_test = DatasetClass(DPL=self.DPL, test=True)
 
 
     def train_dataloader(self):
-        return DataLoader(dataset=self.dataset_train, batch_size=self.cfg.train.batch_size, num_workers=self.cfg.train.num_workers, pin_memory=True)
+        return DataLoader(dataset=self.dataset_train,
+                          batch_size=self.cfg.train.batch_size,
+                          num_workers=self.cfg.train.num_workers,
+                          pin_memory=True)
 
     def val_dataloader(self):
         return DataLoader(dataset=self.dataset_val,
@@ -65,8 +68,10 @@ class XarrayDataset(Dataset):
         self.dataset_torch = DPL.dataset_torch
         if test:
             self.data_idxs = DPL.test_data_idxs
+            logging.info("Test dataloader init")
         else:
             self.data_idxs = DPL.train_data_idxs
+            logging.info("Train dataloader init")
         self.dtype = dtype
 
         logging.info(f"Sample shape is {self.get_sample_shape(10)}")

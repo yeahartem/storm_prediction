@@ -182,7 +182,8 @@ class WindNetPL(pl.LightningModule):
         self.log("test/precision", self.test_precision, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/recall", self.test_recall, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/AUROC", self.test_auroc, on_epoch=True)
-
+        if batch_idx%50==0:
+            self.logger.experiment.log({"test/target": target, "test/prediction": predictions})
         
         output = OrderedDict(
             {

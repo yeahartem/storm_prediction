@@ -256,7 +256,7 @@ class WindNet28x47(nn.Module):
         super(WindNet28x47, self).__init__()
 
         self.net1 = nn.Sequential(
-            nn.Conv3d(in_channels=6, out_channels=100, kernel_size=(1, 5, 5)), 
+            nn.Conv3d(in_channels=2, out_channels=100, kernel_size=(1, 5, 5)), 
             nn.ReLU(),
             nn.InstanceNorm3d(100),
             nn.Conv3d(in_channels=100, out_channels=100, kernel_size=(1, 5, 5), groups=100),

@@ -36,7 +36,7 @@ def test(cfg: DictConfig) -> None:
 
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
                                project=cfg.project_name,
-                               name=cfg.experiment_name)
+                               name=cfg.experiment_name + '_test')
     dm = WindDataModule(cfg, test=True)
     model = WindNetPL(cfg, run_dir)
     model.load_from_checkpoint(os.path.join(os.getcwd(), cfg.eval.path_to_checkpoint), cfg=cfg)
@@ -54,7 +54,7 @@ def test(cfg: DictConfig) -> None:
                         )
     
     logging.info(f"Time to start test {time.process_time() - start_time} seconds")
-    trainer.test(model, dm)
+    trainer.test(model, dm, ckpt_path=os.path.join(os.getcwd(), cfg.eval.path_to_checkpoint))
  
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet28x47.yaml")
