@@ -6,13 +6,15 @@ lat_max: 70
 lon_min: 30
 lon_max: 90
 
+interpolation_res: 0.25           #if None - does not apply interpolation
+
 num_workers_eval: 32
 batch_size_test: 20 
 distributed_test: true
 gpu_num: 8
 
 save_kml: False                   #if false, saves to csv
-interpolation_res: 0.25           #if None - does not apply interpolation
+
 
 
 data_dir: data/cmip5_world3/      # directory to get climate files for test and inference

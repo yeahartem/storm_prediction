@@ -23,8 +23,8 @@ random.seed(112)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 
 def interpolate(df_risks: pd.DataFrame, cfg: DictConfig) -> None:
-    dlat = np.abs(np.diff(df_risks.lat.data)).min()
-    dlon = np.abs(np.diff(df_risks.lon.data)).min()
+    dlat = np.abs(np.diff(df_risks.lat.drop_duplicates())).min()
+    dlon = np.abs(np.diff(df_risks.lon.drop_duplicates())).min()
     assert (dlat > cfg.eval.interpolation_res) and (dlon > cfg.eval.interpolation_res), "Current spatial resolution is lower than interpolation target"
 
     reshaped = df_risks.prob.values.reshape(len(df_risks.lat.unique()), len(df_risks.lon.unique()), len(df_risks.timestamp.unique()))
@@ -56,19 +56,19 @@ def risk_estimation(cfg: DictConfig) -> None:
     df_infer['date'] = pd.to_datetime(df_infer['date'])
     df_grpby = df_infer.groupby(['lat', 'lon', df_infer.date.dt.year, df_infer.date.dt.month])
     df_risks = df_grpby['prediction'].agg(lambda x: (x > cfg.eval.wind_risk_threshold).mean())
-
-    if cfg.eval.interpolation_res is not None:
-        logging.info(f"Interpolating to {cfg.eval.interpolation_res} degrees resolution")
-        df_risks = interpolate(df_risks, cfg)
-        
-
-    logging.info(f"Preparing format for dumping")
     df_risks_ = df_risks.index.rename(['lat', 'lon', 'year', 'month']).to_frame().reset_index(drop=True)
     df_risks_['prob'] = df_risks.values
     df_risks = df_risks_
     df_risks['day'] = np.ones(len(df_risks))
     df_risks['timestamp'] = pd.to_datetime(df_risks[['year', 'month', 'day']])
     df_risks = df_risks.drop(columns=['year', 'month', 'day'])
+    if cfg.eval.interpolation_res is not None:
+        logging.info(f"Interpolating to {cfg.eval.interpolation_res} degrees resolution")
+        df_risks = interpolate(df_risks, cfg)
+        
+
+    logging.info(f"Preparing format for dumping")
+    
     lat_axis = np.sort(df_risks.lat.unique())
     lon_axis = np.sort(df_risks.lon.unique())
     dlat = np.unique(np.diff(lat_axis))[0]
@@ -97,7 +97,7 @@ def risk_estimation(cfg: DictConfig) -> None:
 
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="risk_estimation_20_test")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_1deg_WindNet28x47.yaml")
 def main(cfg: DictConfig):    
     risk_estimation(cfg)
     logging.info('Risks are estimated finished!')
