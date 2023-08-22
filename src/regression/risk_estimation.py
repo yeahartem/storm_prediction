@@ -23,8 +23,8 @@ random.seed(112)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 
 def interpolate(df_risks: pd.DataFrame, cfg: DictConfig) -> None:
-    dlat = np.abs(np.diff(df_risks.lat.data)).min()
-    dlon = np.abs(np.diff(df_risks.lon.data)).min()
+    dlat = np.abs(np.diff(df_risks.lat.drop_duplicates())).min()
+    dlon = np.abs(np.diff(df_risks.lon.drop_duplicates())).min()
     assert (dlat > cfg.eval.interpolation_res) and (dlon > cfg.eval.interpolation_res), "Current spatial resolution is lower than interpolation target"
 
     reshaped = df_risks.prob.values.reshape(len(df_risks.lat.unique()), len(df_risks.lon.unique()), len(df_risks.timestamp.unique()))
@@ -97,7 +97,7 @@ def risk_estimation(cfg: DictConfig) -> None:
 
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs/infer_configs"), config_name="risk_estimation_20_test")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_1deg_WindNet28x47.yaml")
 def main(cfg: DictConfig):    
     risk_estimation(cfg)
     logging.info('Risks are estimated finished!')

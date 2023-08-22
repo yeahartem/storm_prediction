@@ -3,6 +3,7 @@ time_end: '2018-01-31'
 use_elevation: True
 
 wind_risk_threshold: 20
+interpolation_res: 0.2
 
 num_workers_eval: 16
 batch_size_test: 120 
@@ -15,7 +16,8 @@ target_data_file: target.parquet  # target data file in data_dir for training fo
 
 path_to_checkpoint: /trinity/home/v.morozov/WindN/out/2023-08-16/14-03-24/epoch=2-step=56961.ckpt
 path_to_predictions: out/predictions/result_world_cmip6.csv
-output_file: out/predictions/output_file_world_cmip6.kmlz
+save_kml: false
+output_file: out/predictions/output_file_world_cmip6      #format is chosen from `save_kml` boolean attribute
 cmip_type: CMIP6
 
 
