@@ -21,3 +21,4 @@ data
 *.log
 data_mounted
 *proxy*
+*__pycache__*

@@ -13,12 +13,12 @@ from datetime import datetime
 import time
 import polars
 import gc
-
+from functools import partial
 
 class DataPreLoader:
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg    
-        logging.info("--- REGRESSION ---")
+        logging.info("--- QUANTILE REGRESSION ---")
         assert (cfg.process.precision == 16 and not cfg.train.normalize) or (cfg.process.precision == 32 and cfg.train.normalize), \
         ''' 16 bit is already normalized. 32 bit is not normalized'''        
         self.generate_hash()       
@@ -29,22 +29,8 @@ class DataPreLoader:
         if self.cfg.train.use_elevation:
             self.elevation_torch = self.load_elevation_data()
 
-        if self.data_exists():
-            self.load_data()
-        else:
-            self.prepare_target_df()
-            self.target_df_to_array()
-            self.save_data()
-        
-        if self.cfg.train.normalize:
-            mean_channels = np.load(os.path.join(self.cfg.train.data_dir, f"mean_{cfg.process.precision}.npy"))
-            std_channels = np.load(os.path.join(self.cfg.train.data_dir, f"mean_{cfg.process.precision}.npy"))
-            self.transform = torchvision.transforms.Compose(
-                [
-                    torchvision.transforms.Normalize(mean=mean_channels, std=std_channels),
-                ]
-            )
-        else: self.transform = None
+        self.prepare_target_df()
+        self.target_df_to_array()
         self.log_data()
 
 
@@ -56,39 +42,11 @@ class DataPreLoader:
         for i, var in enumerate(self.cfg.process.variables):
             var_data[i] = np.load(os.path.join(self.cfg.train.data_dir, var + f'_{self.cfg.process.precision}.npy'))
         logging.info(f"CMIP data loaded {var_data.shape}")
-        #map padding
-        # var_data = self.time_crop(var_data)
         var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
-        # shift_fixed =  self.cfg.half_side_size + self.cfg.half_side_size//2
-        # self.shift = [shift_fixed, shift_fixed]
         logging.info(f"Padded data shape {var_data.shape}")
         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
 
         return var_data_torch
-    
-
-    def load_elevation_data(self):
-         start_time = time.process_time()
-         lat_elev_coords = np.load(os.path.join(self.cfg.train.data_dir, 'elev_lat.npy'))
-         lon_elev_coords = np.load(os.path.join(self.cfg.train.data_dir, 'elev_lon.npy'))
-         dtype = np.float16 if self.cfg.process.precision == 16 else np.float32
-
-         var_data = np.empty((len(lat_elev_coords), len(lon_elev_coords)), dtype=dtype)
-         var_data[...] = np.load(os.path.join(self.cfg.train.data_dir, 'elev' + f'_{self.cfg.process.precision}.npy'))
-         #adjusted half_side_size
-         self.r = np.max((np.abs(np.diff(self.lat_coords)).max(), np.abs(np.diff(self.lon_coords)).max())) / np.min((np.abs(np.diff(lat_elev_coords)).min(), np.abs(np.diff(lon_elev_coords)).min()))
-         self.r_lat = np.abs(np.diff(self.lat_coords)).max() / np.abs(np.diff(lat_elev_coords)).min()
-         self.r_lon = np.abs(np.diff(self.lon_coords)).max() / np.abs(np.diff(lon_elev_coords)).min()
-         self.elev_hss = int(self.r * self.cfg.half_side_size) // 2
-         self.r = torch.from_numpy(np.atleast_1d(self.r))
-         self.r_lat = torch.from_numpy(np.atleast_1d(self.r_lat))
-         self.r_lon = torch.from_numpy(np.atleast_1d(self.r_lon))
-         #map padding
-         var_data, shift = make_padding(var_data, self.elev_hss)
-         self.shift_elev = shift
-         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
-         logging.info(f"Elevation data preparation took {time.process_time() - start_time} seconds")
-         return var_data_torch
     
     def time_crop(self, var_data):
         start_date = datetime.strptime(self.cfg.train.start_time, '%Y-%m-%d').date()
@@ -101,12 +59,11 @@ class DataPreLoader:
         logging.info(f"Shape with time limits {var_data.shape}")
         return var_data
     
-    def max_window(self, values):           
+    def quantile_window(self, values, q):           
         if len(values)< self.cfg.train.time_agg_window:
             return None
         else:
-            return np.max(sliding_window_view(np.array(values), window_shape = self.cfg.train.time_agg_window), axis = 1)
-            # return np.quantile(sliding_window_view(np.array(values), window_shape = self.cfg.train.time_agg_window), 0.95, axis = 1)
+            return np.quantile(sliding_window_view(np.array(values), window_shape = self.cfg.train.time_agg_window), q, axis = 1, method='weibull')
             
     def align_time(self, values):
         if len(values)< self.cfg.time_window:
@@ -152,7 +109,7 @@ class DataPreLoader:
                     .groupby(["station_name"])
                     .agg(
                         [polars.col('time').apply(self.align_time),
-                         polars.col('y').apply(self.max_window)])
+                         polars.col('y').apply(partial(self.quantile_window, q=0.95))])
                     .collect())
         target_df = self.stations_to_data_grid(stations_df=target_df)
         target_df = target_df.drop("station_name")
@@ -168,23 +125,21 @@ class DataPreLoader:
         stations = []
         for dates, y, lat, lon in self.target_df.rows():
             if (lat is not None) and (lon is not None) and (dates is not None) and (y is not None):
-                if not (any(np.isnan(np.array([lat, lon]), casting='unsafe')) and any(np.isnan(np.array(dates), casting='unsafe')) and any(np.isnan(np.array(y), casting='unsafe'))):
-                    if isinstance(dates, float):
-                        print(dates)
-                        continue
-                    stations.append([lat, lon])
-                    clipped_dates = dates[dates<(self.time_coords.shape[0]-self.cfg.time_window - 1)]
-                    clipped_dates = clipped_dates[clipped_dates>self.cfg.time_window]
-                    dates_train = clipped_dates[clipped_dates < split_index]
-                    dates_test = clipped_dates[clipped_dates >= split_index]
-                    y_train = y[:len(dates_train)]
-                    y_test = y[len(dates_train):len(clipped_dates)]
-                    
-                    arr_train = np.stack([np.full(len(dates_train), lat, dtype=np.int16), np.full(len(dates_train), lon, dtype=np.int16), dates_train, y_train])
-                    arr_test = np.stack([np.full(len(dates_test), lat, dtype=np.int16), np.full(len(dates_test), lon, dtype=np.int16), dates_test, y_test])
-                    
-                    train_data_idxs.append(arr_train)
-                    test_data_idxs.append(arr_test)
+                if isinstance(dates, float):
+                    continue
+                stations.append([lat, lon])
+                clipped_dates = dates[dates<(self.time_coords.shape[0]-self.cfg.time_window - 1)]
+                clipped_dates = clipped_dates[clipped_dates>self.cfg.time_window]
+                dates_train = clipped_dates[clipped_dates < split_index]
+                dates_test = clipped_dates[clipped_dates >= split_index]
+                y_train = y[:len(dates_train)].astype(np.int16)
+                y_test = y[len(dates_train):len(clipped_dates)].astype(np.int16)
+                
+                arr_train = np.stack([np.full(len(dates_train), lat, dtype=np.int16), np.full(len(dates_train), lon, dtype=np.int16), dates_train, y_train])
+                arr_test = np.stack([np.full(len(dates_test), lat, dtype=np.int16), np.full(len(dates_test), lon, dtype=np.int16), dates_test, y_test])
+                
+                train_data_idxs.append(arr_train)
+                test_data_idxs.append(arr_test)
 
         self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
         self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
@@ -207,19 +162,18 @@ class DataPreLoader:
         self.config_hash = hashlib.sha256(config_str.encode('utf-8')).hexdigest()
 
     def data_exists(self):
-        return os.path.isfile(f'tmp_train_{self.config_hash}.npz')
+        return os.path.isfile(f'tmp_Q_train_{self.config_hash}.npz')
 
     def save_data(self):
-        np.savez_compressed(f'tmp_train_{self.config_hash}.npz', self.train_data_idxs)
-        np.savez_compressed(f'tmp_test_{self.config_hash}.npz', self.test_data_idxs)
+        np.savez_compressed(f'tmp_Q_train_{self.config_hash}.npz', self.train_data_idxs)
+        np.savez_compressed(f'tmp_Q_test_{self.config_hash}.npz', self.test_data_idxs)
 
     def load_data(self):
-        self.train_data_idxs = np.load(f'tmp_train_{self.config_hash}.npz')['arr_0']
-        self.test_data_idxs = np.load(f'tmp_test_{self.config_hash}.npz')['arr_0']
+        self.train_data_idxs = np.load(f'tmp_Q_train_{self.config_hash}.npz')['arr_0']
+        self.test_data_idxs = np.load(f'tmp_Q_test_{self.config_hash}.npz')['arr_0']
 
     def log_data(self):
         logging.info(f"Train size: {self.train_data_idxs.shape[1]}, test size: {self.test_data_idxs.shape[1]}")
-        # logging.info(f"Station count: {len(self.stations)}")
         logging.info(f"Target min: {self.train_data_idxs[3, :].min()}, target max: {self.train_data_idxs[3, :].max()}")
         logging.info(f"Target mean: {self.train_data_idxs[3, :].mean()}, target std: {self.train_data_idxs[3, :].std()}")
         logging.info(f"Balance train: {self.get_class_balance(self.train_data_idxs[3, :])}, balance test:{self.get_class_balance(self.test_data_idxs[3, :])}")

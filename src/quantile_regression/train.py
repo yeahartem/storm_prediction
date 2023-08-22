@@ -7,8 +7,8 @@ import random
 import logging
 from datetime import datetime 
 import pytorch_lightning as pl
-from src.regression.models.pl_module import WindNetPL
-from src.regression.datamodule import WindDataModule
+from src.quantile_regression.models.pl_module import WindNetPL
+from src.quantile_regression.datamodule import WindDataModule
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
@@ -35,7 +35,7 @@ def train_regression(cfg: DictConfig) -> None:
     logging.info(f"Starting in {os.getcwd()}")
     start_time = time.process_time()  
     os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
-    os.environ['WANDB_MODE'] = 'offline'
+    os.environ['WANDB_MODE'] = 'online'
     os.environ['WANDB_DIR'] = 'out/wandb'
     os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
     os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
@@ -74,7 +74,7 @@ def train_regression(cfg: DictConfig) -> None:
                          check_val_every_n_epoch=1,
                          num_sanity_val_steps=0,
                          #distributed
-                         devices=cfg.train.gpu_num,
+                         devices=[1],
                          num_nodes=cfg.train.num_nodes if cfg.train.distributed else 1,
                          strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
                          #log

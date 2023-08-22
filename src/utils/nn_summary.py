@@ -3,8 +3,8 @@ sys.path.append(os.getcwd())
 
 from datetime import datetime 
 import pytorch_lightning as pl
-from src.regression.models.pl_module import WindNetPL
-from src.regression.datamodule import WindDataModule
+from src.quantile_regression.models.pl_module import WindNetPL
+from src.quantile_regression.datamodule import WindDataModule
 import hydra
 from torchsummary import summary
 
@@ -18,11 +18,11 @@ def train_regression(cfg) -> None:
     run_dir = get_rundir_name()  
 
     model = WindNetPL(cfg, run_dir)
-    clim = [6, 83, 83, 83]
+    clim = [2, 27, 95, 95]
     elev = [1, 2769, 2769]
-    summary(model, elev)
+    summary(model, clim)
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet28x47.yaml")
 def main(cfg):    
     train_regression(cfg)
 

@@ -1,7 +1,7 @@
 model_name: WindNet41x41 # have no effect
 use_elevation: false
 normalize: false      # precision 16 is already normalized
-time_agg_window: 28   # range in days, used to calculate maximum for every day of target
+time_agg_window: 36   # range in days, used to calculate maximum for every day of target
 time_freq: 28         # get sample from target every {time_freq} days
 target_threshold: 20
 
@@ -12,7 +12,7 @@ start_time: '2005-01-01'
 end_time: '2023-12-12'
 start_of_test: '2008-01-01'
 
-batch_size: 2
+batch_size: 28
 learning_rate: 0.009
 weight_decay: 0.0001
 max_epoch: 2
@@ -22,7 +22,7 @@ optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
 loss_name: 'MSELoss'
 
-num_workers: 0
+num_workers: 10
 gpu_num: 1
 distributed: false
 num_nodes: 1
