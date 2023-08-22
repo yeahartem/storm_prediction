@@ -56,19 +56,19 @@ def risk_estimation(cfg: DictConfig) -> None:
     df_infer['date'] = pd.to_datetime(df_infer['date'])
     df_grpby = df_infer.groupby(['lat', 'lon', df_infer.date.dt.year, df_infer.date.dt.month])
     df_risks = df_grpby['prediction'].agg(lambda x: (x > cfg.eval.wind_risk_threshold).mean())
-
-    if cfg.eval.interpolation_res is not None:
-        logging.info(f"Interpolating to {cfg.eval.interpolation_res} degrees resolution")
-        df_risks = interpolate(df_risks, cfg)
-        
-
-    logging.info(f"Preparing format for dumping")
     df_risks_ = df_risks.index.rename(['lat', 'lon', 'year', 'month']).to_frame().reset_index(drop=True)
     df_risks_['prob'] = df_risks.values
     df_risks = df_risks_
     df_risks['day'] = np.ones(len(df_risks))
     df_risks['timestamp'] = pd.to_datetime(df_risks[['year', 'month', 'day']])
     df_risks = df_risks.drop(columns=['year', 'month', 'day'])
+    if cfg.eval.interpolation_res is not None:
+        logging.info(f"Interpolating to {cfg.eval.interpolation_res} degrees resolution")
+        df_risks = interpolate(df_risks, cfg)
+        
+
+    logging.info(f"Preparing format for dumping")
+    
     lat_axis = np.sort(df_risks.lat.unique())
     lon_axis = np.sort(df_risks.lon.unique())
     dlat = np.unique(np.diff(lat_axis))[0]
