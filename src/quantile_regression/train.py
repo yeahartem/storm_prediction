@@ -74,7 +74,7 @@ def train_regression(cfg: DictConfig) -> None:
                          check_val_every_n_epoch=1,
                          num_sanity_val_steps=0,
                          #distributed
-                         devices=[1],
+                         devices=cfg.train.gpu_num,
                          num_nodes=cfg.train.num_nodes if cfg.train.distributed else 1,
                          strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
                          #log
@@ -89,7 +89,7 @@ def train_regression(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet41x41.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet28x47.yaml")
 def main(cfg: DictConfig):    
     logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
     train_regression(cfg)

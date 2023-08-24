@@ -29,8 +29,13 @@ class DataPreLoader:
         if self.cfg.train.use_elevation:
             self.elevation_torch = self.load_elevation_data()
 
-        self.prepare_target_df()
-        self.target_df_to_array()
+        if self.data_exists():
+            self.load_data()
+        else:
+            self.prepare_target_df()
+            self.target_df_to_array()
+            self.save_data()
+
         self.log_data()
 
 
@@ -66,11 +71,11 @@ class DataPreLoader:
             return np.quantile(sliding_window_view(np.array(values), window_shape = self.cfg.train.time_agg_window), q, axis = 1, method='weibull')
             
     def align_time(self, values):
-        if len(values)< self.cfg.time_window:
+        if len(values)< self.cfg.train.time_agg_window:
             return None
         else:
             values = self.time_coords.searchsorted(values) # time into inds
-            values = np.array(values)[self.cfg.time_window//2 + 1:len(values) - self.cfg.time_window//2 - 1]
+            values = np.array(values)[self.cfg.train.time_agg_window//2 + 1:len(values) - self.cfg.train.time_agg_window//2 - 1]
             return values
 
 
@@ -109,7 +114,7 @@ class DataPreLoader:
                     .groupby(["station_name"])
                     .agg(
                         [polars.col('time').apply(self.align_time),
-                         polars.col('y').apply(partial(self.quantile_window, q=0.95))])
+                         polars.col('y').apply(partial(self.quantile_window, q=0.96))])
                     .collect())
         target_df = self.stations_to_data_grid(stations_df=target_df)
         target_df = target_df.drop("station_name")
@@ -134,6 +139,8 @@ class DataPreLoader:
                 dates_test = clipped_dates[clipped_dates >= split_index]
                 y_train = y[:len(dates_train)].astype(np.int16)
                 y_test = y[len(dates_train):len(clipped_dates)].astype(np.int16)
+                assert len(dates_train) == len(y_train), f"train len dates {dates_train.shape} len labels {y_train.shape}"
+                assert len(dates_test) == len(y_test), f"test len dates {dates_test.shape} len labels {y_test.shape}"
                 
                 arr_train = np.stack([np.full(len(dates_train), lat, dtype=np.int16), np.full(len(dates_train), lon, dtype=np.int16), dates_train, y_train])
                 arr_test = np.stack([np.full(len(dates_test), lat, dtype=np.int16), np.full(len(dates_test), lon, dtype=np.int16), dates_test, y_test])

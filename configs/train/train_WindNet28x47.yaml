@@ -1,7 +1,7 @@
 model_name: WindNet28x47 # have no effect
 use_elevation: false
 normalize: false      # precision 16 is already normalized
-time_agg_window: 28   # range in days, used to calculate maximum for every day of target
+time_agg_window: 36   # range in days, used to calculate maximum for every day of target
 time_freq: 16         # get sample from target every {time_freq} days
 target_threshold: 20
 
@@ -22,7 +22,7 @@ optimizer_name: 'AdamW'
 scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 
-num_workers: 6
+num_workers: 7
 gpu_num: 8
 distributed: true
 num_nodes: 1
