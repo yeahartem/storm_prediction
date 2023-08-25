@@ -1,56 +1,58 @@
-# Configs
-Configs handeled by [hydra](https://hydra.cc/docs/intro/) library. Configs are located in `configs` folder.
-`configs` folder contain **model** general config that includes information about model, processing and training steps to be taken. The user is supposed to manipulate experiment setup (training, inferring, preprocessing) using this **model** general config, e.g., `configs/train_WindNetElev83x41_test_run.yaml`.
-## Model
-* `model_name` -- model from `src/regression/models/models.py`
-* `time_window` -- temporal receptive field
-* `half_side_size` -- spatial receptive field
-## Processing 
-This part uses `configs/raw` and `configs/process` folders. The former deals with raw data and the latter deals with processing steps with prescribed attributes.
-* `raw` -- paths to raw data: CMIP, elevation, **raw** and parsed weather stations data
-* `process` -- processing logic. See comments in `configs/process/cmip6_elevation_dataset.yaml` config.
+# Конфигурационные файлы
+Конфигурационные файлы обрабатываются с помощью пакета [hydra](https://hydra.cc/docs/intro/). Они находятся в папке `configs`.
+Папка `configs` содержит **корневой** конфигурационный файл, описывающий логику модели, подготовки и обучения. Предполагается, что пользователь будет задавать всю логику через **корнейвой** файл, а именно: выбор модели, исходных сырых данных, этапы предобработки, обучения и предсказания. Пример файла -  `configs/train_WindNetElev83x41_test_run.yaml`. **Корневой конфигурационный файл** содержит атрибуты `time_start` и `time_end`, которые используются только на этапе предсказания.
+В следующих подсекциях будут описаны основные этапы.
+## Модель
+* `model_name` -- архитектура из запрограммированных моделей в `src/regression/models/models.py`
+* `time_window` -- рецептивное поле по времени
+* `half_side_size` -- рецептивное поле по пространству
+## Подготовка данных 
+Данный этап обращается к подфайлам в `configs/raw` и `configs/process`. Конфигурационные файлы из первой папки содержат пути к сырым данным (климатические проекции CMIP и измерения с метеостанций). Файлы из второй задают логику подготовки данных. О ней можно прочитать в соответсвутющей секции `README.md` ниже. Кратко,
+* `defaults.raw` -- пути к сырым данным: CMIP, ЦМР, **сырые и распаршенные** данные метеостанций (см. отчет о разработке модели - парсер)
+* `defaults.process` -- логика подготовки. См. комментарии к атрибутам в `configs/process/cmip6_elevation_dataset.yaml`.
 
-## Training
-This part uses `configs/train` folder. This part describes training and datamodule logic. See comments in `configs/train/train_WindNetElev83x41_test_run.yaml` config.
+## Обучение
+Данный этап обращается к конфигурационным файлам из папки `configs/train`. Файлы описывают логику обучения и формирования датамодуля, задается в атрибуте `defaults.train`. См. комментарии к атрибутам в `configs/train/train_WindNetElev83x41_test_run.yaml`. 
 
-# Data preparation:
-This step must be taken prior to **both** training (`train.py`) and inferring (`run.py`). Config for `preprocess.py` must be taken from `configs` folder. An example is `configs/train_WindNetElev83x41_test_run.yaml`. See Section **Configs** for reference.
+# Подготовка данных:
+Данный этап необходимо осуществить **и перед обучением (`train.py`), и перед предсказанием (`run.py`).** Конфигурационные файлы, которые используются в скрипте `preprocess.py`, включаются себя файлы из `configs/raw` и `configs/process`. Конкретные конфигурационные файлы задаются в атрибутах **корневого** конфигурационного файла, например, `configs/train_WindNetElev83x41_test_run.yaml`.
 
-This step creates folder under the name specified in `cfg.process.data_dir` attribute. This folder will contain coordinates, preprocessed data and **preprocessed target data** in `target.parquet`, `target.parquet.pp1`, `target.parquet.pp2`. See **Configs** section for reference. Further, preprocessed data from this folder will be used to be assembled into data required for training and inferring.
+По итогу предобработки данных, будет создана директория по пути, указанном в атрибуте `cfg.process.data_dir`, куда будут сохранены предобработанные данные. Среди них: координатные оси, нормализованные признаки, параметры нормализации и предобработанная целевая переменная. Во время обучения и предсказания будут использоваться именно эти данные.
+Общий пример запуска подготовки данных из консоли:
 ```
 python preprocess.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG NAME>
 ```
-Example:
+Конкретные пример запуска подготовки данных из консоли:
 ```
 python preprocess.py --config-path /app/wind/configs --config-name train_WindNetElev83x41_test_run
 ```
-# Run train:
-**Prior to training run `preprocess.py`** to prepare data!
-To specify parameters, please be referred to **Configs** section.
-Train regression:
+# Обучение:
+**Не забудьте запустить `preprocess.py`, чтобы подготовить данные!**
+Конфигурационный файл обучения задает технические параметры: оптимизатор, размер батча, функция потерь, используемые видеокарты и т.п. Конкретная конфигурация задается из **корневого** конфигурационного фалйа, см. Секцию Конфигурационные файлы.
+Общий пример запуска обучения:
 ```
 python train.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG NAME>
 ```
-Example:
+Конкретный пример запуска обучения:
 ```
 python run.py --config-path configs --config-name train_WindNetElev83x41_test_run.yaml
 ```
 
-# Run inference:
-**Prior to inferring run `preprocess.py`** to prepare data!
-Configure evalutaion process by providing a path to eval config if general config in `configs` folder, e.g., `configs/cmip6_elevation_WindNetElev83x41.yaml`, attribute `defaults.eval`.
-In `configs/eval` configuration file you can select inferring period, or pass it through command line as in example below. See Hydra docs for reference https://hydra.cc/docs/advanced/override_grammar/basic/
+# Предсказание:
+**Не забудьте подготовить данные с помощью `preprocess.py`, чтобы подготовить данные!**
+Параметры предсказания задаются в конфигурационных файлах из папки `configs/eval`, путь к конкретному файлу необходимо указать в атрибуте `defaults.eval` корневого конфигурационного файла. Пример: `configs/cmip6_elevation_WindNetElev83x41.yaml`
+В файлах `configs/eval` можно указать пороговое значение скорости ветра, которое определяет риск, путь к чекпоинту обученной модели. Область задается в конфигурационном файле из папки `eval`, атрибуты `eval.lat_min`, `eval.lat_max`, `eval.lon_min`, `eval.lon_max` Временные рамки можно передать в командной строке, как в примере ниже:
 ```
-python run.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG NAME>
+python run.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG NAME> time_start='YYYY-MM-DD' time_end='YYYY-MM-DD'
 ```
-Example:
+Пример:
 ```
 python run.py --config-path configs/ --config-name cmip5_WindNet41x41.yaml time_start='2019-01-30' time_end='2019-01-31'
 ```
 
 # Docker:
 
-From repo folder run:
+Для сборки образа, выполнить в командной строке:
 
 ```
 docker build -t .
@@ -71,7 +73,7 @@ docker run -it \
    wind_dev116
 
 ```
-Example:
+Пример:
 
 
 ```
@@ -89,10 +91,3 @@ Example:
    wind_dev116
 
 ```
-
-# Data format:
-
-Binary target expects:
-* Climate data in netcdf format. One file per climate variable.
-* Target data in parquet format, 'y' column is the target, where values is float.
-
