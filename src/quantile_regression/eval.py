@@ -62,7 +62,10 @@ class EvalDataset(torch.utils.data.Dataset):
         self.load_dataset()
         self.limit_inference_time()
         self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
+        logging.info(f"Padded data shape: {self.var_data.shape}")
         self.limit_inference_space()
+        logging.info(f"Final data shape: {self.var_data.shape}")
+
         assert len(self.lat_indexes) == len(self.lat_coords), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords)}"
         assert len(self.lon_indexes)== len(self.lon_coords), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords)}"
         assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
@@ -93,7 +96,7 @@ class EvalDataset(torch.utils.data.Dataset):
         if isinstance(self.time_coords, list) and isinstance(self.time_indexes, list):
             assert len(self.time_indexes) == len(self.time_coords), f"{len(self.time_indexes)} {len(self.time_coords)}"
             assert self.var_data.shape[1] == len(self.time_coords), f"{len(self.var_data.shape[1])} {len(self.time_coords)}"
-        logging.info(f"Bounded data shape: {self.var_data.shape}")
+        logging.info(f"Time bounded data shape: {self.var_data.shape}")
 
 
     def limit_inference_space(self):
@@ -103,17 +106,24 @@ class EvalDataset(torch.utils.data.Dataset):
         self.lat_max_idx = np.searchsorted(self.lat_coords_full, self.cfg.eval.lat_max)
         self.lon_min_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_min)
         self.lon_max_idx = np.searchsorted(self.lon_coords_full, self.cfg.eval.lon_max)
+        logging.info(f"lon_min_idx: {self.lon_min_idx}")
+        logging.info(f"lon_max_idx: {self.lon_max_idx}")
         self.lat_coords = self.lat_coords_full[self.lat_min_idx:self.lat_max_idx]
         self.lon_coords = self.lon_coords_full[self.lon_min_idx:self.lon_max_idx]
         #list of indexes with padding shift
+        logging.info(f"lon_coords: {self.lon_coords}")
         self.lat_indexes = list(range(self.lat_min_idx + self.shift[0], self.lat_max_idx + self.shift[0]))
         self.lon_indexes = list(range(self.lon_min_idx + self.shift[1], self.lon_max_idx + self.shift[1]))
+        logging.info(f"lat_indexes: {self.lat_indexes}")
+        logging.info(f"lon_indexes: {self.lon_indexes}")
         #crop data by indexes 
+        logging.info(f"lon_indexes: {self.lon_min_idx-self.cfg.half_side_size}, {self.lon_max_idx+self.cfg.half_side_size}")
+
         self.var_data = self.var_data[
                                       :,
                                       :,
-                                      self.lat_min_idx-self.cfg.half_side_size:self.lat_max_idx+self.cfg.half_side_size,
-                                      self.lon_min_idx-self.cfg.half_side_size:self.lon_max_idx+self.cfg.half_side_size
+                                      self.lat_min_idx: self.lat_max_idx+2*self.cfg.half_side_size,
+                                      self.lon_min_idx: self.lon_max_idx+2*self.cfg.half_side_size
                                       ]
         self.lat_indexes = [l_idx - self.lat_min_idx for l_idx in self.lat_indexes]
         self.lon_indexes = [l_idx - self.lon_min_idx for l_idx in self.lon_indexes]
@@ -153,8 +163,12 @@ class EvalDatasetElev(EvalDataset):
         self.load_evevation()
         self.limit_inference_time()
         self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
+        logging.info(f"Padded data shape: {self.var_data.shape}")
+
         self.limit_inference_space()
         self.elev_data, self.shift_elev = make_padding(self.elev_data, self.elev_hss)
+        logging.info(f"Final data shape: {self.var_data.shape}")
+
         assert len(self.lat_indexes) == len(self.lat_coords_full), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords_full)}"
         assert len(self.lon_indexes)== len(self.lon_coords_full), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords_full)}"
         assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
@@ -279,9 +293,10 @@ def eval(cfg: DictConfig) -> None:
     plot_prediction(cfg, result_df, 1)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet41x41.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet27x47.yaml")
 def main(cfg: DictConfig):    
     eval(cfg)
 
 if __name__ == "__main__":      
+    sys.argv.append('hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}')
     main()

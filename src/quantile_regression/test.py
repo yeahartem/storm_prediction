@@ -18,7 +18,6 @@ print(os.getcwd())
 warnings.filterwarnings("ignore")
 
 os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
-
 os.environ['WANDB_MODE'] = 'online'
 os.environ['WANDB_DIR'] = 'out/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
@@ -37,7 +36,7 @@ def test(cfg: DictConfig) -> None:
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
                                project=cfg.project_name,
                                name=cfg.experiment_name + '_test')
-    dm = WindDataModule(cfg, test=True)
+    dm = WindDataModule(cfg)
     model = WindNetPL(cfg, run_dir)
     model.load_from_checkpoint(os.path.join(os.getcwd(), cfg.eval.path_to_checkpoint), cfg=cfg)
 
@@ -57,10 +56,10 @@ def test(cfg: DictConfig) -> None:
     trainer.test(model, dm, ckpt_path=os.path.join(os.getcwd(), cfg.eval.path_to_checkpoint))
  
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet28x47.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet27x47.yaml")
 def main(cfg: DictConfig):    
-    cfg.eval.time_start = cfg.time_start   
-    cfg.eval.time_end = cfg.time_end
+    cfg.eval.time_start = cfg.start_date  
+    cfg.eval.time_end = cfg.end_date
     test(cfg)
     logging.info('Test finished!')
 

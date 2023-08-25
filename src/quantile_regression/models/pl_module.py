@@ -224,7 +224,7 @@ class WindNetPL(pl.LightningModule):
         ax.set_xlabel('Wind Speed (m/s)')
         fig.savefig(os.path.join(self.run_dir, 'RMSE_vs_target.png'))   # save the figure to file        
 
-        precision, recall, thresholds = precision_recall_curve( target, preds)
+        precision, recall, thresholds = precision_recall_curve(target, preds)
         fig, ax = plt.subplots()
         ax.plot(recall, precision, color='purple')
         ax.set_title('Precision-Recall Curve')

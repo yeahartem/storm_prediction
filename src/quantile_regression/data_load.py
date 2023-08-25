@@ -137,8 +137,15 @@ class DataPreLoader:
                 clipped_dates = clipped_dates[clipped_dates>self.cfg.time_window]
                 dates_train = clipped_dates[clipped_dates < split_index]
                 dates_test = clipped_dates[clipped_dates >= split_index]
+                
+                if isinstance(dates_test, float):
+                    continue
+                if (len(clipped_dates) - len(dates_test)) < 2:
+                    continue
                 y_train = y[:len(dates_train)].astype(np.int16)
                 y_test = y[len(dates_train):len(clipped_dates)].astype(np.int16)
+                
+
                 assert len(dates_train) == len(y_train), f"train len dates {dates_train.shape} len labels {y_train.shape}"
                 assert len(dates_test) == len(y_test), f"test len dates {dates_test.shape} len labels {y_test.shape}"
                 

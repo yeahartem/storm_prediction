@@ -1,6 +1,5 @@
 {
-    "remote.extensionKind": {
-        "GitHub.copilot": ["ui"],
-      },
-      "editor.inlineSuggest.enabled": true
+    "files.exclude": {
+      ".*": true,
+  }
 }
