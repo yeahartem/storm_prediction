@@ -4,8 +4,8 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 import fiona
 from fiona.drvsupport import supported_drivers
-from src.quantile_regression.eval import eval
-from src.quantile_regression.risk_estimation import risk_estimation
+from src.regression.eval import eval
+from src.regression.risk_estimation import risk_estimation
 supported_drivers['LIBKML'] = 'rw'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 
