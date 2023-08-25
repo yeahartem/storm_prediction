@@ -4,8 +4,8 @@ import warnings
 import torch
 import logging
 from tqdm import tqdm
-from src.quantile_regression.data_load import make_padding
-from src.quantile_regression.models.pl_module import WindNetPL
+from src.regression.data_load import make_padding
+from src.regression.models.pl_module import WindNetPL
 import hydra
 from omegaconf import DictConfig
 import time

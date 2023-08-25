@@ -7,8 +7,8 @@ import random
 import logging
 from datetime import datetime 
 import pytorch_lightning as pl
-from src.quantile_regression.models.pl_module import WindNetPL
-from src.quantile_regression.datamodule import WindDataModule
+from src.regression.models.pl_module import WindNetPL
+from src.regression.datamodule import WindDataModule
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger

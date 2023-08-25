@@ -7,7 +7,7 @@ import torchvision
 from torch.utils.data import DataLoader, Dataset
 import torch
 from omegaconf import DictConfig
-from src.quantile_regression.data_load import DataPreLoader
+from src.regression.data_load import DataPreLoader
 from src.utils.norm_values import mean_channels_cmip6, std_channels_cmip6
 
 

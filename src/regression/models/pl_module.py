@@ -8,7 +8,7 @@ import torchmetrics
 from torchmetrics import MaxMetric, MeanMetric, MinMetric
 from torch.functional import F
 import torch.nn as nn
-from src.quantile_regression.models.models import *
+from src.regression.models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
 from sklearn.metrics import precision_recall_curve
 import matplotlib.pyplot as plt

@@ -5,7 +5,7 @@ import torch
 import random
 import logging
 import pytorch_lightning as pl
-from src.quantile_regression.models.pl_module import WindNetPL
+from src.regression.models.pl_module import WindNetPL
 from datamodule import WindDataModule
 from datetime import datetime
 import hydra
