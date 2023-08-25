@@ -17,8 +17,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoi
 print(os.getcwd())
 warnings.filterwarnings("ignore")
 
-os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
-os.environ['WANDB_MODE'] = 'online'
+os.environ['WANDB_MODE'] = 'offline'
 os.environ['WANDB_DIR'] = 'out/wandb'
 os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
 os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
