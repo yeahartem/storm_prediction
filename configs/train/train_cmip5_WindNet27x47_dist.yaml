@@ -1,30 +1,31 @@
-model_name: WindNet41x41 # have no effect
+model_name: WindNet27x47 # have no effect
+make_tmp_target_file: False
+
 use_elevation: false
 normalize: false      # precision 16 is already normalized
-time_agg_window: 36   # range in days, used to calculate maximum for every day of target
-time_freq: 28         # get sample from target every {time_freq} days
+time_agg_window: 28   # range in days, used to calculate maximum for every day of target
+time_freq: 14         # get sample from target every {time_freq} days
 target_threshold: 20
 
 data_dir: data/cmip5_world3/      # directory to get climate files for training
 target_data_file: target.parquet  # target data file in data_dir for training
        
-start_time: '2005-01-01'
-end_time: '2023-12-12'
-start_of_test: '2008-01-01'
+start_time: '2006-02-02'
+end_time: '2009-02-02'
+start_of_test: '2007-03-03'
 
-batch_size: 28
+batch_size: 200
 learning_rate: 0.009
 weight_decay: 0.0001
 max_epoch: 2
-
 
 optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
 loss_name: 'MSELoss'
 
-num_workers: 10
-gpu_num: 1
-distributed: false
+num_workers: 8
+gpu_num: 8
+distributed: true
 num_nodes: 1
 strategy: 'ddp'
 

@@ -28,7 +28,8 @@ class WindDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         if self.cfg.train.use_elevation:
             logging.info("Using elevation data")
-            DatasetClass = XarrayDatasetElev
+            # DatasetClass = XarrayDatasetElev
+            raise NotImplementedError
         else:
             logging.info("Not using elevation data")
             DatasetClass = XarrayDataset
@@ -77,7 +78,7 @@ class XarrayDataset(Dataset):
         logging.info(f"Sample shape is {self.get_sample_shape(10)}")
 
     def get_sample_shape(self, idx): 
-        lat_index, lon_index, time_index, y = self.data_idxs[:, idx]
+        lat_index, lon_index, time_index, *y = self.data_idxs[:, idx]
         X = self.dataset_torch[:,
                                slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
@@ -89,7 +90,7 @@ class XarrayDataset(Dataset):
         return self.data_idxs.shape[1]
 
     def __getitem__(self, idx):
-        lat_index, lon_index, time_index, y = self.data_idxs[:, idx]
+        lat_index, lon_index, time_index, *y = self.data_idxs[:, idx]
         X = self.dataset_torch[:,
                                slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
@@ -99,33 +100,5 @@ class XarrayDataset(Dataset):
         return X, y
     
 
-class XarrayDatasetElev(XarrayDataset):
-    def __init__(self, DPL, test=False, dtype=torch.float16, ):
-        super(XarrayDatasetElev, self).__init__(DPL, test=test, dtype=dtype,)
-        self.elevation_torch = DPL.elevation_torch
-        self.elev_hss = DPL.elev_hss
-        self.r_lat = DPL.r_lat
-        self.r_lon = DPL.r_lon
-        self.shift_clim = DPL.shift
-        self.shift_elev = DPL.shift_elev
-
-    def __getitem__(self, idx):
-        lat_index, lon_index, time_index, y = self.data_idxs[:, idx]
-        X = self.dataset_torch[:,
-                               slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
-                               slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
-                               slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
-                               ]
-        # print([time_index, lat_index, lon_index])
-        lat_index_elev = int((lat_index - self.shift_clim[0]) * self.r_lat) + self.shift_elev[0]
-        lon_index_elev = int((lon_index - self.shift_clim[1]) * self.r_lon) + self.shift_elev[1]
-        X_elev = self.elevation_torch[
-                                    slice(lat_index_elev - self.elev_hss, lat_index_elev + self.elev_hss + 1),
-                                    slice(lon_index_elev - self.elev_hss, lon_index_elev + self.elev_hss + 1),
-                                    ]
-        X_elev = X_elev.view(1, X_elev.shape[-2], X_elev.shape[-1])
-        y = torch.tensor(y, dtype=self.dtype)
-        return (X, X_elev), y    
-    
 if __name__ == '__main__':
     pass

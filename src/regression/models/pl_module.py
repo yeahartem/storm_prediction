@@ -20,17 +20,7 @@ class WindNetPL(pl.LightningModule):
         super().__init__()     
         self.cfg = cfg        
         self.run_dir = run_dir
-        if cfg.model_name=='WindNet41x41':
-            self.net = WindNet41x41()
-        elif cfg.model_name=='WindNet20x41':
-            self.net = WindNet20x41()
-        elif cfg.model_name=='Linear83x5':
-            self.net = Linear83x5()
-        elif cfg.model_name=="WindNetElev83x41":
-             self.net = WindNetElev83x41()
-        elif cfg.model_name=="WindNet28x47":
-             self.net = WindNet28x47()
-        elif cfg.model_name=="WindNet27x47":
+        if cfg.model_name=="WindNet27x47":
              self.net = WindNet27x47()
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
@@ -64,10 +54,12 @@ class WindNetPL(pl.LightningModule):
 
         self.test_auroc = torchmetrics.AUROC(task="binary")
 
-
         self.train_MAE = torchmetrics.MeanAbsoluteError()
         self.val_MAE = torchmetrics.MeanAbsoluteError()
         self.test_MAE = torchmetrics.MeanAbsoluteError()
+        self.train_MAE_full = torchmetrics.MeanAbsoluteError()
+        self.val_MAE_full = torchmetrics.MeanAbsoluteError()
+        self.test_MAE_full = torchmetrics.MeanAbsoluteError()
 
         self.val_precision = torchmetrics.Precision(num_classes=1, task='binary')
         self.val_recall = torchmetrics.Recall(num_classes=1, task='binary')
@@ -93,7 +85,6 @@ class WindNetPL(pl.LightningModule):
         objs, target = batch
         # print(objs[0].shape)
         # print(objs[1].shape)
-        target = torch.unsqueeze(target, dim=-1)
         predictions = self(objs).float()
         loss = self.loss(predictions, target.float())
         return loss, predictions, target    
@@ -101,13 +92,15 @@ class WindNetPL(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
         self.train_loss(loss)
-        self.train_MAE(predictions, target)
-        self.train_MAE_OS(*get_outliers_s(predictions, target , thresh=self.cfg.train.target_threshold ))
-        self.train_AP(float_to_score(predictions , thresh=self.cfg.train.target_threshold ),
-                       float_to_binary(target , thresh=self.cfg.train.target_threshold))
+        self.train_MAE(predictions[:, 0], target[:, 0])
+        self.train_MAE_full(predictions, target)
+        self.train_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0] , thresh=self.cfg.train.target_threshold ))
+        self.train_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold ),
+                      float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
 
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train/MAE_full", self.train_MAE_full, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
         if batch_idx%100==0:
@@ -126,24 +119,29 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
 
         self.val_loss(loss)
-        self.val_MAE(predictions, target)
-        self.val_AP(float_to_score(predictions, thresh=self.cfg.train.target_threshold),
-                     float_to_binary(target, thresh=self.cfg.train.target_threshold))
-        self.val_precision(float_to_binary(predictions, thresh=self.cfg.train.target_threshold),
-                           float_to_binary(target, thresh=self.cfg.train.target_threshold))
-        self.val_recall(float_to_binary(predictions, thresh=self.cfg.train.target_threshold),
-                        float_to_binary(target, thresh=self.cfg.train.target_threshold))        
-        self.val_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.train.target_threshold))
+        self.val_MAE(predictions[:, 0], target[:, 0])
+        self.val_MAE_full(predictions, target)
+
+        self.val_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
+        self.val_precision(float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+                           float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
+        self.val_recall(float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+                        float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))        
+        self.val_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0], thresh=self.cfg.train.target_threshold))
 
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("val/MAE_full", self.val_MAE_full, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/recall", self.val_recall, on_step=False, on_epoch=True, prog_bar=True)
 
         if batch_idx%100==0:
-            self.logger.experiment.log({"val/target": target, "val/prediction": predictions})
+            self.logger.experiment.log({"val/target_96": target[:, 0], "val/prediction_96": predictions[:, 0]})
+            self.logger.experiment.log({"val/target_65": target[:, 2], "val/prediction_65": predictions[:, 2]})
+            self.logger.experiment.log({"val/target_10": target[:, 5], "val/prediction_10": predictions[:, 5]})
 
         output = OrderedDict(
             {
@@ -164,13 +162,15 @@ class WindNetPL(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
 
-        binary_target = float_to_binary(target, thresh=self.cfg.train.target_threshold)
-        score_preds = float_to_score(predictions, thresh=self.cfg.train.target_threshold)
-        binary_preds = float_to_binary(predictions, thresh=self.cfg.train.target_threshold)
+        binary_target = float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold)
+        score_preds = float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold)
+        binary_preds = float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold)
 
         self.test_loss(loss)
-        self.test_MAE(predictions, target)
-        self.test_MAE_OS(*get_outliers_s(predictions, target, thresh=self.cfg.train.target_threshold))
+        self.test_MAE(predictions[:, 0], target[:, 0])
+        self.test_MAE_full(predictions, target)
+
+        self.test_MAE_OS(*get_outliers_s(predictions[:, 0], target, thresh=self.cfg.train.target_threshold))
         self.test_AP(score_preds, binary_target)
         self.test_precision(binary_preds,binary_target)
         self.test_recall(binary_preds, binary_target)
@@ -178,13 +178,18 @@ class WindNetPL(pl.LightningModule):
         
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/MAE", self.test_MAE, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("test/MAE_full", self.test_MAE_full, on_step=True, on_epoch=True, prog_bar=False)
+
         self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("test/AP", self.test_AP, on_step=False, on_epoch=True, prog_bar=True)
         self.log("test/precision", self.test_precision, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/recall", self.test_recall, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/AUROC", self.test_auroc, on_epoch=True)
-        if batch_idx%50==0:
-            self.logger.experiment.log({"test/target": target, "test/prediction": predictions})
+
+        if batch_idx%100==0:
+            self.logger.experiment.log({"test/target_96": target[:, 0], "test/prediction_96": predictions[:, 0]})
+            self.logger.experiment.log({"test/target_65": target[:, 2], "test/prediction_65": predictions[:, 2]})
+            self.logger.experiment.log({"test/target_10": target[:, 5], "test/prediction_10": predictions[:, 5]})
         
         output = OrderedDict(
             {

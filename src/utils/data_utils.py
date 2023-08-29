@@ -2,6 +2,98 @@ import numpy as np
 from scipy import interpolate
 import xarray
 from calendar import isleap
+import torch
+
+def round_to_closest_indices(arr, values):
+    values = np.array(values)
+    indices = np.searchsorted(values, arr)
+    indices = np.clip(indices, 1, len(values) - 1)
+    left_values = values[indices - 1]
+    right_values = values[indices]
+    left_indices = indices - 1
+    right_indices = indices
+    closest_indices = np.where(np.abs(arr - left_values) <= np.abs(arr - right_values), left_indices, right_indices)
+    return closest_indices
+
+
+def round_to_closest_values(arr, values):
+    values = np.array(values)
+    indices = np.searchsorted(values, arr)
+    indices = np.clip(indices, 1, len(values) - 1)
+    left_values = values[indices - 1]
+    right_values = values[indices]
+    closest_values = np.where(np.abs(arr - left_values) <= np.abs(arr - right_values), left_values, right_values)
+    return closest_values
+
+
+def make_padding(data, half_side_size):
+    quadrants, fourth_q_shape = extract_quadrants(data)
+    quadrants_borders = extrect_quadrant_borders(quadrants, half_side_size)
+    padded_map = assemble_padded_map(quadrants, quadrants_borders, half_side_size)
+    return padded_map, (half_side_size, half_side_size)
+
+
+def extract_quadrants(data):
+    halfs = {"lat": data.shape[-2] // 2, "lon": data.shape[-1] // 2}
+    first_quadrant  = data[..., halfs['lat']:, halfs['lon']:]
+    second_quadrant = data[..., halfs['lat']:, :halfs['lon']]
+    third_quadrant  = data[..., :halfs['lat'], :halfs['lon']]
+    fourth_quadrant = data[..., :halfs['lat'], halfs['lon']:]
+    fourth_q_shape = (fourth_quadrant.shape[-2], fourth_quadrant.shape[-1])
+    return (first_quadrant, second_quadrant, third_quadrant, fourth_quadrant), fourth_q_shape
+    
+
+def extrect_quadrant_borders(quadrants, half_side_size):
+    q_borders = {}
+
+    q_borders['0_top'] = quadrants[0][..., -half_side_size:, :]
+    q_borders['0_right'] = quadrants[0][..., :, -half_side_size:]
+
+    q_borders['1_top'] = quadrants[1][..., -half_side_size:, :]
+    q_borders['1_left'] = quadrants[1][..., :, :half_side_size]
+
+    q_borders['2_bot'] = quadrants[2][..., :half_side_size, :]
+    q_borders['2_left'] = quadrants[2][..., :, :half_side_size]
+
+    q_borders['3_bot'] = quadrants[3][..., :half_side_size, :]
+    q_borders['3_right'] = quadrants[3][..., :, -half_side_size:]
+
+    return q_borders
+
+
+def assemble_padded_map(quadrants, q_borders, half_side_size):
+    try:
+        column_1 = np.concatenate((q_borders['3_bot'].reindex(lat=list(reversed(q_borders['3_bot'].lat))), quadrants[2], quadrants[1], q_borders['0_top'].reindex(lat=list(reversed(q_borders['0_top'].lat)))), axis=-2)
+        column_2 = np.concatenate((q_borders['2_bot'].reindex(lat=list(reversed(q_borders['2_bot'].lat))), quadrants[3], quadrants[0], q_borders['1_top'].reindex(lat=list(reversed(q_borders['1_top'].lat)))), axis=-2)
+    except AttributeError:
+        column_1 = np.concatenate((np.flip(q_borders['3_bot'], axis=-2), quadrants[2], quadrants[1], np.flip(q_borders['0_top'], axis=-2)), axis=-2)
+        column_2 = np.concatenate((np.flip(q_borders['2_bot'], axis=-2), quadrants[3], quadrants[0], np.flip(q_borders['1_top'], axis=-2)), axis=-2)
+    column_0 = column_2[..., :, -half_side_size:]
+    column_3 = column_1[..., :, :half_side_size]
+
+    padded_map = np.concatenate((column_0, column_1, column_2, column_3), axis=-1)
+    return padded_map
+
+def make_padding_torch(data, half_side_size):
+    quadrants, fourth_q_shape = extract_quadrants(data)
+    quadrants_borders = extrect_quadrant_borders(quadrants, half_side_size)
+    padded_map = assemble_padded_map_torch(quadrants, quadrants_borders, half_side_size)
+    return padded_map, (half_side_size, half_side_size)
+
+
+
+def assemble_padded_map_torch(quadrants, q_borders, half_side_size):
+    try:
+        column_1 = torch.concatenate((q_borders['3_bot'].reindex(lat=list(reversed(q_borders['3_bot'].lat))), quadrants[2], quadrants[1], q_borders['0_top'].reindex(lat=list(reversed(q_borders['0_top'].lat)))), dims=(-2,))
+        column_2 = torch.concatenate((q_borders['2_bot'].reindex(lat=list(reversed(q_borders['2_bot'].lat))), quadrants[3], quadrants[0], q_borders['1_top'].reindex(lat=list(reversed(q_borders['1_top'].lat)))), dims=(-2,))
+    except AttributeError:
+        column_1 = torch.concatenate((torch.flip(q_borders['3_bot'], dims=(-2,)), quadrants[2], quadrants[1], torch.flip(q_borders['0_top'], dims=(-2,))), dim=-2)
+        column_2 = torch.concatenate((torch.flip(q_borders['2_bot'], dims=(-2,)), quadrants[3], quadrants[0], torch.flip(q_borders['1_top'], dims=(-2,))), dim=-2)
+    column_0 = column_2[..., :, -half_side_size:]
+    column_3 = column_1[..., :, :half_side_size]
+
+    padded_map = torch.concatenate((column_0, column_1, column_2, column_3), axis=-1)
+    return padded_map
 
 
 NAME_TO_VAR = {

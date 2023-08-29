@@ -1,0 +1,17 @@
+defaults:
+  - raw: cmip5_paths                               # paths to raw data to prepare dataset
+  - process: cmip5_dataset                         # dataset processing configuration
+  - train: train_cmip5_WindNet27x47_test_run.yaml  # train configuration and data load configuration
+  - eval: test_WindNet27x47                        # test and eval configuration 
+
+experiment_name: cmip5_reg
+project_name: Wind-speed-regression
+target_type: wind_ms 
+cmip_type: CMIP6 
+
+model_name: WindNet27x47      # {name}{time_window}x{half_side_size}
+time_window: 27               # must match model, odd only
+half_side_size: 47            # must match model, odd only
+
+start_date: '2019-01-30'                   #for eval only
+end_date: '2019-03-31'
