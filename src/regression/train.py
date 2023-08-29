@@ -49,11 +49,11 @@ def train_regression(cfg: DictConfig) -> None:
     
     logging.info(f"torch version {torch.__version__ }")
     # torch.__version__ == "2.0.1+cu117"
-    if torch.__version__ == "2.0.1" or torch.__version__ == "2.0.0":
-        model.net = torch.compile(model.net)
-        logging.info("Model compiled")
-    else:
-        logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
+    #if torch.__version__ == "2.0.1" or torch.__version__ == "2.0.0":
+    #    model.net = torch.compile(model.net)
+    #    logging.info("Model compiled")
+    #else:
+    #    logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
         
     # wandb_logger.watch(model, log='all', log_freq=100)       
     default_root_dir = run_dir
