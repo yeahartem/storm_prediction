@@ -7,7 +7,7 @@ time_agg_window: 36   # range in days, used to calculate maximum for every day o
 time_freq: 16         # get sample from target every {time_freq} days
 target_threshold: 20
 
-data_dir: data/cmip6_world2       # directory to get climate files for training
+data_dir: data/cmip6_1deg_world      # directory to get climate files for training
 target_data_file: target.parquet  # target data file in data_dir for training
 
 start_time: '1998-01-01'
@@ -25,7 +25,7 @@ scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 
 num_workers: 7
-gpu_num: 8
+gpu_num: 1
 distributed: true
 num_nodes: 1
 strategy: 'ddp'

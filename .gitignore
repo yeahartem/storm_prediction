@@ -22,3 +22,5 @@ data
 data_mounted
 *proxy*
 *__pycache__*
+slurm_run.sh
+*.sif

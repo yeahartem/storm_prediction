@@ -14,4 +14,7 @@
 #SBATCH --output=/trinity/home/v.morozov/logs/parallel_%j.log 
 #SBATCH --error=/trinity/home/v.morozov/logs/parallel_error_%j.log 
 
-srun singularity exec --nv wind_container20.simg /opt/conda/bin/python3 src/quantile_regression/test.py
+srun singularity exec --nv xtr_weather_wind_dev2.sif << EOF 
+/opt/conda/bin/python -m pip install scikit-learn
+/opt/conda/bin/python src/regression/train.py
+EOF

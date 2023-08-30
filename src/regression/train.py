@@ -88,7 +88,7 @@ def train_regression(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet27x47.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet27x47.yaml")
 def main(cfg: DictConfig):    
     logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
     train_regression(cfg)
