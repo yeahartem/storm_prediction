@@ -81,7 +81,6 @@ class DataPreLoader:
         start_time = time.process_time()   
         dates = target_df["time"].to_numpy()
         values = self.time_coords.searchsorted(dates) # time into inds
-        values = list(map(str, values))
         target_df = target_df.with_columns(
                             polars.Series(name="time", values=values),
                             )
@@ -91,14 +90,16 @@ class DataPreLoader:
     def stations_to_data_grid(self, stations_df: polars.DataFrame) -> polars.DataFrame:
         """ maps stations to the data grid pixels """
         start_time = time.process_time()   
-        lat = np.array(stations_df["lat"].to_numpy())
-        lon = np.array(stations_df["lon"].to_numpy())
+        coords = np.array([*stations_df["station_name"].to_numpy()])
+        lat = coords[:, 0]
+        lon = coords[:, 1]
         lat_vector = round_to_closest_indices(lat, self.lat_coords)
         lon_vector = round_to_closest_indices(lon, self.lon_coords)
         stations_df = stations_df.with_columns(
-                            polars.Series(name="lat", values=lat_vector),
-                            polars.Series(name="lon", values=lon_vector)
-                            )
+                            [polars.concat_list(
+                             polars.Series(name="lat", values=lat_vector),
+                             polars.Series(name="lon", values=lon_vector)).alias('station_name')
+                            ])
         logging.info(f"Closest pixel search took {time.process_time() - start_time} seconds")
         return stations_df
     
@@ -112,17 +113,12 @@ class DataPreLoader:
         logging.info(f"Target time bounds {target_df['time'].min()}, {target_df['time'].max()}")
         logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
         logging.info(f"Stations before aggregation: {target_df.n_unique(subset=['lat', 'lon'])}")
-        target_df = self.stations_to_data_grid(target_df)
         target_df = self.align_time(target_df)
-        dates = target_df.select(['time']).unique().get_column('time').to_list()
-        target_df = target_df.pivot(values="y", index=['lat', 'lon'], columns="time", aggregate_function="median")
         target_df = (target_df
                     .with_columns(
                                  [polars.concat_list(polars.col('lat'),
                                   polars.col('lon')).alias('station_name')]))
         target_df = target_df.drop("lat", "lon")
-        target_df = target_df.melt(id_vars=['station_name'], value_vars=dates, variable_name='time', value_name='y')
-        logging.info(f"Pivoted and melted")
         target_df = (target_df
                     .lazy()        
                     .sort("time")
@@ -133,6 +129,8 @@ class DataPreLoader:
                         ])
                     .collect())
         
+        target_df = self.stations_to_data_grid(target_df)
+        target_df = target_df.unique(subset=['station_name'])
         self.target_df = target_df.drop_nulls()
         logging.info(f"Stations after aggregation: {len(target_df)}")
 
@@ -150,18 +148,19 @@ class DataPreLoader:
             targets_list.append(self.pixel_aggregation(coords, dates, y))
         logging.info(f"Pixel loop took {time.process_time() - start_time} seconds")
 
-        target_array = np.concatenate(targets_list, axis=0)
+        target_array = np.concatenate(targets_list, axis=1)
+        target_array = target_array.astype(np.int32)
         del targets_list
         target_array = target_array[:, ::self.cfg.train.time_freq]
         target_array[0, :] += self.shift[0] #lat
         target_array[1, :] += self.shift[1] #lon
 
-        self.train_data_idxs = target_array[target_array[:, 2] < split_index, :]
+        self.train_data_idxs = target_array[:, target_array[2, :] < split_index]
         print(f"train {self.train_data_idxs.shape}")
-        self.test_data_idxs = target_array[target_array[:, 2] > split_index, :]
+        self.test_data_idxs = target_array[:, target_array[2, :] > split_index]
         print(f"test1 {self.test_data_idxs.shape}")
 
-        self.test_data_idxs = target_array[target_array[:, 2] > split_index, :]
+        self.test_data_idxs = target_array[:, target_array[2, :] < len(self.time_coords)]
         print(f"test2 {self.test_data_idxs.shape}")
 
         logging.info(f'TRAIN MIN LAT {self.test_data_idxs[0, :].min()} LON {self.test_data_idxs[1, :].min()}')
@@ -172,7 +171,6 @@ class DataPreLoader:
 
 
     def pixel_aggregation(self, coords, dates, y):
-        start_time_in = time.process_time()   
         # assert len(dates) == len(y), f'dates axis: {len(dates)} target axis: {len(y)}'
         lat, lon = coords
         #df = pd.DataFrame(data={'dates': dates, 'y': y}).sort_values(by=['dates'])
@@ -180,7 +178,9 @@ class DataPreLoader:
         #dates = pixel.index.to_numpy()
         #y = np.squeeze(pixel.values)
         y = np.array(y)
-        dates = np.array(list(map(int, dates)))
+        # dates = np.array(list(map(int, dates)))
+        dates = np.array(dates)
+
         # aggregate target with given time_agg_window 
         y_agg_quantlies = np.quantile(sliding_window_view(y, window_shape=self.cfg.train.time_agg_window), 
                         q=[0.96, 0.85, 0.70, 0.50, 0.25, 0.15, 0.05],
@@ -201,11 +201,10 @@ class DataPreLoader:
              # y_agg_quantlies not changed
         
         # assert len(dates_clipped) == len(y_agg_quantlies[1]), f'd {len(dates_clipped)} y {y_agg_quantlies.shape[1]}'
-        target_array = np.stack([np.full(len(dates_clipped), lat),
-                                 np.full(len(dates_clipped), lon),
+        target_array = np.stack([np.full(len(dates_clipped), lat, dtype=np.int32),
+                                 np.full(len(dates_clipped), lon, dtype=np.int32),
                                  dates_clipped])
         target_array = np.concatenate((target_array, y_agg_quantlies), axis=0)
-        logging.info(f"Pixel {coords} took {time.process_time() - start_time_in} seconds")
         return target_array
     
     ### Utils for preload
