@@ -61,7 +61,6 @@ class DataPreLoader:
         var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
         logging.info(f"Padded data shape {var_data.shape}")
         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
-
         return var_data_torch
 
 
@@ -78,26 +77,24 @@ class DataPreLoader:
     
     #### Target prep
 
-    def quantile_window(self, values, q):           
-        if len(values)< self.cfg.train.time_agg_window:
-            return None
-        else:
-            return np.quantile(sliding_window_view(np.array(values), window_shape=self.cfg.train.time_agg_window), q, axis = 1, method='weibull')
-            
-    def align_time(self, values):
-        if len(values)< self.cfg.train.time_agg_window:
-            return None
-        else:
-            values = self.time_coords.searchsorted(values) # time into inds
-            values = np.array(values)[self.cfg.train.time_agg_window//2:len(values) - self.cfg.train.time_agg_window//2 + 1]
-            return values
+    def align_time(self, target_df):
+        start_time = time.process_time()   
+        dates = target_df["time"].to_numpy()
+        values = self.time_coords.searchsorted(dates) # time into inds
+        values = list(map(str, values))
+        target_df = target_df.with_columns(
+                            polars.Series(name="time", values=values),
+                            )
+        logging.info(f"Time align took {time.process_time() - start_time} seconds")
+        return target_df
 
     def stations_to_data_grid(self, stations_df: polars.DataFrame) -> polars.DataFrame:
         """ maps stations to the data grid pixels """
         start_time = time.process_time()   
-        coords = np.array([*stations_df["station_name"].to_numpy()])
-        lat_vector = round_to_closest_indices(coords[:,0], self.lat_coords)
-        lon_vector = round_to_closest_indices(coords[:,1], self.lon_coords)
+        lat = np.array(stations_df["lat"].to_numpy())
+        lon = np.array(stations_df["lon"].to_numpy())
+        lat_vector = round_to_closest_indices(lat, self.lat_coords)
+        lon_vector = round_to_closest_indices(lon, self.lon_coords)
         stations_df = stations_df.with_columns(
                             polars.Series(name="lat", values=lat_vector),
                             polars.Series(name="lon", values=lon_vector)
@@ -108,98 +105,64 @@ class DataPreLoader:
 
     def prepare_target_df(self):
         target_df = polars.read_parquet(os.path.join(self.cfg.train.data_dir, self.cfg.train.target_data_file))
-        logging.info(f"Target time bounds {target_df['time'].min()}, {target_df['time'].max()}")
-        logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
         logging.info(f"Records before preparation {len(target_df)}")
         start_date = pd.to_datetime(self.cfg.train.start_time)
         end_date = pd.to_datetime(self.cfg.train.end_time)
         target_df = target_df.filter((polars.col('time') >= start_date) & (polars.col('time') < end_date))
         logging.info(f"Target time bounds {target_df['time'].min()}, {target_df['time'].max()}")
         logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
+        logging.info(f"Stations before aggregation: {target_df.n_unique(subset=['lat', 'lon'])}")
+        target_df = self.stations_to_data_grid(target_df)
+        target_df = self.align_time(target_df)
+        dates = target_df.select(['time']).unique().get_column('time').to_list()
+        target_df = target_df.pivot(values="y", index=['lat', 'lon'], columns="time", aggregate_function="median")
         target_df = (target_df
                     .with_columns(
                                  [polars.concat_list(polars.col('lat'),
                                   polars.col('lon')).alias('station_name')]))
         target_df = target_df.drop("lat", "lon")
+        target_df = target_df.melt(id_vars=['station_name'], value_vars=dates, variable_name='time', value_name='y')
+        logging.info(f"Pivoted and melted")
         target_df = (target_df
                     .lazy()        
                     .sort("time")
                     .groupby(["station_name"])
                     .agg(
-                        [polars.col('time').apply(self.align_time),
-                         polars.col('y').apply(partial(self.quantile_window, q=0.96)).alias('y1'),
-                         polars.col('y').apply(partial(self.quantile_window, q=0.85)).alias('y2'),
-                         polars.col('y').apply(partial(self.quantile_window, q=0.65)).alias('y3'),
-                         polars.col('y').apply(partial(self.quantile_window, q=0.45)).alias('y4'),
-                         polars.col('y').apply(partial(self.quantile_window, q=0.35)).alias('y5'),
-                         polars.col('y').apply(partial(self.quantile_window, q=0.10)).alias('y6'),])
+                        [polars.col('time'),
+                         polars.col('y'),
+                        ])
                     .collect())
         
-        target_df = self.stations_to_data_grid(stations_df=target_df)
-        target_df = target_df.drop("station_name")
         self.target_df = target_df.drop_nulls()
-        logging.info(f"Stations before droppping: {len(target_df)}")
+        logging.info(f"Stations after aggregation: {len(target_df)}")
 
-    @staticmethod
-    def split_target(y, dates_train, clipped_dates):
-        y_train = y[:len(dates_train)].astype(np.int16)
-        y_test = y[len(dates_train):len(clipped_dates)].astype(np.int16)
-        return y_train, y_test
 
     def target_df_to_array(self):
         split_date = datetime.strptime(self.cfg.train.start_of_test, '%Y-%m-%d').date()
         split_index = self.time_coords.searchsorted(split_date)
-        train_data_idxs = []
-        test_data_idxs = []
-        stations = []
-        for dates, y1, y2, y3, y4, y5, y6, lat, lon in self.target_df.rows():
-            if (lat is not None) and (lon is not None) and (dates is not None) and (y1 is not None):
-                if isinstance(dates, float):
-                    continue
-                assert len(dates) == len(y1), f'dates axis: {len(dates)} target axis: {len(y1)}'
-                stations.append([lat, lon])
-                clipped_dates = dates[dates<(self.time_coords.shape[0]-self.cfg.time_window - 1)]
-                clipped_dates = clipped_dates[clipped_dates>self.cfg.time_window]
-                dates_train = clipped_dates[clipped_dates < split_index]
-                dates_test = clipped_dates[clipped_dates >= split_index]
-                
-                if isinstance(dates_test, float):
-                    continue
-                if (len(clipped_dates) - len(dates_test)) < 2:
-                    continue
-                
-                target_q_list_train = []
-                target_q_list_test = []
+        targets_list = []
 
-                for y in [y1, y2, y3, y4, y5, y6]:
-                    y_train, y_test = self.split_target(y, dates_train, clipped_dates)
-                    target_q_list_train.append(y_train)
-                    target_q_list_test.append(y_test)
+        start_time = time.process_time()   
+        for target_df_row in self.target_df.rows():
+            coords, dates, y = target_df_row
+            if len(y) < max(self.cfg.train.time_agg_window, self.cfg.time_window):
+                continue
+            targets_list.append(self.pixel_aggregation(coords, dates, y))
+        logging.info(f"Pixel loop took {time.process_time() - start_time} seconds")
 
-                target_q_array_train = np.stack(target_q_list_train)
-                target_q_array_test = np.stack(target_q_list_test)
+        target_array = np.concatenate(targets_list, axis=0)
+        del targets_list
+        target_array = target_array[:, ::self.cfg.train.time_freq]
+        target_array[0, :] += self.shift[0] #lat
+        target_array[1, :] += self.shift[1] #lon
 
-                assert len(dates_train) == len(y_train), f"train len dates {dates_train.shape} len labels {y_train.shape}"
-                assert len(dates_test) == len(y_test), f"test len dates {dates_test.shape} len labels {y_test.shape}"
-                
-                arr_train = np.stack([np.full(len(dates_train), lat, dtype=np.int16), np.full(len(dates_train), lon, dtype=np.int16), dates_train])
-                arr_test = np.stack([np.full(len(dates_test), lat, dtype=np.int16), np.full(len(dates_test), lon, dtype=np.int16), dates_test])
+        self.train_data_idxs = target_array[target_array[:, 2] < split_index, :]
+        print(f"train {self.train_data_idxs.shape}")
+        self.test_data_idxs = target_array[target_array[:, 2] > split_index, :]
+        print(f"test1 {self.test_data_idxs.shape}")
 
-                arr_train = np.concatenate((arr_train, target_q_array_train), axis=0)
-                arr_test = np.concatenate((arr_test, target_q_array_test), axis=0)
-
-                train_data_idxs.append(arr_train)
-                test_data_idxs.append(arr_test)
-
-        self.train_data_idxs = np.concatenate(train_data_idxs, axis=1)
-        self.test_data_idxs = np.concatenate(test_data_idxs, axis=1)
-        self.train_data_idxs = self.train_data_idxs[:, ::self.cfg.train.time_freq]
-        self.test_data_idxs = self.test_data_idxs[:, ::self.cfg.train.time_freq]
-        #index shift due to padding
-        self.train_data_idxs[0, :] += self.shift[0] #lat
-        self.train_data_idxs[1, :] += self.shift[1] #lon
-        self.test_data_idxs[0, :] += self.shift[0]  #lat
-        self.test_data_idxs[1, :] += self.shift[1]  #lon
+        self.test_data_idxs = target_array[target_array[:, 2] > split_index, :]
+        print(f"test2 {self.test_data_idxs.shape}")
 
         logging.info(f'TRAIN MIN LAT {self.test_data_idxs[0, :].min()} LON {self.test_data_idxs[1, :].min()}')
         logging.info(f'TRAIN MAX LAT {self.test_data_idxs[0, :].max()} LON {self.test_data_idxs[1, :].max()}')
@@ -207,6 +170,44 @@ class DataPreLoader:
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
 
+
+    def pixel_aggregation(self, coords, dates, y):
+        start_time_in = time.process_time()   
+        # assert len(dates) == len(y), f'dates axis: {len(dates)} target axis: {len(y)}'
+        lat, lon = coords
+        #df = pd.DataFrame(data={'dates': dates, 'y': y}).sort_values(by=['dates'])
+        #pixel = df.groupby(['dates']).agg(lambda x: np.percentile(x, q=0.95, method='weibull')) # in pixel aggregation
+        #dates = pixel.index.to_numpy()
+        #y = np.squeeze(pixel.values)
+        y = np.array(y)
+        dates = np.array(list(map(int, dates)))
+        # aggregate target with given time_agg_window 
+        y_agg_quantlies = np.quantile(sliding_window_view(y, window_shape=self.cfg.train.time_agg_window), 
+                        q=[0.96, 0.85, 0.70, 0.50, 0.25, 0.15, 0.05],
+                        axis = 1,
+                        method='weibull')
+        
+        i = 1 if self.cfg.train.time_agg_window % 2 == 0 else 0
+        if self.cfg.time_window > self.cfg.train.time_agg_window:
+            # clip dates according to time_window
+            dates_clipped = dates[self.cfg.time_window//2:
+                                  len(dates)-self.cfg.time_window//2 + i] 
+            
+            y_agg_quantlies = y_agg_quantlies[self.cfg.time_window-self.cfg.train.time_agg_window:
+                                              len(y_agg_quantlies) + self.cfg.train.time_agg_window - self.cfg.time_window - 1]
+        else:
+            dates_clipped = dates[self.cfg.train.time_agg_window//2:
+                                  len(dates)-self.cfg.train.time_agg_window//2 + i] 
+             # y_agg_quantlies not changed
+        
+        # assert len(dates_clipped) == len(y_agg_quantlies[1]), f'd {len(dates_clipped)} y {y_agg_quantlies.shape[1]}'
+        target_array = np.stack([np.full(len(dates_clipped), lat),
+                                 np.full(len(dates_clipped), lon),
+                                 dates_clipped])
+        target_array = np.concatenate((target_array, y_agg_quantlies), axis=0)
+        logging.info(f"Pixel {coords} took {time.process_time() - start_time_in} seconds")
+        return target_array
+    
     ### Utils for preload
     def generate_hash(self):
         config_str = yaml.dump(OmegaConf.to_yaml(self.cfg), sort_keys=True)
