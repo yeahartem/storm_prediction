@@ -4,28 +4,28 @@ make_tmp_target_file: False
 use_elevation: false
 normalize: false      # precision 16 is already normalized
 time_agg_window: 36   # range in days, used to calculate maximum for every day of target
-time_freq: 16         # get sample from target every {time_freq} days
+time_freq: 12         # get sample from target every {time_freq} days
 target_threshold: 20
 
 data_dir: data/cmip6_1deg_world      # directory to get climate files for training
 target_data_file: target.parquet  # target data file in data_dir for training
 
-start_time: '1998-01-01'
-end_time: '2008-12-31'
-start_of_test: '2000-01-01'
+start_time: '1955-01-01'
+end_time: '2020-12-31'
+start_of_test: '2008-01-01'
 
 batch_size: 64
 learning_rate: 0.009
 weight_decay: 0.0004
-max_epoch: 8
+max_epoch: 4
 
 
 optimizer_name: 'AdamW'
 scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 
-num_workers: 7
-gpu_num: 1
+num_workers: 4
+gpu_num: 4
 distributed: true
 num_nodes: 1
 strategy: 'ddp'

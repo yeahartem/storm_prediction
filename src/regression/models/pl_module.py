@@ -104,7 +104,7 @@ class WindNetPL(pl.LightningModule):
         self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
         if batch_idx%100==0:
-            self.logger.experiment.log({"train/target": target, "train/prediction": predictions})
+            self.logger.experiment.log({"train/target": target[:, 0], "train/prediction": predictions[:, 0]})
         output = OrderedDict(
             {
                 "loss": loss,
@@ -261,7 +261,7 @@ class WindNetPL(pl.LightningModule):
                 }
             
             elif self.scheduler_name == "OneCycleLR":
-                scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=2e-3, total_steps=self.trainer.estimated_stepping_batches)
+                scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=3e-3, total_steps=self.trainer.estimated_stepping_batches)
                 return {
                     'optimizer': optimizer,
                     'lr_scheduler': {
