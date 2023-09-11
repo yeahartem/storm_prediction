@@ -24,8 +24,8 @@ optimizer_name: 'AdamW'
 scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 
-num_workers: 4
-gpu_num: 4
+num_workers: 8
+gpu_num: 8
 distributed: true
 num_nodes: 1
 strategy: 'ddp'

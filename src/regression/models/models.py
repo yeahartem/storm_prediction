@@ -88,7 +88,7 @@ class WindNet27x47(nn.Module):
             nn.InstanceNorm3d(90),
             nn.Flatten(start_dim=1),
             nn.Dropout(0.4),
-            nn.Linear(6000, 7),
+            nn.Linear(9000, 7),
         )
         
     def forward(self, X) -> torch.Tensor:

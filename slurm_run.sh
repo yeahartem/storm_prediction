@@ -4,10 +4,10 @@
 #SBATCH --partition=ais-gpu                   # Queue name 
 
 #SBATCH --nodes=1                      
-#SBATCH --ntasks-per-node=4                  
-#SBATCH --cpus-per-task=4     
+#SBATCH --ntasks-per-node=8                  
+#SBATCH --cpus-per-task=8    
 #SBATCH --gpus-per-task=1
-#SBATCH --mem=300G
+#SBATCH --mem=0
 
 #SBATCH --time=96:00:00                      # Time limit hrs:min:sec or dd-hrs:min:sec
 
