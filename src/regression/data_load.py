@@ -79,8 +79,11 @@ class DataPreLoader:
 
     def align_time(self, target_df):
         start_time = time.process_time()   
+
         dates = target_df["time"].to_numpy()
+        print(dates)
         values = self.time_coords.searchsorted(dates) # time into inds
+        print(values)
         target_df = target_df.with_columns(
                             polars.Series(name="time", values=values),
                             )
@@ -109,8 +112,10 @@ class DataPreLoader:
         logging.info(f"Records before preparation {len(target_df)}")
         start_date = pd.to_datetime(self.cfg.train.start_time)
         end_date = pd.to_datetime(self.cfg.train.end_time)
+        logging.info(f"Target time bounds before filter {target_df['time'].min()}, {target_df['time'].max()}")
+
         target_df = target_df.filter((polars.col('time') >= start_date) & (polars.col('time') < end_date))
-        logging.info(f"Target time bounds {target_df['time'].min()}, {target_df['time'].max()}")
+        logging.info(f"Target time bounds after filter {target_df['time'].min()}, {target_df['time'].max()}")
         logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
         logging.info(f"Stations before aggregation: {target_df.n_unique(subset=['lat', 'lon'])}")
         target_df = self.align_time(target_df)
@@ -142,10 +147,15 @@ class DataPreLoader:
 
         start_time = time.process_time()   
         for target_df_row in self.target_df.rows():
-            coords, dates, y = target_df_row
+            coords, dates, y   = target_df_row
+            #target_date = np.array([dates, y])
+            #target_date = target_date[:, target_date[0] > 1]
+            #target_date = target_date[target_date[:, 0].argsort()]
+            #dates = target_date[0]
+            #y = target_date[1]
             if len(y) < max(self.cfg.train.time_agg_window, self.cfg.time_window):
                 continue
-            targets_list.append(self.pixel_aggregation(coords, dates, y))
+            targets_list.append(self.pixel_aggregation(coords, np.array(dates), np.array(y)))
         logging.info(f"Pixel loop took {time.process_time() - start_time} seconds")
 
         target_array = np.concatenate(targets_list, axis=1)
@@ -156,54 +166,46 @@ class DataPreLoader:
         target_array[1, :] += self.shift[1] #lon
 
         self.train_data_idxs = target_array[:, target_array[2, :] < split_index]
-        print(f"train {self.train_data_idxs.shape}")
         self.test_data_idxs = target_array[:, target_array[2, :] > split_index]
-        print(f"test1 {self.test_data_idxs.shape}")
+        self.test_data_idxs = self.test_data_idxs[:, self.test_data_idxs[2, :] < len(self.time_coords)]
 
-        self.test_data_idxs = target_array[:, target_array[2, :] < len(self.time_coords)]
-        print(f"test2 {self.test_data_idxs.shape}")
+        logging.info(f'TIME COORDS {len(self.time_coords)} MIN {self.time_coords.min()} MAX {self.time_coords.max()}')
+        logging.info(f'TRAIN MIN LAT {self.train_data_idxs[0, :].min()} LON {self.train_data_idxs[1, :].min()}')
+        logging.info(f'TRAIN MAX LAT {self.train_data_idxs[0, :].max()} LON {self.train_data_idxs[1, :].max()}')
+        logging.info(f'TRAIN MAX TIME {self.train_data_idxs[2, :].max()} MIN TIME {self.train_data_idxs[2, :].min()}')
 
-        logging.info(f'TRAIN MIN LAT {self.test_data_idxs[0, :].min()} LON {self.test_data_idxs[1, :].min()}')
-        logging.info(f'TRAIN MAX LAT {self.test_data_idxs[0, :].max()} LON {self.test_data_idxs[1, :].max()}')
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
 
 
     def pixel_aggregation(self, coords, dates, y):
-        # assert len(dates) == len(y), f'dates axis: {len(dates)} target axis: {len(y)}'
         lat, lon = coords
-        #df = pd.DataFrame(data={'dates': dates, 'y': y}).sort_values(by=['dates'])
-        #pixel = df.groupby(['dates']).agg(lambda x: np.percentile(x, q=0.95, method='weibull')) # in pixel aggregation
-        #dates = pixel.index.to_numpy()
-        #y = np.squeeze(pixel.values)
-        y = np.array(y)
-        # dates = np.array(list(map(int, dates)))
-        dates = np.array(dates)
-
+        # print(f'len dates {len(dates)} max dates {dates.max()} min dates {dates.min()} ')
+        # print(f'len y {len(y)} max y {y.max()} min y {y.min()} ')
         # aggregate target with given time_agg_window 
         y_agg_quantlies = np.quantile(sliding_window_view(y, window_shape=self.cfg.train.time_agg_window), 
                         q=[0.96, 0.85, 0.70, 0.50, 0.25, 0.15, 0.05],
                         axis = 1,
                         method='weibull')
-        
         i = 1 if self.cfg.train.time_agg_window % 2 == 0 else 0
         if self.cfg.time_window > self.cfg.train.time_agg_window:
             # clip dates according to time_window
-            dates_clipped = dates[self.cfg.time_window//2:
-                                  len(dates)-self.cfg.time_window//2 + i] 
-            
+            dates = dates[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i] 
             y_agg_quantlies = y_agg_quantlies[self.cfg.time_window-self.cfg.train.time_agg_window:
                                               len(y_agg_quantlies) + self.cfg.train.time_agg_window - self.cfg.time_window - 1]
         else:
-            dates_clipped = dates[self.cfg.train.time_agg_window//2:
-                                  len(dates)-self.cfg.train.time_agg_window//2 + i] 
+            dates = dates[self.cfg.train.time_agg_window//2: len(dates)-self.cfg.train.time_agg_window//2 + i] 
              # y_agg_quantlies not changed
+
+        mask = dates > self.cfg.time_window//2+1
         
-        # assert len(dates_clipped) == len(y_agg_quantlies[1]), f'd {len(dates_clipped)} y {y_agg_quantlies.shape[1]}'
-        target_array = np.stack([np.full(len(dates_clipped), lat, dtype=np.int32),
-                                 np.full(len(dates_clipped), lon, dtype=np.int32),
-                                 dates_clipped])
+        # print(f'droped {len(mask) - mask.sum()} records')
+        dates = dates[mask]
+        y_agg_quantlies = y_agg_quantlies[:, mask]
+        target_array = np.stack([np.full(len(dates), lat, dtype=np.int32),
+                                 np.full(len(dates), lon, dtype=np.int32),
+                                 dates])
         target_array = np.concatenate((target_array, y_agg_quantlies), axis=0)
         return target_array
     
