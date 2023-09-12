@@ -1,6 +1,7 @@
 from torch import nn
 import torch
 import logging
+import timm
 
 class WindNet27x47(nn.Module):
     def __init__(self) -> None:        
@@ -109,6 +110,28 @@ class WindNet27x47(nn.Module):
         X = self.block6(X) + X
         X = self.block7(X) + X
         X = self.block8(X) + X
+        X = self.head(X)
+        return X
+    
+class GhostWindNet27x47(nn.Module):
+    def __init__(self) -> None:        
+        super(GhostWindNet27x47, self).__init__()
+        self.embed = 70
+        self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=True)
+        self.head = nn.Sequential(
+            nn.Dropout(0.4),
+            nn.Linear(27*self.embed, 70),
+            nn.ReLU(),
+            nn.BatchNorm1d(70),
+            nn.Linear(70, 7),
+        )
+
+    def forward(self, X) -> torch.Tensor:
+        b = X.shape[0]
+        days = X.shape[2]
+        X = torch.reshape(X, [b * days, X.shape[1], X.shape[3], X.shape[4]])
+        X = self.ghostnetv2(X)
+        X = torch.reshape(X, [b, days * self.embed])
         X = self.head(X)
         return X
 

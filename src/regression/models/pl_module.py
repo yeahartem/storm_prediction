@@ -22,6 +22,8 @@ class WindNetPL(pl.LightningModule):
         self.run_dir = run_dir
         if cfg.model_name=="WindNet27x47":
              self.net = WindNet27x47()
+        if cfg.model_name=="GhostWindNet27x47":
+             self.net = GhostWindNet27x47()
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
 

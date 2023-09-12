@@ -4,12 +4,12 @@ defaults:
   - train: train_cmip5_WindNet27x47_test_run.yaml  # train configuration and data load configuration
   - eval: test_cmip5_WindNet27x47                        # test and eval configuration 
 
-experiment_name: cmip5_reg
+experiment_name: cmip5_reg_GhostWindNet27x47
 project_name: Wind-speed-regression
 target_type: wind_ms 
 cmip_type: CMIP6 
 
-model_name: WindNet27x47      # {name}{time_window}x{half_side_size}
+model_name: GhostWindNet27x47      # {name}{time_window}x{half_side_size}
 time_window: 27               # must match model, odd only
 half_side_size: 47            # must match model, odd only
 
