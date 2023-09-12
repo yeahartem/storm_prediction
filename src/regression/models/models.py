@@ -30,48 +30,56 @@ class WindNet27x47(nn.Module):
         self.block1 = nn.Sequential(
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=90, padding=1),
+            nn.GELU(),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
             nn.GELU(),
             nn.InstanceNorm3d(180))
         self.block2 = nn.Sequential(
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=90, padding=1),
+            nn.GELU(),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
             nn.GELU(),
             nn.InstanceNorm3d(180))
         self.block3 = nn.Sequential(
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=90, padding=1),
+            nn.GELU(),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
             nn.GELU(),
             nn.InstanceNorm3d(180))
         self.block4 = nn.Sequential(
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=60, padding=1),
+            nn.GELU(),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
             nn.GELU(),
             nn.InstanceNorm3d(180))
         self.block5 = nn.Sequential(
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=90, padding=1),
+            nn.GELU(),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
             nn.GELU(),
             nn.InstanceNorm3d(180))
         self.block6 = nn.Sequential(
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=90, padding=1),
+            nn.GELU(),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
             nn.GELU(),
             nn.InstanceNorm3d(180))
         self.block7 = nn.Sequential(
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=90, padding=1),
+            nn.GELU(),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
             nn.GELU(),
             nn.InstanceNorm3d(180))
         self.block8 = nn.Sequential(
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=180, padding=1),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(3, 3, 3), groups=90, padding=1),
+            nn.GELU(),
             nn.Conv3d(in_channels=180, out_channels=180, kernel_size=(1, 1, 1)),
             nn.GELU(),
             nn.InstanceNorm3d(180))
@@ -82,13 +90,13 @@ class WindNet27x47(nn.Module):
             nn.InstanceNorm3d(90),
             nn.Conv3d(in_channels=90, out_channels=90, kernel_size=(3, 3, 3), groups=10),
             nn.MaxPool3d((2, 3, 3), stride=(1, 1, 1)),
-            nn.Conv3d(in_channels=90, out_channels=90, kernel_size=(1, 1, 1)),
+            nn.Conv3d(in_channels=90, out_channels=60, kernel_size=(1, 1, 1)),
             nn.MaxPool3d((1, 3, 3), stride=(1, 1, 1)),
             nn.GELU(),
-            nn.InstanceNorm3d(90),
+            nn.InstanceNorm3d(60),
             nn.Flatten(start_dim=1),
             nn.Dropout(0.4),
-            nn.Linear(9000, 7),
+            nn.Linear(6000, 7),
         )
         
     def forward(self, X) -> torch.Tensor:

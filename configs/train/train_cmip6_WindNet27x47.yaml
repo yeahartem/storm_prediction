@@ -25,8 +25,8 @@ scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 
 num_workers: 8
-gpu_num: 1
-distributed: false
+gpu_num: 8
+distributed: true
 num_nodes: 1
 strategy: 'ddp'
 
