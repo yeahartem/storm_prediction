@@ -63,7 +63,6 @@ class DataPreLoader:
         var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
         return var_data_torch
 
-
     def time_crop(self, var_data):
         start_date = datetime.strptime(self.cfg.train.start_time, '%Y-%m-%d').date()
         end_date = datetime.strptime(self.cfg.train.end_time, '%Y-%m-%d').date()
@@ -77,31 +76,30 @@ class DataPreLoader:
     
     #### Target prep
 
-    def align_time(self, target_df):
+    def time_to_data_grid(self, target_df):
         start_time = time.process_time()   
-
         dates = target_df["time"].to_numpy()
-        print(dates)
-        values = self.time_coords.searchsorted(dates) # time into inds
-        print(values)
+        y = target_df["y"].to_numpy()
+        values = round_to_closest_indices(dates, self.time_coords) # time into inds
         target_df = target_df.with_columns(
                             polars.Series(name="time", values=values),
+                            polars.Series(name="y", values=y),
                             )
         logging.info(f"Time align took {time.process_time() - start_time} seconds")
         return target_df
 
+
     def stations_to_data_grid(self, stations_df: polars.DataFrame) -> polars.DataFrame:
         """ maps stations to the data grid pixels """
         start_time = time.process_time()   
-        coords = np.array([*stations_df["station_name"].to_numpy()])
-        lat = coords[:, 0]
-        lon = coords[:, 1]
+        lat = stations_df["lat"].to_numpy() 
+        lon = stations_df["lon"].to_numpy()
         lat_vector = round_to_closest_indices(lat, self.lat_coords)
         lon_vector = round_to_closest_indices(lon, self.lon_coords)
         stations_df = stations_df.with_columns(
-                            [polars.concat_list(
+                            [
                              polars.Series(name="lat", values=lat_vector),
-                             polars.Series(name="lon", values=lon_vector)).alias('station_name')
+                             polars.Series(name="lon", values=lon_vector)
                             ])
         logging.info(f"Closest pixel search took {time.process_time() - start_time} seconds")
         return stations_df
@@ -118,24 +116,30 @@ class DataPreLoader:
         logging.info(f"Target time bounds after filter {target_df['time'].min()}, {target_df['time'].max()}")
         logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
         logging.info(f"Stations before aggregation: {target_df.n_unique(subset=['lat', 'lon'])}")
-        target_df = self.align_time(target_df)
-        target_df = (target_df
-                    .with_columns(
-                                 [polars.concat_list(polars.col('lat'),
-                                  polars.col('lon')).alias('station_name')]))
-        target_df = target_df.drop("lat", "lon")
+        target_df = self.time_to_data_grid(target_df)
+        target_df = self.stations_to_data_grid(target_df)
+
         target_df = (target_df
                     .lazy()        
                     .sort("time")
-                    .groupby(["station_name"])
+                    .groupby(["lat", "lon", "time"])
                     .agg(
-                        [polars.col('time'),
+                        [
+                         polars.col('y').quantile(0.65).alias("y"),
+                        ])
+                    .collect())
+        
+        target_df = (target_df
+                    .lazy()        
+                    .sort("time")
+                    .groupby(["lat", "lon"])
+                    .agg(
+                        [
+                         polars.col("time"),
                          polars.col('y'),
                         ])
                     .collect())
         
-        target_df = self.stations_to_data_grid(target_df)
-        target_df = target_df.unique(subset=['station_name'])
         self.target_df = target_df.drop_nulls()
         logging.info(f"Stations after aggregation: {len(target_df)}")
 
@@ -146,17 +150,23 @@ class DataPreLoader:
         targets_list = []
 
         start_time = time.process_time()   
+        drop_short = 0
+        drop_low = 0
+        total = 0
         for target_df_row in self.target_df.rows():
-            coords, dates, y   = target_df_row
-            #target_date = np.array([dates, y])
-            #target_date = target_date[:, target_date[0] > 1]
-            #target_date = target_date[target_date[:, 0].argsort()]
-            #dates = target_date[0]
-            #y = target_date[1]
+            lat, lon, dates, y   = target_df_row
+            y = np.array(y)
+            dates = np.array(dates)
             if len(y) < max(self.cfg.train.time_agg_window, self.cfg.time_window):
+                drop_short += 1
                 continue
-            targets_list.append(self.pixel_aggregation(coords, np.array(dates), np.array(y)))
-        logging.info(f"Pixel loop took {time.process_time() - start_time} seconds")
+            if  np.count_nonzero(y < 2)/y.size > 0.9:
+                drop_low += 1
+                continue
+            targets_list.append(self.pixel_aggregation(lat, lon, dates, y))
+            total += 1
+        logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped short {drop_short}, droped low {drop_low}")
+        logging.info(f"Stations finally: {total}")
 
         target_array = np.concatenate(targets_list, axis=1)
         target_array = target_array.astype(np.int32)
@@ -169,20 +179,17 @@ class DataPreLoader:
         self.test_data_idxs = target_array[:, target_array[2, :] > split_index]
         self.test_data_idxs = self.test_data_idxs[:, self.test_data_idxs[2, :] < len(self.time_coords)]
 
-        logging.info(f'TIME COORDS {len(self.time_coords)} MIN {self.time_coords.min()} MAX {self.time_coords.max()}')
-        logging.info(f'TRAIN MIN LAT {self.train_data_idxs[0, :].min()} LON {self.train_data_idxs[1, :].min()}')
-        logging.info(f'TRAIN MAX LAT {self.train_data_idxs[0, :].max()} LON {self.train_data_idxs[1, :].max()}')
-        logging.info(f'TRAIN MAX TIME {self.train_data_idxs[2, :].max()} MIN TIME {self.train_data_idxs[2, :].min()}')
+        logging.debug(f'TIME COORDS {len(self.time_coords)} MIN {self.time_coords.min()} MAX {self.time_coords.max()}')
+        logging.debug(f'TRAIN MIN LAT {self.train_data_idxs[0, :].min()} LON {self.train_data_idxs[1, :].min()}')
+        logging.debug(f'TRAIN MAX LAT {self.train_data_idxs[0, :].max()} LON {self.train_data_idxs[1, :].max()}')
+        logging.debug(f'TRAIN MAX TIME {self.train_data_idxs[2, :].max()} MIN TIME {self.train_data_idxs[2, :].min()}')
 
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
 
 
-    def pixel_aggregation(self, coords, dates, y):
-        lat, lon = coords
-        # print(f'len dates {len(dates)} max dates {dates.max()} min dates {dates.min()} ')
-        # print(f'len y {len(y)} max y {y.max()} min y {y.min()} ')
+    def pixel_aggregation(self, lat, lon, dates, y):
         # aggregate target with given time_agg_window 
         y_agg_quantlies = np.quantile(sliding_window_view(y, window_shape=self.cfg.train.time_agg_window), 
                         q=[0.96, 0.85, 0.70, 0.50, 0.25, 0.15, 0.05],
@@ -197,10 +204,10 @@ class DataPreLoader:
         else:
             dates = dates[self.cfg.train.time_agg_window//2: len(dates)-self.cfg.train.time_agg_window//2 + i] 
              # y_agg_quantlies not changed
-
         mask = dates > self.cfg.time_window//2+1
-        
-        # print(f'droped {len(mask) - mask.sum()} records')
+        if  (~mask).sum()>0:
+            print((~mask).sum())
+
         dates = dates[mask]
         y_agg_quantlies = y_agg_quantlies[:, mask]
         target_array = np.stack([np.full(len(dates), lat, dtype=np.int32),
@@ -237,7 +244,4 @@ class DataPreLoader:
         positive = np.sum(target_array >= self.cfg.train.target_threshold)
         all = target_array.shape[0]
         return positive/all
-
-
-
-    
+            
