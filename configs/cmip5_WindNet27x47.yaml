@@ -13,5 +13,5 @@ model_name: GhostWindNet27x47      # {name}{time_window}x{half_side_size}
 time_window: 27               # must match model, odd only
 half_side_size: 47            # must match model, odd only
 
-start_date: '2019-01-30'                   #for eval only
+start_date: '2019-03-30'                   #for eval only
 end_date: '2019-03-31'

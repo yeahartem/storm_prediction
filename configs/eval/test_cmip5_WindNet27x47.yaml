@@ -19,10 +19,10 @@ gpu_num: 1
 
 save_kml: true                   #if false, saves to csv
 
-data_dir: data/cmip5_world/      # directory to get climate files for test and inference
+data_dir: data/cmip5_world3/      # directory to get climate files for test and inference
 target_data_file: target.parquet  # target data file in data_dir for training for test and inference
 
-path_to_checkpoint: /trinity/home/v.morozov/Wind/checkpoints/WindNet41x41_cmip5.ckpt
+path_to_checkpoint: /app/wind/out/checkpoints/epoch=0-step=4825.ckpt
 path_to_predictions: out/predictions/result_world_cmip5.csv
 output_file: out/predictions/output_file_world_cmip5      #format is chosen from `save_kml` boolean attribute
 cmip_type: CMIP5

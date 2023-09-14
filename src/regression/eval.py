@@ -136,11 +136,12 @@ class EvalDataset(torch.utils.data.Dataset):
                             slice(lat - self.cfg.half_side_size, lat + self.cfg.half_side_size + 1),
                             slice(lon - self.cfg.half_side_size, lon + self.cfg.half_side_size + 1),
                             ]
-        item = torch.from_numpy(item).to(torch.float16) #torch.float32
+        item = torch.from_numpy(item).to(torch.float32) #torch.float32
         coord = np.array([t, lat, lon])
         return item, coord
     
 def load_model_fixed(model, path):
+    ckpt = torch.load(path)
     state_dict = torch.load(path)['state_dict']
     new_state_dict = OrderedDict()
     for k, v in state_dict.items():
@@ -152,7 +153,6 @@ def load_model_fixed(model, path):
             raise ValueError
         new_state_dict[name] = v
     model.load_state_dict(new_state_dict)
-
     return model
 
 
@@ -218,13 +218,11 @@ def eval(cfg: DictConfig) -> None:
     model = WindNetPL(cfg=cfg, eval=True)     
     # checkpoint = torch.load(cfg.eval.path_to_checkpoint)
     # print(checkpoint['state_dict'].keys())
-    model = load_model_fixed(model, cfg.eval.path_to_checkpoint).half()
-    model= torch.compile(model).eval()
+    model = load_model_fixed(model, cfg.eval.path_to_checkpoint).eval()
+   #  model= torch.compile(model).eval()
     # model = model.load_from_checkpoint(cfg.eval.path_to_checkpoint, cfg=cfg).half().eval()
-    if cfg.eval.use_elevation:
-        dataset = EvalDatasetElev(cfg)
-    else:
-        dataset = EvalDataset(cfg)
+
+    dataset = EvalDataset(cfg)
     result_df = predict(model, dataset,
                         use_elevation=cfg.eval.use_elevation,
                         batch_size=cfg.eval.batch_size_test,
@@ -236,7 +234,7 @@ def eval(cfg: DictConfig) -> None:
     plot_prediction(cfg, result_df, 1)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet27x47.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet27x47.yaml")
 def main(cfg: DictConfig):    
     eval(cfg)
 
