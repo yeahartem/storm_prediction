@@ -25,6 +25,7 @@ max_height: 800                                 #Weather station max height to b
 variables:                                      #CMIP variable names to use
 - sfcWindmax
 - sfcWind
+- pr
 
 time_limits:                                    #Time limits for target and climate data
 - '2000-01-01'

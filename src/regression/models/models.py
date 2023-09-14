@@ -117,7 +117,7 @@ class GhostWindNet27x47(nn.Module):
     def __init__(self) -> None:        
         super(GhostWindNet27x47, self).__init__()
         self.embed = 70
-        self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=True)
+        self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False)
         self.head = nn.Sequential(
             nn.Dropout(0.4),
             nn.Linear(27*self.embed, 70),

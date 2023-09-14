@@ -20,7 +20,7 @@ from pytorch_lightning.utilities import rank_zero_only
 
 @rank_zero_only
 def clean_start():
-    for f in glob.glob("tmp_t*"):
+    for f in glob.glob("tmp_Q_t*"):
         os.remove(f)
 
 class DataPreLoader:

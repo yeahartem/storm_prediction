@@ -14,6 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import itertools
 import torch.nn as nn
+from collections import OrderedDict
 
 
 warnings.filterwarnings("ignore")
@@ -42,7 +43,7 @@ def plot_prediction(cfg: DictConfig, predictions_df: np.ndarray, days: int) -> N
         fig.colorbar(img, cax=cax)
         savepath = os.path.join(*cfg.eval.path_to_predictions.split('/')[:-1], f'wind_max_{pd.to_datetime(day).date()}.png')
         plt.savefig(savepath, dpi=200) 
-        logging.info(f"Plot saved")
+        logging.info(f"Plot saved to {savepath}")
         plt.clf()
         ax.cla()
 
@@ -111,14 +112,8 @@ class EvalDataset(torch.utils.data.Dataset):
         self.lat_coords = self.lat_coords_full[self.lat_min_idx:self.lat_max_idx]
         self.lon_coords = self.lon_coords_full[self.lon_min_idx:self.lon_max_idx]
         #list of indexes with padding shift
-        logging.info(f"lon_coords: {self.lon_coords}")
         self.lat_indexes = list(range(self.lat_min_idx + self.shift[0], self.lat_max_idx + self.shift[0]))
         self.lon_indexes = list(range(self.lon_min_idx + self.shift[1], self.lon_max_idx + self.shift[1]))
-        logging.info(f"lat_indexes: {self.lat_indexes}")
-        logging.info(f"lon_indexes: {self.lon_indexes}")
-        #crop data by indexes 
-        logging.info(f"lon_indexes: {self.lon_min_idx-self.cfg.half_side_size}, {self.lon_max_idx+self.cfg.half_side_size}")
-
         self.var_data = self.var_data[
                                       :,
                                       :,
@@ -144,83 +139,24 @@ class EvalDataset(torch.utils.data.Dataset):
         item = torch.from_numpy(item).to(torch.float16) #torch.float32
         coord = np.array([t, lat, lon])
         return item, coord
-
-
-#########################################################
-class EvalDatasetElev(EvalDataset):
-    def __init__(self, cfg: DictConfig):
-        self.cfg = cfg
-        self.prepare_data()
-        self.total_index = list(itertools.product(self.time_indexes, self.lat_indexes, self.lon_indexes))
-        logging.info(f"Coordinates to be predicted")
-        logging.info(f"Lat: {min(self.lat_coords)} - {max(self.lat_coords)}")
-        logging.info(f"Lon: {min(self.lon_coords)} - {max(self.lon_coords)}")
-        logging.info(f"Time: {min(self.time_coords)} - {max(self.time_coords)}")
-
-    def prepare_data(self):
-        """Prepare data for inference"""
-        self.load_dataset()
-        self.load_evevation()
-        self.limit_inference_time()
-        self.var_data, self.shift = make_padding(self.var_data, self.cfg.half_side_size)
-        logging.info(f"Padded data shape: {self.var_data.shape}")
-
-        self.limit_inference_space()
-        self.elev_data, self.shift_elev = make_padding(self.elev_data, self.elev_hss)
-        logging.info(f"Final data shape: {self.var_data.shape}")
-
-        assert len(self.lat_indexes) == len(self.lat_coords_full), f" indexes is {len(self.lat_indexes)} while coords is {len(self.lat_coords_full)}"
-        assert len(self.lon_indexes)== len(self.lon_coords_full), f" indexes is {len(self.lon_indexes)} while coords is  {len(self.lon_coords_full)}"
-        assert len(self.time_indexes)== len(self.time_coords), f" indexes is {len(self.time_indexes)} while coords is {len(self.time_coords)}"
-
-    def load_evevation(self):
-        """Load elevation data from given folder"""
-        lat_elev_coords = np.load(os.path.join(self.cfg.eval.data_dir, 'elev_lat.npy'))
-        lon_elev_coords = np.load(os.path.join(self.cfg.eval.data_dir, 'elev_lon.npy'))
-        dtype = np.float16
-        self.elev_data = np.empty((len(lat_elev_coords), len(lon_elev_coords)), dtype=dtype)
-        elevation_path = os.path.join(self.cfg.eval.data_dir, f'elev_{16}.npy')
-        assert os.path.isfile(elevation_path), f"Elevation file {elevation_path} does not exist"
-        self.elev_data[...] = np.load(elevation_path)
-        self.r = np.max((np.abs(np.diff(self.lat_coords_full)).max(), np.abs(np.diff(self.lon_coords_full)).max())) / np.min((np.abs(np.diff(lat_elev_coords)).min(), np.abs(np.diff(lon_elev_coords)).min()))
-        self.r_lat = np.abs(np.diff(self.lat_coords_full)).max() / np.abs(np.diff(lat_elev_coords)).min()
-        self.r_lon = np.abs(np.diff(self.lon_coords_full)).max() / np.abs(np.diff(lon_elev_coords)).min()
-        self.elev_hss = int(self.r * self.cfg.half_side_size) // 2
-        self.r = torch.from_numpy(np.atleast_1d(self.r))
-        self.r_lat = torch.from_numpy(np.atleast_1d(self.r_lat))
-        self.r_lon = torch.from_numpy(np.atleast_1d(self.r_lon))
-        logging.info(f"Elevation shape: {self.elev_data.shape}")
-
-    def __len__(self):
-        return len(self.total_index)
-
-    def __getitem__(self, idx):
-        t, lat, lon  = self.total_index[idx]
-        X = self.var_data[:,
-                            slice(t - self.cfg.time_window//2, t + self.cfg.time_window//2 + 1),
-                            slice(lat - self.cfg.half_side_size, lat + self.cfg.half_side_size + 1),
-                            slice(lon - self.cfg.half_side_size, lon + self.cfg.half_side_size + 1),
-                            ]
-        
-        X = torch.from_numpy(X).to(torch.float16) 
-
-        lat_index_elev = int((lat - self.shift[0]) * self.r_lat) + self.shift_elev[0]
-        lon_index_elev = int((lon - self.shift[1]) * self.r_lon) + self.shift_elev[1]
-        X_elev = self.elev_data[
-                                slice(lat_index_elev - self.elev_hss, lat_index_elev + self.elev_hss + 1),
-                                slice(lon_index_elev - self.elev_hss, lon_index_elev + self.elev_hss + 1),
-                                ]
-        X_elev = torch.from_numpy(X_elev).to(torch.float16) 
-        X_elev = X_elev.view(1, X_elev.shape[-2], X_elev.shape[-1])
-        coord = np.array([t, lat, lon])
-        return (X, X_elev), coord
-
     
-def load_model(cfg: DictConfig):
-    return WindNetPL.load_from_checkpoint(cfg.eval.path_to_checkpoint, cfg=cfg, eval=True).half().eval()
+def load_model_fixed(model, path):
+    state_dict = torch.load(path)['state_dict']
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        if '._orig_mod' in k:
+            name = k.replace('._orig_mod', '') # remove `._orig_mod`
+        else:
+            name = k
+        if name in new_state_dict:
+            raise ValueError
+        new_state_dict[name] = v
+    model.load_state_dict(new_state_dict)
+
+    return model
 
 
-def predict(model, dataset, use_elevation, batch_size=1, distributed=False, device_num=0, num_workers=0):    
+def predict(model, dataset, use_elevation, batch_size=1, distributed=False, device_num=0, num_workers=0):      
     if torch.cuda.is_available():
         torch.cuda.set_device(device_num)
         device = torch.device("cuda") 
@@ -231,7 +167,6 @@ def predict(model, dataset, use_elevation, batch_size=1, distributed=False, devi
         model = nn.DataParallel(model)
     else:
         model.to(device)
-    
     number_of_points = len(dataset.lat_indexes) * len(dataset.lon_indexes) * len(dataset.time_indexes)
     logging.info((f"Number of points to predict: {number_of_points}"))
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, pin_memory=True, num_workers=num_workers)
@@ -245,14 +180,16 @@ def predict(model, dataset, use_elevation, batch_size=1, distributed=False, devi
         for batch in tqdm(dataloader, total=num_items_to_predict, desc="Inference"):
             data = batch[0]
             coords_idxs = batch[1]
+            logging.info(f'data {data.max()} {data.min()} {data.std()}')
             if not distributed:
                 if use_elevation:
                     data = [t.to(device) for t in data]
                 else:
                     data = data.to(device)
-            prediction = model(data)
+            prediction = model(data)[:, 0]
             prediction = prediction.detach().cpu()
             prediction = prediction.numpy()
+            logging.info(f'preds {prediction.max()} {prediction.min()} {prediction.std()}')
             predictions_list = predictions_list + list(prediction)
             coords_indxs_list.append(coords_idxs)
     logging.info("Inference finished")
@@ -264,26 +201,32 @@ def predict(model, dataset, use_elevation, batch_size=1, distributed=False, devi
                       dataset.time_coords[t - dataset.cfg.time_window//2]]
             coords_list.append(coords)
 
-    predictions = np.concatenate(predictions_list, axis=0)
-    logging.info(f"Predictions max value: {predictions.max()}, min value: {predictions.min()}")
-    logging.info(f"Predictions mean value: {predictions.mean()}, std value: {predictions.std()}")
+    print(len(predictions_list))
+    predictions_array = np.array(predictions_list)
+    print(predictions_array.shape)
+    logging.info(f"Predictions max value: {predictions_array.max()}, min value: {predictions_array.min()}")
+    logging.info(f"Predictions mean value: {predictions_array.mean()}, std value: {predictions_array.std()}")
     result_df = pd.DataFrame({"date": [item[2] for item in coords_list],
                               "lat": [item[0] for item in coords_list],
                               "lon": [item[1] for item in coords_list],
-                              "prediction": predictions.flatten().astype(np.float64)
+                              "prediction": predictions_array.flatten().astype(np.float64)
                            })
     return result_df
 
 
-def eval(cfg: DictConfig) -> None:        
-    model = load_model(cfg)
+def eval(cfg: DictConfig) -> None:   
+    model = WindNetPL(cfg=cfg, eval=True)     
+    # checkpoint = torch.load(cfg.eval.path_to_checkpoint)
+    # print(checkpoint['state_dict'].keys())
+    model = load_model_fixed(model, cfg.eval.path_to_checkpoint).half()
+    model= torch.compile(model).eval()
+    # model = model.load_from_checkpoint(cfg.eval.path_to_checkpoint, cfg=cfg).half().eval()
     if cfg.eval.use_elevation:
         dataset = EvalDatasetElev(cfg)
     else:
         dataset = EvalDataset(cfg)
-
     result_df = predict(model, dataset,
-                        use_elevation=cfg.eval.use_elevation,\
+                        use_elevation=cfg.eval.use_elevation,
                         batch_size=cfg.eval.batch_size_test,
                         distributed=cfg.eval.distributed_test,
                         num_workers=cfg.eval.num_workers_eval)

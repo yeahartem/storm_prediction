@@ -22,11 +22,11 @@ class WindNetPL(pl.LightningModule):
         self.run_dir = run_dir
         if cfg.model_name=="WindNet27x47":
              self.net = WindNet27x47()
-        if cfg.model_name=="GhostWindNet27x47":
-             self.net = GhostWindNet27x47()
+        elif cfg.model_name=="GhostWindNet27x47":
+            self.net = GhostWindNet27x47()
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
-
+        logging.info(f'Using {cfg.model_name} model')
         if not eval:
             self.scheduler_name = cfg.train.scheduler_name
             if cfg.train.optimizer_name=='AdamW':
@@ -105,9 +105,9 @@ class WindNetPL(pl.LightningModule):
         self.log("train/MAE_full", self.train_MAE_full, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
-        if batch_idx%100==0:
-            self.logger.experiment.log({"train/target": target[:, 0], "train/prediction": predictions[:, 0]})
-            self.logger.experiment.log({"train/target_50": target[:, 3], "train/prediction_50": predictions[:, 3]})
+        #if batch_idx%100==0:
+        #    self.logger.experiment.log({"train/target": target[:, 0], "train/prediction": predictions[:, 0]})
+        #    self.logger.experiment.log({"train/target_50": target[:, 3], "train/prediction_50": predictions[:, 3]})
 
         output = OrderedDict(
             {
@@ -137,7 +137,7 @@ class WindNetPL(pl.LightningModule):
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
         self.log("val/MAE_full", self.val_MAE_full, on_step=True, on_epoch=True, prog_bar=False)
-        self.log("val/MAE_OS", self.val_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
+        self.log("val/MAE_OS", self.val_MAE_OS, on_step=False, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/recall", self.val_recall, on_step=False, on_epoch=True, prog_bar=True)
@@ -265,7 +265,7 @@ class WindNetPL(pl.LightningModule):
                 }
             
             elif self.scheduler_name == "OneCycleLR":
-                scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=3e-3, total_steps=self.trainer.estimated_stepping_batches)
+                scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=1e-3, total_steps=self.trainer.estimated_stepping_batches)
                 return {
                     'optimizer': optimizer,
                     'lr_scheduler': {

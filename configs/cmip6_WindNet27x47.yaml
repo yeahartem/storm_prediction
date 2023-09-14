@@ -2,16 +2,16 @@ defaults:
   - raw: cmip6_elevation_paths    # paths to raw data to prepare dataset
   - process: cmip6_dataset        # dataset processing configuration
   - train: train_cmip6_WindNet27x47     # train configuration and data load configuration
-  - eval: test_WindNet27x47.yaml
+  - eval: test_WindNet27x47
 
-experiment_name: cmip6_lightconv_2vars_quantile_multi
+experiment_name: cmip6_GhostWindNet27x47_3vars_quantile_multi
 project_name: Wind-speed-regression
 target_type: wind_ms #*
 cmip_type: CMIP6 #*
 
-model_name: WindNet27x47  # {name}{time_window}x{half_side_size}
+model_name: GhostWindNet27x47  # {name}{time_window}x{half_side_size}
 time_window: 27               # must match model, odd only
 half_side_size: 47            # must match model, odd only
 
-start_date: '2018-12-06'                   #for eval only
+start_date: '2018-12-11'                   #for eval only
 end_date: '2018-12-12'
