@@ -26,7 +26,3 @@ path_to_checkpoint: /app/wind/out/checkpoints/epoch=0-step=4825.ckpt
 path_to_predictions: out/predictions/result_world_cmip5.csv
 output_file: out/predictions/output_file_world_cmip5      #format is chosen from `save_kml` boolean attribute
 cmip_type: CMIP5
-
-
-
-

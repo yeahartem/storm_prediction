@@ -34,9 +34,9 @@ def train_regression(cfg: DictConfig) -> None:
     start_time = time.process_time()  
     os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
     os.environ['WANDB_MODE'] = 'online'
-    os.environ['WANDB_DIR'] = 'out/wandb'
-    os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
-    os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
+    os.environ['WANDB_DIR'] = '/trinity/home/v.morozov/Wind/out/wandb'
+    os.environ['WANDB_CONFIG_DIR'] = 'trinity/home/v.morozov/Wind/out/wandb'
+    os.environ['WANDB_CACHE_DIR'] = 'trinity/home/v.morozov/Wind/out/wandb'
     torch.set_float32_matmul_precision('high')
     run_dir = get_rundir_name()  
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
@@ -70,7 +70,7 @@ def train_regression(cfg: DictConfig) -> None:
                          accelerator="gpu",
                          precision="16-mixed",
                          benchmark=True,
-                         gradient_clip_val=0.8,
+                         gradient_clip_val=0.9,
                          gradient_clip_algorithm="value",
                          #validation
                          check_val_every_n_epoch=1,
@@ -91,7 +91,7 @@ def train_regression(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet27x47.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_GhostWindNet27x61.yaml")
 def main(cfg: DictConfig):    
     logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
     train_regression(cfg)

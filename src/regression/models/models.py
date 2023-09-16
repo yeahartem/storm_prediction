@@ -113,9 +113,9 @@ class WindNet27x47(nn.Module):
         X = self.head(X)
         return X
     
-class GhostWindNet27x47(nn.Module):
+class GhostWindNet27(nn.Module):
     def __init__(self) -> None:        
-        super(GhostWindNet27x47, self).__init__()
+        super(GhostWindNet27, self).__init__()
         self.embed = 70
         self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False)
         self.head = nn.Sequential(

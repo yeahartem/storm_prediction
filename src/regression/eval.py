@@ -234,7 +234,7 @@ def eval(cfg: DictConfig) -> None:
     plot_prediction(cfg, result_df, 1)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_WindNet27x47.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet27x47.yaml")
 def main(cfg: DictConfig):    
     eval(cfg)
 

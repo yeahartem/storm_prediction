@@ -152,6 +152,7 @@ class DataPreLoader:
         start_time = time.process_time()   
         drop_short = 0
         drop_low = 0
+        drop_high = 0
         total = 0
         for target_df_row in self.target_df.rows():
             lat, lon, dates, y   = target_df_row
@@ -163,9 +164,13 @@ class DataPreLoader:
             if  np.count_nonzero(y < 2)/y.size > 0.9:
                 drop_low += 1
                 continue
+            if  np.count_nonzero(y > 16)/y.size > 0.5:
+                drop_high += 1
+                continue
+
             targets_list.append(self.pixel_aggregation(lat, lon, dates, y))
             total += 1
-        logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped short {drop_short}, droped low {drop_low}")
+        logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped short {drop_short}, droped low {drop_low}, droped high {drop_high} ")
         logging.info(f"Stations finally: {total}")
 
         target_array = np.concatenate(targets_list, axis=1)
@@ -207,7 +212,6 @@ class DataPreLoader:
         mask = dates > self.cfg.time_window//2+1
         if  (~mask).sum()>0:
             print((~mask).sum())
-
         dates = dates[mask]
         y_agg_quantlies = y_agg_quantlies[:, mask]
         target_array = np.stack([np.full(len(dates), lat, dtype=np.int32),
