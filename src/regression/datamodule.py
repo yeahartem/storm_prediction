@@ -64,7 +64,7 @@ class WindDataModule(pl.LightningDataModule):
 
 
 class XarrayDataset(Dataset):
-    def __init__(self, DPL, test=False, dtype=torch.float16,):
+    def __init__(self, DPL, test=False, dtype=torch.float32):
         self.cfg = DPL.cfg
         self.dataset_torch = DPL.dataset_torch
         if test:
@@ -79,6 +79,9 @@ class XarrayDataset(Dataset):
 
     def get_sample_shape(self, idx): 
         lat_index, lon_index, time_index, *y = self.data_idxs[:, idx]
+        lat_index = int(lat_index)
+        lon_index = int(lon_index)
+        time_index = int(time_index)
         X = self.dataset_torch[:,
                                slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
@@ -90,14 +93,19 @@ class XarrayDataset(Dataset):
         return self.data_idxs.shape[1]
 
     def __getitem__(self, idx):
-        lat_index, lon_index, time_index, *y = self.data_idxs[:, idx]
+        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, *y = self.data_idxs[:, idx]
+        lat_index = int(lat_index)
+        lon_index = int(lon_index)
+        time_index = int(time_index)
         X = self.dataset_torch[:,
                                slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
                                slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
                                ]
+        pos = torch.tensor([time_pos, time_pos_m, lat_pos, lon_pos], dtype=self.dtype)
+        pos = pos.expand(self.cfg.time_window, 4)
         y = torch.tensor(y, dtype=self.dtype)
-        return X, y
+        return [X, pos], y
     
 
 if __name__ == '__main__':

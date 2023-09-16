@@ -60,7 +60,9 @@ class DataPreLoader:
         logging.info(f"CMIP data loaded {var_data.shape}")
         var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
         logging.info(f"Padded data shape {var_data.shape}")
-        var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
+        # var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
+        var_data_torch = torch.from_numpy(var_data).type(torch.float32)
+
         return var_data_torch
 
     def time_crop(self, var_data):
@@ -74,8 +76,8 @@ class DataPreLoader:
         logging.info(f"Shape with time limits {var_data.shape}")
         return var_data
     
-    #### Target prep
 
+    #### Target prep
     def time_to_data_grid(self, target_df):
         start_time = time.process_time()   
         dates = target_df["time"].to_numpy()
@@ -111,7 +113,6 @@ class DataPreLoader:
         start_date = pd.to_datetime(self.cfg.train.start_time)
         end_date = pd.to_datetime(self.cfg.train.end_time)
         logging.info(f"Target time bounds before filter {target_df['time'].min()}, {target_df['time'].max()}")
-
         target_df = target_df.filter((polars.col('time') >= start_date) & (polars.col('time') < end_date))
         logging.info(f"Target time bounds after filter {target_df['time'].min()}, {target_df['time'].max()}")
         logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
@@ -145,11 +146,10 @@ class DataPreLoader:
 
 
     def target_df_to_array(self):
+        start_time = time.process_time()   
         split_date = datetime.strptime(self.cfg.train.start_of_test, '%Y-%m-%d').date()
         split_index = self.time_coords.searchsorted(split_date)
         targets_list = []
-
-        start_time = time.process_time()   
         drop_short = 0
         drop_low = 0
         drop_high = 0
@@ -167,28 +167,19 @@ class DataPreLoader:
             if  np.count_nonzero(y > 16)/y.size > 0.5:
                 drop_high += 1
                 continue
-
             targets_list.append(self.pixel_aggregation(lat, lon, dates, y))
             total += 1
         logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped short {drop_short}, droped low {drop_low}, droped high {drop_high} ")
         logging.info(f"Stations finally: {total}")
 
         target_array = np.concatenate(targets_list, axis=1)
-        target_array = target_array.astype(np.int32)
         del targets_list
         target_array = target_array[:, ::self.cfg.train.time_freq]
         target_array[0, :] += self.shift[0] #lat
         target_array[1, :] += self.shift[1] #lon
-
         self.train_data_idxs = target_array[:, target_array[2, :] < split_index]
         self.test_data_idxs = target_array[:, target_array[2, :] > split_index]
         self.test_data_idxs = self.test_data_idxs[:, self.test_data_idxs[2, :] < len(self.time_coords)]
-
-        logging.debug(f'TIME COORDS {len(self.time_coords)} MIN {self.time_coords.min()} MAX {self.time_coords.max()}')
-        logging.debug(f'TRAIN MIN LAT {self.train_data_idxs[0, :].min()} LON {self.train_data_idxs[1, :].min()}')
-        logging.debug(f'TRAIN MAX LAT {self.train_data_idxs[0, :].max()} LON {self.train_data_idxs[1, :].max()}')
-        logging.debug(f'TRAIN MAX TIME {self.train_data_idxs[2, :].max()} MIN TIME {self.train_data_idxs[2, :].min()}')
-
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
@@ -196,6 +187,12 @@ class DataPreLoader:
 
     def pixel_aggregation(self, lat, lon, dates, y):
         # aggregate target with given time_agg_window 
+
+        time_positions_m = np.array([d.astype(object).month for d in self.time_coords[dates]])
+        time_positions_days =  np.array([d.astype(object).day for d in self.time_coords[dates]])
+        time_positions = (time_positions_m * 30.5 + time_positions_days)/365
+        time_positions_m = time_positions_m/12
+        assert len(time_positions) == len(dates)
         y_agg_quantlies = np.quantile(sliding_window_view(y, window_shape=self.cfg.train.time_agg_window), 
                         q=[0.96, 0.85, 0.70, 0.50, 0.25, 0.15, 0.05],
                         axis = 1,
@@ -204,19 +201,35 @@ class DataPreLoader:
         if self.cfg.time_window > self.cfg.train.time_agg_window:
             # clip dates according to time_window
             dates = dates[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i] 
+            time_positions = time_positions[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i] 
+            time_positions_m = time_positions_m[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i] 
+
             y_agg_quantlies = y_agg_quantlies[self.cfg.time_window-self.cfg.train.time_agg_window:
                                               len(y_agg_quantlies) + self.cfg.train.time_agg_window - self.cfg.time_window - 1]
         else:
             dates = dates[self.cfg.train.time_agg_window//2: len(dates)-self.cfg.train.time_agg_window//2 + i] 
+            time_positions = time_positions[self.cfg.train.time_agg_window//2: len(time_positions)-self.cfg.train.time_agg_window//2 + i] 
+            time_positions_m = time_positions_m[self.cfg.train.time_agg_window//2: len(time_positions_m)-self.cfg.train.time_agg_window//2 + i] 
              # y_agg_quantlies not changed
+
+        assert len(time_positions) == len(dates)
         mask = dates > self.cfg.time_window//2+1
-        if  (~mask).sum()>0:
-            print((~mask).sum())
         dates = dates[mask]
+        time_positions = time_positions[mask]
+        time_positions_m = time_positions_m[mask]
         y_agg_quantlies = y_agg_quantlies[:, mask]
-        target_array = np.stack([np.full(len(dates), lat, dtype=np.int32),
-                                 np.full(len(dates), lon, dtype=np.int32),
-                                 dates])
+
+        lat_position = self.lat_coords[lat]/90
+        lon_position = self.lon_coords[lon]/180
+        target_array = np.stack([np.full(len(dates), lat),
+                                 np.full(len(dates), lon),
+                                 dates,
+                                 time_positions,
+                                 time_positions_m,
+                                 np.full(len(dates), lat_position),
+                                 np.full(len(dates), lon_position),
+                                 ])
+        
         target_array = np.concatenate((target_array, y_agg_quantlies), axis=0)
         return target_array
     
@@ -238,9 +251,9 @@ class DataPreLoader:
 
     def log_data(self):
         logging.info(f"Train size: {self.train_data_idxs.shape[1]}, test size: {self.test_data_idxs.shape[1]}")
-        logging.info(f"Target min: {self.train_data_idxs[3, :].min()}, target max: {self.train_data_idxs[3, :].max()}")
-        logging.info(f"Target mean: {self.train_data_idxs[3, :].mean()}, target std: {self.train_data_idxs[3, :].std()}")
-        logging.info(f"Balance train: {self.get_class_balance(self.train_data_idxs[3, :])}, balance test:{self.get_class_balance(self.test_data_idxs[3, :])}")
+        logging.info(f"Target min: {self.train_data_idxs[7, :].min()}, target max: {self.train_data_idxs[7, :].max()}")
+        logging.info(f"Target mean: {self.train_data_idxs[7, :].mean()}, target std: {self.train_data_idxs[7, :].std()}")
+        logging.info(f"Balance train: {self.get_class_balance(self.train_data_idxs[7, :])}, balance test:{self.get_class_balance(self.test_data_idxs[7, :])}")
         for i, var in enumerate(self.cfg.process.variables):
             logging.info(f"{var} mean: {self.dataset_torch[i].mean()}, std: {self.dataset_torch[i].std()}")
 
