@@ -86,14 +86,14 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
         .select(
             [
                 pl.col("Название метеостанции").apply(cleanup_ms_name).cast(pl.Categorical).alias("station_name"),
-                pl.col("Максимальная скорость").round().cast(pl.UInt8).alias("max_speed"),
-                pl.col("Средняя скорость ветра").round().cast(pl.UInt8).alias("avg_speed"),
+                pl.col("Максимальная скорость").round().cast(pl.Float32).alias("max_speed"),
+                pl.col("Средняя скорость ветра").round().cast(pl.Float32).alias("avg_speed"),
                 pl.col("Дата").cast(pl.Datetime).alias("time"),
                 pl.col("Дата").cast(pl.Date).alias("date"),
-                pl.col("Температура воздуха по сухому терм-ру").round().cast(pl.Int16).alias("avg_temp"),
-                pl.col("Температура точки росы").round().cast(pl.Int16).alias("dew_point_temp"),
-                pl.col("Атмосферное давление на уровне станции").round().cast(pl.Int16).alias("station_level_pressure"),
-                pl.col("Атмосферное давление на уровне моря").round().cast(pl.Int16).alias("sea_level_pressure"),
+                pl.col("Температура воздуха по сухому терм-ру").round().cast(pl.Float32).alias("avg_temp"),
+                pl.col("Температура точки росы").round().cast(pl.Float32).alias("dew_point_temp"),
+                pl.col("Атмосферное давление на уровне станции").round().cast(pl.Float32).alias("station_level_pressure"),
+                pl.col("Атмосферное давление на уровне моря").round().cast(pl.Float32).alias("sea_level_pressure"),
             ]
                )
         )
@@ -129,13 +129,13 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
         .select(
             [
                 pl.col("STATION").cast(pl.Categorical).alias("station_name"),
-                pl.col("MXWDSP").round().cast(pl.UInt8).alias("max_speed"),
-                pl.col("WDSP").round().cast(pl.UInt8).alias("avg_speed"),
+                pl.col("MXWDSP").round().cast(pl.Float32).alias("max_speed"),
+                pl.col("WDSP").round().cast(pl.Float32).alias("avg_speed"),
                 pl.col("DATE").cast(pl.Date).alias("time"),                
-                pl.col("TEMP").round().cast(pl.Int16).alias("avg_temp"),
-                pl.col("DEWP").round().cast(pl.Int16).alias("dew_point_temp"),
-                pl.col("STP").round().cast(pl.Int16).alias("station_level_pressure"),
-                pl.col("SLP").round().cast(pl.Int16).alias("sea_level_pressure"),
+                pl.col("TEMP").round().cast(pl.Float32).alias("avg_temp"),
+                pl.col("DEWP").round().cast(pl.Float32).alias("dew_point_temp"),
+                pl.col("STP").round().cast(pl.Float32).alias("station_level_pressure"),
+                pl.col("SLP").round().cast(pl.Float32).alias("sea_level_pressure"),
                 pl.col("LATITUDE").round().cast(pl.Float32).alias("lat"),
                 pl.col("LONGITUDE").round().cast(pl.Float32).alias("lon"),
                 pl.col("ELEVATION").round().cast(pl.Float32).alias("height"),

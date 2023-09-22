@@ -117,7 +117,7 @@ class GhostWindNet27(nn.Module):
     def __init__(self) -> None:        
         super(GhostWindNet27, self).__init__()
         self.embed = 70
-        self.time_window = 35
+        self.time_window = 27
         self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False)
         self.head1 = nn.Sequential(
             nn.Dropout(0.4),
@@ -146,6 +146,6 @@ class GhostWindNet27(nn.Module):
         pos = torch.reshape(pos, [b * days, 4])
         X = torch.cat((X, pos), 1)
         X = torch.reshape(X, [b, days * (self.embed + 4)])
-        X = self.head2(X)
+        X = self.head1(X)
         return X
 

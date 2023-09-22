@@ -164,9 +164,9 @@ class DataPreLoader:
             if  np.count_nonzero(y < 2)/y.size > 0.9:
                 drop_low += 1
                 continue
-            if  np.count_nonzero(y > 16)/y.size > 0.5:
-                drop_high += 1
-                continue
+            #if  np.count_nonzero(y > 16)/y.size > 0.5:
+            #    drop_high += 1
+            #    continue
             targets_list.append(self.pixel_aggregation(lat, lon, dates, y))
             total += 1
         logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped short {drop_short}, droped low {drop_low}, droped high {drop_high} ")

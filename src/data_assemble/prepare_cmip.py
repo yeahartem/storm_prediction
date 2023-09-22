@@ -208,7 +208,7 @@ def load_dataset(cfg: DictConfig):
     return data_arr
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_elevation_WindNetElev83x41")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_GhostWindNet27")
 def prepare_cmip(cfg: DictConfig):    
     print(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'))
     logging.info(OmegaConf.to_yaml(cfg))
