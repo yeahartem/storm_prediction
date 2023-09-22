@@ -10,7 +10,7 @@ data_dir: data/cmip6_1deg_world      # directory to get climate files for traini
 target_data_file: target.parquet  # target data file in data_dir for training
 
 start_time: '1955-01-01'
-end_time: '2021-12-31'
+end_time: '2020-12-31'
 start_of_test: '2008-01-01'
 
 batch_size: 128
@@ -24,8 +24,8 @@ scheduler_name: 'OneCycleLR'
 loss_name: 'MSELoss'
 
 num_workers: 8
-gpu_num: 8
-distributed: true
+gpu_num: 1
+distributed: false
 num_nodes: 1
 strategy: 'ddp'
 

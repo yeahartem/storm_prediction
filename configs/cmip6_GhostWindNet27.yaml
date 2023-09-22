@@ -4,13 +4,13 @@ defaults:
   - train: train_cmip6     # train configuration and data load configuration
   - eval: test_GhostWindNet
 
-experiment_name: cmip6_GhostWindNet27x61_3vars_quantile_multi
+experiment_name: cmip6_GhostWindNet57x35_3vars_multi_4pos
 project_name: Wind-speed-regression
 target_type: wind_ms #*
 cmip_type: CMIP6 #*
 
 model_name: GhostWindNet27  # {name}{time_window}x{half_side_size}
-time_window: 27               # must match model, odd only
+time_window: 35               # must match model, odd only
 half_side_size: 47            # must match model, odd only
 
 start_date: '2018-12-11'                   #for eval only

@@ -201,8 +201,8 @@ class DataPreLoader:
         if self.cfg.time_window > self.cfg.train.time_agg_window:
             # clip dates according to time_window
             dates = dates[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i] 
-            time_positions = time_positions[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i] 
-            time_positions_m = time_positions_m[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i] 
+            time_positions = time_positions[self.cfg.time_window//2: len(time_positions)-self.cfg.time_window//2 + i] 
+            time_positions_m = time_positions_m[self.cfg.time_window//2: len(time_positions_m)-self.cfg.time_window//2 + i] 
 
             y_agg_quantlies = y_agg_quantlies[self.cfg.time_window-self.cfg.train.time_agg_window:
                                               len(y_agg_quantlies) + self.cfg.train.time_agg_window - self.cfg.time_window - 1]

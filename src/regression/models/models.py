@@ -117,13 +117,24 @@ class GhostWindNet27(nn.Module):
     def __init__(self) -> None:        
         super(GhostWindNet27, self).__init__()
         self.embed = 70
+        self.time_window = 35
         self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False)
-        self.head = nn.Sequential(
+        self.head1 = nn.Sequential(
             nn.Dropout(0.4),
-            nn.Linear(27*(self.embed + 4), 70),
+            nn.Linear(self.time_window*(self.embed + 4), 70),
             nn.ReLU(),
             nn.BatchNorm1d(70),
             nn.Linear(70, 7),
+        )
+        self.head2 = nn.Sequential(
+            nn.Dropout(0.2),
+            nn.Linear(self.time_window*(self.embed + 4), 140),
+            nn.Dropout(0.5),
+            nn.GELU(),
+            nn.BatchNorm1d(140),
+            nn.Dropout(0.2),
+            nn.GELU(),
+            nn.Linear(140, 7),
         )
 
     def forward(self, X) -> torch.Tensor:
@@ -135,6 +146,6 @@ class GhostWindNet27(nn.Module):
         pos = torch.reshape(pos, [b * days, 4])
         X = torch.cat((X, pos), 1)
         X = torch.reshape(X, [b, days * (self.embed + 4)])
-        X = self.head(X)
+        X = self.head2(X)
         return X
 
