@@ -76,6 +76,7 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
                'Температура точки росы',
                'Атмосферное давление на уровне станции',
                'Атмосферное давление на уровне моря',
+               'Сумма осадков',
                "Дата"] # Add more columns if needed
     
     start_time = time.process_time()
@@ -92,6 +93,7 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
                 pl.col("Дата").cast(pl.Date).alias("date"),
                 pl.col("Температура воздуха по сухому терм-ру").round().cast(pl.Float32).alias("avg_temp"),
                 pl.col("Температура точки росы").round().cast(pl.Float32).alias("dew_point_temp"),
+                pl.col("Сумма осадков").round().cast(pl.Float32).alias("precipitation"),
                 pl.col("Атмосферное давление на уровне станции").round().cast(pl.Float32).alias("station_level_pressure"),
                 pl.col("Атмосферное давление на уровне моря").round().cast(pl.Float32).alias("sea_level_pressure"),
             ]
@@ -120,7 +122,7 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
        'PRCP', 'DEWP', 'LATITUDE', 'LONGITUDE', 'ELEVATION'] 
     """  
 
-    columns = ["STATION", "LATITUDE",  "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP', 'DEWP', 'SLP', 'STP'] 
+    columns = ["STATION", "LATITUDE",  "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP', 'DEWP', 'SLP', 'STP', 'PRCP'] 
     start_time = time.process_time()
     df = pl.read_parquet(path_to_weather_stations, columns=columns)
     logging.info(f"Time to open world parquet {time.process_time() - start_time} seconds")
@@ -136,6 +138,7 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
                 pl.col("DEWP").round().cast(pl.Float32).alias("dew_point_temp"),
                 pl.col("STP").round().cast(pl.Float32).alias("station_level_pressure"),
                 pl.col("SLP").round().cast(pl.Float32).alias("sea_level_pressure"),
+                pl.col("PRCP").round().cast(pl.Float32).alias("precipitation"),
                 pl.col("LATITUDE").round().cast(pl.Float32).alias("lat"),
                 pl.col("LONGITUDE").round().cast(pl.Float32).alias("lon"),
                 pl.col("ELEVATION").round().cast(pl.Float32).alias("height"),

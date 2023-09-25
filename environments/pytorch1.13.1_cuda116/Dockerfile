@@ -1,4 +1,4 @@
-FROM 1.13.1-cuda11.6-cudnn8-devel
+FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
 
 RUN apt-get update && DEBIAN_FRONTEND="noninteractive" TZ="America/New_York" apt-get install -y tzdata
 

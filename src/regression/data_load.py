@@ -84,26 +84,30 @@ class DataPreLoader:
         
         self.lat_coords_crop = self.lat_coords[self.lat_min_idx: self.lat_max_idx]
         self.lon_coords_crop = self.lon_coords[self.lon_min_idx: self.lon_max_idx]
-        logging.info(f"Lat : {min(self.lat_coords_crop)} - {max(self.lat_coords_crop)}")
-        logging.info(f"Lon indexes: {min(self.lon_coords_crop)} - {max(self.lon_coords_crop)}")
+        logging.info(f"Lat : {min(self.lat_coords_crop)} - {max(self.lat_coords_crop)}, len {len(self.lat_coords_crop)}")
+        logging.info(f"Lon: {min(self.lon_coords_crop)} - {max(self.lon_coords_crop)}, len {len(self.lon_coords_crop)}")
+        logging.info(f"Lat indexes: {(self.lat_min_idx)} - {(self.lat_max_idx)}, len {len(self.lat_coords_crop)}")
+        logging.info(f"Lon indexes: {(self.lon_min_idx)} - {(self.lon_max_idx)}, len {len(self.lon_coords_crop)}")
         if  (self.lat_min_idx < half_side) or \
             (self.lon_min_idx < half_side) or \
             (len(self.lon_coords) - self.lon_max_idx < half_side) or \
             (len(self.lat_coords) - self.lat_max_idx < half_side):
+            logging.info(f"Pad + crop")
 
             var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
             var_data = var_data[
                                 :,
                                 :,
-                                self.lat_min_idx: self.lat_max_idx+2*half_side,
-                                self.lon_min_idx: self.lon_max_idx+2*half_side
+                                self.lat_min_idx: self.lat_max_idx + 2*half_side + 1,
+                                self.lon_min_idx: self.lon_max_idx + 2*half_side + 1
                                 ]
         else:
+            logging.info(f"Just crop")
             var_data = var_data[
                                 :,
                                 :,
-                                self.lat_min_idx - half_side: self.lat_max_idx + half_side,
-                                self.lon_min_idx - half_side: self.lon_max_idx + half_side
+                                self.lat_min_idx - half_side: self.lat_max_idx + half_side + 1,
+                                self.lon_min_idx - half_side: self.lon_max_idx + half_side + 1
                                 ]
         return var_data
 
@@ -182,7 +186,6 @@ class DataPreLoader:
                          polars.col('y'),
                         ])
                     .collect())
-        
         self.target_df = target_df.drop_nulls()
         logging.info(f"Stations after aggregation: {len(target_df)}")
 
@@ -216,10 +219,10 @@ class DataPreLoader:
 
         if self.cfg.train.spatial_crop:
             target_array[0, :] += self.shift[0] - self.lat_min_idx #lat
-            target_array[1, :] += self.shift[1] - self.lon_min_idx#lon
-
-        target_array[0, :] += self.shift[0] #lat
-        target_array[1, :] += self.shift[1] #lon
+            target_array[1, :] += self.shift[1] - self.lon_min_idx #lon
+        else:
+            target_array[0, :] += self.shift[0] #lat
+            target_array[1, :] += self.shift[1] #lon
         self.train_data_idxs = target_array[:, target_array[2, :] < split_index]
         self.test_data_idxs = target_array[:, target_array[2, :] > split_index]
         self.test_data_idxs = self.test_data_idxs[:, self.test_data_idxs[2, :] < len(self.time_coords)]
@@ -231,8 +234,9 @@ class DataPreLoader:
         if len(y) < max(self.cfg.train.time_agg_window, self.cfg.time_window):
             return "too short"
         if lat < self.lat_min_idx or lat > self.lat_max_idx or lon < self.lon_min_idx or lon > self.lon_max_idx:
+            # print(f"drop {lat, lon}")
             return "out of train area"
-        
+
         if target_type == 'temp_c':
             if np.count_nonzero(y < -35)/y.size > 0.9:
                 return "low temp"
@@ -245,7 +249,6 @@ class DataPreLoader:
                 return "high speed"
         else: 
             raise NotImplementedError
-        
         return True
 
     def pixel_aggregation(self, lat, lon, dates, y):

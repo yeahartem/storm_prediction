@@ -102,6 +102,7 @@ class XarrayDataset(Dataset):
                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
                                slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
                                ]
+        # assert X.shape[-1] == 95, f"idxs {lat_index, lon_index, time_index}"
         pos = torch.tensor([time_pos, time_pos_m, lat_pos, lon_pos], dtype=self.dtype)
         pos = pos.expand(self.cfg.time_window, 4)
         y = torch.tensor(y, dtype=self.dtype)
