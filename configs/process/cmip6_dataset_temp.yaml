@@ -24,8 +24,8 @@ max_height: 800                                 #Weather station max height to b
 
 variables:                                      #CMIP variable names to use
 - sfcWindmax
-- sfcWind
-- pr
+- tasmax
+- tasmin
 
 time_limits:                                    #Time limits for target and climate data
 - '1950-01-01'

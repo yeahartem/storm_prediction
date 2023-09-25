@@ -126,16 +126,6 @@ class GhostWindNet27(nn.Module):
             nn.BatchNorm1d(70),
             nn.Linear(70, 7),
         )
-        self.head2 = nn.Sequential(
-            nn.Dropout(0.2),
-            nn.Linear(self.time_window*(self.embed + 4), 140),
-            nn.Dropout(0.5),
-            nn.GELU(),
-            nn.BatchNorm1d(140),
-            nn.Dropout(0.2),
-            nn.GELU(),
-            nn.Linear(140, 7),
-        )
 
     def forward(self, X) -> torch.Tensor:
         X, pos = X
