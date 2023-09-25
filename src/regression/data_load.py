@@ -23,6 +23,8 @@ def clean_start():
     for f in glob.glob("tmp_Q_t*"):
         os.remove(f)
 
+
+
 class DataPreLoader:
     def __init__(self, cfg: DictConfig):
         self.cfg = cfg    
@@ -52,18 +54,58 @@ class DataPreLoader:
         self.time_coords = np.load(os.path.join(self.cfg.train.data_dir, 'time.npy')).astype('datetime64[D]')
         self.lat_coords = np.load(os.path.join(self.cfg.train.data_dir, 'lat.npy'))
         self.lon_coords = np.load(os.path.join(self.cfg.train.data_dir, 'lon.npy'))
+
         var_data = np.empty(
             (len(self.cfg.process.variables), len(self.time_coords), len(self.lat_coords), len(self.lon_coords)),
             dtype=dtype)
         for i, var in enumerate(self.cfg.process.variables):
             var_data[i] = np.load(os.path.join(self.cfg.train.data_dir, var + f'_{self.cfg.process.precision}.npy'))
         logging.info(f"CMIP data loaded {var_data.shape}")
-        var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
-        logging.info(f"Padded data shape {var_data.shape}")
+
+        if self.cfg.train.spatial_crop:
+            var_data = self.spatial_crop(var_data)
+            logging.info(f"Cropped data shape {var_data.shape}")
+
+        else:
+            var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
+            logging.info(f"Padded data shape {var_data.shape}")
+
         # var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
         var_data_torch = torch.from_numpy(var_data).type(torch.float32)
 
         return var_data_torch
+
+    def spatial_crop(self, var_data): 
+        half_side = self.cfg.half_side_size
+        self.lat_min_idx = np.searchsorted(self.lat_coords, self.cfg.train.lat_min)
+        self.lat_max_idx = np.searchsorted(self.lat_coords, self.cfg.train.lat_max)
+        self.lon_min_idx = np.searchsorted(self.lon_coords, self.cfg.train.lon_min)
+        self.lon_max_idx = np.searchsorted(self.lon_coords, self.cfg.train.lon_max)
+        
+        self.lat_coords_crop = self.lat_coords[self.lat_min_idx: self.lat_max_idx]
+        self.lon_coords_crop = self.lon_coords[self.lon_min_idx: self.lon_max_idx]
+        logging.info(f"Lat : {min(self.lat_coords_crop)} - {max(self.lat_coords_crop)}")
+        logging.info(f"Lon indexes: {min(self.lon_coords_crop)} - {max(self.lon_coords_crop)}")
+        if  (self.lat_min_idx < half_side) or \
+            (self.lon_min_idx < half_side) or \
+            (len(self.lon_coords) - self.lon_max_idx < half_side) or \
+            (len(self.lat_coords) - self.lat_max_idx < half_side):
+
+            var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
+            var_data = var_data[
+                                :,
+                                :,
+                                self.lat_min_idx: self.lat_max_idx+2*half_side,
+                                self.lon_min_idx: self.lon_max_idx+2*half_side
+                                ]
+        else:
+            var_data = var_data[
+                                :,
+                                :,
+                                self.lat_min_idx - half_side: self.lat_max_idx + half_side,
+                                self.lon_min_idx - half_side: self.lon_max_idx + half_side
+                                ]
+        return var_data
 
     def time_crop(self, var_data):
         start_date = datetime.strptime(self.cfg.train.start_time, '%Y-%m-%d').date()
@@ -150,31 +192,32 @@ class DataPreLoader:
         split_date = datetime.strptime(self.cfg.train.start_of_test, '%Y-%m-%d').date()
         split_index = self.time_coords.searchsorted(split_date)
         targets_list = []
-        drop_short = 0
-        drop_low = 0
-        drop_high = 0
+        drop_dict = {}
         total = 0
         for target_df_row in self.target_df.rows():
-            lat, lon, dates, y   = target_df_row
+            lat, lon, dates, y = target_df_row
             y = np.array(y)
             dates = np.array(dates)
-            if len(y) < max(self.cfg.train.time_agg_window, self.cfg.time_window):
-                drop_short += 1
+            res = self.stations_filter(lat, lon, dates, y, self.cfg.target_type)
+            if res != True:
+                if res not in drop_dict:
+                    drop_dict[res] = 1
+                else:
+                    drop_dict[res] += 1
                 continue
-            if  np.count_nonzero(y < 2)/y.size > 0.9:
-                drop_low += 1
-                continue
-            #if  np.count_nonzero(y > 16)/y.size > 0.5:
-            #    drop_high += 1
-            #    continue
             targets_list.append(self.pixel_aggregation(lat, lon, dates, y))
             total += 1
-        logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped short {drop_short}, droped low {drop_low}, droped high {drop_high} ")
+        logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped {drop_dict}")
         logging.info(f"Stations finally: {total}")
 
         target_array = np.concatenate(targets_list, axis=1)
         del targets_list
         target_array = target_array[:, ::self.cfg.train.time_freq]
+
+        if self.cfg.train.spatial_crop:
+            target_array[0, :] += self.shift[0] - self.lat_min_idx #lat
+            target_array[1, :] += self.shift[1] - self.lon_min_idx#lon
+
         target_array[0, :] += self.shift[0] #lat
         target_array[1, :] += self.shift[1] #lon
         self.train_data_idxs = target_array[:, target_array[2, :] < split_index]
@@ -184,6 +227,26 @@ class DataPreLoader:
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         gc.collect()
 
+    def stations_filter(self, lat, lon, dates, y, target_type): 
+        if len(y) < max(self.cfg.train.time_agg_window, self.cfg.time_window):
+            return "too short"
+        if lat < self.lat_min_idx or lat > self.lat_max_idx or lon < self.lon_min_idx or lon > self.lon_max_idx:
+            return "out of train area"
+        
+        if target_type == 'temp_c':
+            if np.count_nonzero(y < -35)/y.size > 0.9:
+                return "low temp"
+            if np.count_nonzero(y > 40)/y.size > 0.5:
+                return "high temp" 
+        elif target_type == 'wind_ms':
+            if np.count_nonzero(y < 2)/y.size > 0.9:
+                return "low speed"
+            if np.count_nonzero(y > 16)/y.size > 0.5:
+                return "high speed"
+        else: 
+            raise NotImplementedError
+        
+        return True
 
     def pixel_aggregation(self, lat, lon, dates, y):
         # aggregate target with given time_agg_window 
@@ -262,3 +325,4 @@ class DataPreLoader:
         all = target_array.shape[0]
         return positive/all
             
+    

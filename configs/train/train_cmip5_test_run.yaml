@@ -14,6 +14,12 @@ start_time: '2006-02-02'
 end_time: '2009-02-02'
 start_of_test: '2007-03-03'
 
+spatial_crop: true
+lat_min: 30
+lat_max: 50
+lon_min: -30
+lon_max: 40
+
 batch_size: 5
 learning_rate: 0.009
 weight_decay: 0.0001

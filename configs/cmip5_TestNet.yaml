@@ -6,7 +6,7 @@ defaults:
 
 experiment_name: cmip5_reg_GhostWindNet27x47
 project_name: Wind-speed-regression
-target_type: wind_ms 
+target_type: temp_c 
 cmip_type: CMIP6 
 
 model_name: GhostWindNet27      # {name}{time_window}x{half_side_size}

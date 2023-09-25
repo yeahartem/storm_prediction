@@ -88,7 +88,6 @@ def train_regression(cfg: DictConfig) -> None:
                          profiler='simple',
                          )   
     log_config(cfg)
-    # log_model_arch(cfg)
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
     
