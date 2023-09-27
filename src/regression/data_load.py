@@ -212,7 +212,6 @@ class DataPreLoader:
             total += 1
         logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped {drop_dict}")
         logging.info(f"Stations finally: {total}")
-
         target_array = np.concatenate(targets_list, axis=1)
         del targets_list
         target_array = target_array[:, ::self.cfg.train.time_freq]

@@ -250,9 +250,9 @@ def prepare_cmip(cfg: DictConfig):
     
     #save cleaned target data
     if cfg.process.make_cleaned_weather_data:
-        start_time = time.process_time()
-        clean_weather_data_RU(cfg.raw.path_to_weather_stations_data)
-        logging.info(f"Ru data clean took {time.process_time() - start_time} seconds")
+        # start_time = time.process_time()
+        # clean_weather_data_RU(cfg.raw.path_to_weather_stations_data)
+        # logging.info(f"Ru data clean took {time.process_time() - start_time} seconds")
         start_time = time.process_time()
         clean_weather_data_WORLD(cfg.raw.path_to_world_weather_stations_data)
         logging.info(f"World data clean took {time.process_time() - start_time} seconds")

@@ -152,7 +152,7 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
 
 def filter_lat_lon(stations_df, cfg):
     lat_min, lat_max, lon_min, lon_max = cfg.process.coords.lat_min, cfg.process.coords.lat_max, cfg.process.coords.lon_min, cfg.process.coords.lon_max
-    return stations_df.filter(pl.any((pl.col('lat') >= lat_min) & (pl.col('lat') <= lat_max) & (pl.col('lon') <= lon_max) & (pl.col('lon') >= lon_min)))
+    return stations_df.filter((pl.col('lat') >= lat_min) & (pl.col('lat') <= lat_max) & (pl.col('lon') <= lon_max) & (pl.col('lon') >= lon_min))
 
 
 def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
@@ -188,13 +188,15 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
 def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
 
     start_time = time.process_time()
+
     df = pl.read_parquet(cfg.raw.path_to_world_weather_stations_data.replace(".parquet", "_cleaned.parquet"), use_pyarrow=True)
     logging.info(f"Time to open world parquet {time.process_time() - start_time} seconds")
+    df = df.drop_nulls()
 
     start = cfg.process.time_limits[0]
     end = cfg.process.time_limits[1]
-    df = df.filter(pl.any(pl.col('time') >= pd.to_datetime(start)))
-    df = df.filter(pl.any(pl.col('time') <= pd.to_datetime(end)))
+    df = df.filter(pl.col('time') >= pd.to_datetime(start))
+    df = df.filter(pl.col('time') <= pd.to_datetime(end))
     df = filter_lat_lon(df, cfg)
     if len(cfg.process.target_column)>1:
         target_cols = [df[col] for col in cfg.process.target_column]
@@ -214,16 +216,16 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
 
 def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):    
 
-    pre_prepare_target_RU(cfg, dataset_xarray)
+    # pre_prepare_target_RU(cfg, dataset_xarray)
     pre_prepare_target_WORLD(cfg, dataset_xarray)
 
-    df_ru = pl.read_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'), use_pyarrow=True)
-    logging.info(f'RU len: {len(df_ru)}')
+    # df_ru = pl.read_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'), use_pyarrow=True)
+    # logging.info(f'RU len: {len(df_ru)}')
     df_world = pl.read_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp2'), use_pyarrow=True)
     logging.info(f'WORLD len: {len(df_world)}')
-
     start_time = time.process_time()
-    target_df = pl.concat([df_ru, df_world], how='diagonal')
+    # target_df = pl.concat([df_ru, df_world], how='diagonal')
+    target_df = df_world
     print(target_df)
     logging.info(f"Concat took {time.process_time() - start_time} seconds")
     target_df = target_df.drop_nulls()

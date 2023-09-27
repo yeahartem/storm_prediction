@@ -1,5 +1,5 @@
-data_dir: data/cmip5_world3/                      #Path to folder which will contain prepocessed data for further training, testing and inferring 
-prepared_target_data_name: target_pr.parquet       #Prepared target will be saved under this name
+data_dir: data/cmip6_world/                      #Path to folder which will contain prepocessed data for further training, testing and inferring 
+prepared_target_data_name: target_dew.parquet       #Prepared target will be saved under this name
 
 make_climate_data: false                         #If to prepare climate data. Turn to `false` if you already done this step and do not want to change anything regarding climate data
 make_elevation_data: false                       #If to prepare elevation data. Turn to `false` if you already done this step and do not want to change anything regarding elevation data
@@ -38,4 +38,5 @@ target_column:                                  #Target variable columns from we
 # - 'avg_temp'
 # - 'sea_level_pressure'
 # - 'station_level_pressure'
-- 'precipitation'
+# - 'precipitation'
+- 'dew_point_temp'

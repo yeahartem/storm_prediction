@@ -3,6 +3,8 @@ from scipy import interpolate
 import xarray
 from calendar import isleap
 import torch
+# import pandas as pd
+
 
 def round_to_closest_indices(arr, values):
     values = np.array(values)
@@ -271,3 +273,7 @@ def read_splits(train_path, val_path, test_path):
     return train_list, val_list, test_list
 
 
+
+
+# df = pd.read_csv("./data/weather_stations/data_meteo_full.csv", engine="pyarrow")
+# df.to_parquet("./data/weather_stations/data_meteo_full.parquet", compression=None)
