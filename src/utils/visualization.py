@@ -1,0 +1,163 @@
+import xarray as xr
+import matplotlib.pyplot as plt
+import numpy as np
+import os, sys
+import hydra
+import logging
+import glob
+from datetime import datetime
+import pandas as pd
+
+
+class PlotGenerator:
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    def load_gt_data(self, var, date, q=0.96, save_gt_plot=False):
+
+        file_paths =  glob.glob(self.cfg.eval.gt_data_folder + '/*' f'{var}_ens_mean_0.25deg*')
+        assert os.path.isfile(file_paths[0])
+        self.gt_data_arr = xr.open_mfdataset(file_paths)
+        index = date_to_index(date, self.gt_data_arr['time'].to_numpy())
+        half_w = self.cfg.train.time_agg_window//2
+        i = 1 if self.cfg.train.time_agg_window % 2 == 0 else 0
+
+        self.gt_data_arr = self.gt_data_arr.sel(time=slice(self.gt_data_arr['time'][index-half_w],
+                                                           self.gt_data_arr['time'][index+half_w - i]))
+        self.gt_data_arr = self.gt_data_arr.sel(latitude=slice(self.cfg.eval.vis_lat_min,
+                                                               self.cfg.eval.vis_lat_max))
+        self.gt_data_arr = self.gt_data_arr.sel(longitude=slice(self.cfg.eval.vis_lon_min,
+                                                               self.cfg.eval.vis_lon_max))
+
+        if save_gt_plot:
+            gt_arr = np.quantile(self.gt_data_arr[var].to_numpy(), q=q, method='weibull', axis=0)
+            self.plot_map(gt_arr, self.gt_data_arr['latitude'], self.gt_data_arr['longitude'], var)
+
+
+    def load_cmip_data(self):
+        self.time_coords = np.load(os.path.join(self.cfg.train.data_dir, 'time.npy')).astype('datetime64[D]')
+        self.lat_coords = np.load(os.path.join(self.cfg.train.data_dir, 'lat.npy'))
+        self.lon_coords = np.load(os.path.join(self.cfg.train.data_dir, 'lon.npy'))
+        var_data = np.empty(
+            (len(self.cfg.process.variables), len(self.time_coords), len(self.lat_coords), len(self.lon_coords)),
+            dtype=np.float16)
+        
+        var = self.cfg.eval.vis_cmip_var[0]
+        var_data = np.load(os.path.join(self.cfg.train.data_dir, var + f'_{self.cfg.process.precision}.npy'))
+
+        self.var_data = var_data.astype(np.float32)
+        self.crop_cmip_data()
+
+    def crop_cmip_data(self):
+        half_side = self.cfg.half_side_size
+        self.lat_min_idx = np.searchsorted(self.lat_coords, self.cfg.eval.vis_lat_min)
+        self.lat_max_idx = np.searchsorted(self.lat_coords, self.cfg.eval.vis_lat_max)
+        self.lon_min_idx = np.searchsorted(self.lon_coords, self.cfg.eval.vis_lon_min)
+        self.lon_max_idx = np.searchsorted(self.lon_coords, self.cfg.eval.vis_lon_max)
+        
+        self.lat_coords = self.lat_coords[self.lat_min_idx: self.lat_max_idx]
+        self.lon_coords = self.lon_coords[self.lon_min_idx: self.lon_max_idx]
+        logging.info(f"Lat : {min(self.lat_coords)} - {max(self.lat_coords)}, len {len(self.lat_coords)}")
+        logging.info(f"Lon: {min(self.lon_coords)} - {max(self.lon_coords)}, len {len(self.lon_coords)}")
+        self.var_data = self.var_data[:,
+                                        self.lat_min_idx: self.lat_max_idx,
+                                        self.lon_min_idx: self.lon_max_idx
+                                        ]
+
+    def get_cmip_by_date(self, date):
+        index = date_to_index(date, self.time_coords)
+        index_window = slice(index - self.cfg.train.time_agg_window//2, index + self.cfg.train.time_agg_window//2)
+        self.var_data = self.var_data[index_window, :, :]
+        self.time_coords = self.time_coords[index_window]
+        assert len(self.time_coords) == self.var_data.shape[0]
+        logging.info(f"Shape with time limits {self.var_data.shape}")
+
+
+    def resample_to_gt(self):
+        data_xr = xr.DataArray(self.var_data, 
+        coords={'time': self.time_coords, 'latitude': self.lat_coords,'longitude': self.lon_coords,}, 
+        dims=[ "time", "latitude", "longitude",])
+        new_lons = np.arange(self.gt_data_arr["longitude"].min(), self.gt_data_arr["longitude"].max(), self.cfg.eval.gt_res)
+        new_lats = np.arange(self.gt_data_arr["latitude"].min(), self.gt_data_arr["latitude"].max(), self.cfg.eval.gt_res)
+        self.data_xr_interpolated = data_xr.interp(longitude=new_lons, latitude=new_lats)
+
+
+    def plot_map(self, arr, lat, lon, name):
+        fig, ax = plt.subplots(figsize=(12, 12))
+        img = ax.imshow(arr, interpolation='nearest', extent=[lon.min(), lon.max(),
+                                                              lat.max(), lat.min()])
+        plt.gca().invert_yaxis()
+        cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
+        fig.colorbar(img, cax=cax)
+        savepath = f'{name}.png'
+        plt.savefig(savepath, dpi=200) 
+
+    def load_eval_data(self):
+        self.eval_df = pd.read_csv('out/predictions/result_world_cmip6.csv') 
+        self.eval_df = self.eval_df[self.eval_df['lat'] in slice(self.cfg.eval.vis_lat_min,
+                                                                 self.cfg.eval.vis_lat_max) ]
+        self.eval_df = self.eval_df[self.eval_df['lon'] in slice(self.cfg.eval.vis_lon_min,
+                                                                 self.cfg.eval.vis_lon_max) ]
+
+        reshaped = df_risks.prob.values.reshape(len(df_risks.lat.unique()), len(df_risks.lon.unique()), len(df_risks.timestamp.unique()))
+        data_xr = xr.DataArray(reshaped, 
+        coords={'time': np.sort(df_risks.timestamp.unique()),
+                'latitude': np.sort(df_risks.lat.unique()),
+                'longitude': np.sort(df_risks.lon.unique()),}, 
+        dims=["time", "latitude", "longitude"])
+        new_lons = np.arange(self.gt_data_arr["longitude"].min(), self.gt_data_arr["longitude"].max(), self.cfg.eval.gt_res)
+        new_lats = np.arange(self.gt_data_arr["latitude"].min(), self.gt_data_arr["latitude"].max(), self.cfg.eval.gt_res)
+        self.eval_data_xr_interpolated = data_xr.interp(lon=new_lons, lat=new_lats)
+
+
+    def plot_cmip_gt_diff(self):
+        self.load_gt_data('tn', '2018-12-12')
+        self.load_eval_data()
+        self.get_cmip_by_date('2018-12-12')
+        self.resample_to_gt()
+        cmip_arr = (self.data_xr_interpolated.data * 20.841803) +  280.37646 - 271.15
+        gt_arr = self.gt_data_arr.to_array().data[0, :, :cmip_arr.shape[1],  :cmip_arr.shape[2]]
+        cmip_arr = np.quantile(cmip_arr, q=0.96, method='weibull', axis=0)
+        gt_arr = np.quantile(gt_arr, q=0.96, method='weibull', axis=0)
+        diff = gt_arr - cmip_arr
+        self.plot_map(
+                      diff,
+                      self.gt_data_arr["latitude"][:cmip_arr.shape[0]],
+                      self.gt_data_arr["longitude"][:cmip_arr.shape[1]],
+                      'diff_cmip')
+        
+        
+    def plot_eval_gt_diff(self):
+        self.load_gt_data('tn', '2018-12-12')
+        self.load_cmip_data()
+        self.get_cmip_by_date('2018-12-12')
+        self.resample_to_gt()
+        cmip_arr = (self.data_xr_interpolated.data * 20.841803) +  280.37646 - 271.15
+        gt_arr = self.gt_data_arr.to_array().data[0, :, :cmip_arr.shape[1],  :cmip_arr.shape[2]]
+        cmip_arr = np.quantile(cmip_arr, q=0.96, method='weibull', axis=0)
+        gt_arr = np.quantile(gt_arr, q=0.96, method='weibull', axis=0)
+        diff = gt_arr - cmip_arr
+        self.plot_map(
+                      diff,
+                      self.gt_data_arr["latitude"][:cmip_arr.shape[0]],
+                      self.gt_data_arr["longitude"][:cmip_arr.shape[1]],
+                      'diff')
+
+def date_to_index(date, dates_array):
+    date = f'{date} 00:00:00'
+    date = np.datetime64(date)
+    date_index = np.searchsorted(dates_array , date)
+    return date_index
+
+
+
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_GhostWindNet27.yaml")
+def main(cfg):    
+    PT = PlotGenerator(cfg)
+    PT.plot_cmip_gt_diff()
+
+
+if __name__ == "__main__":      
+    sys.argv.append('hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}')
+    main()

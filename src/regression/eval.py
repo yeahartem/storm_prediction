@@ -77,6 +77,8 @@ class EvalDataset(torch.utils.data.Dataset):
         self.lat_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'lat.npy'))
         self.lon_coords_full = np.load(os.path.join(self.cfg.eval.data_dir, 'lon.npy'))
         self.var_data = np.empty((len(self.cfg.process.variables), len(self.time_coords_full), len(self.lat_coords_full), len(self.lon_coords_full)), dtype=np.float16)
+        
+        logging.info(f"Using vars: {self.cfg.process.variables}") 
         for i, var in enumerate(self.cfg.process.variables):
             self.var_data[i] = np.load(os.path.join(self.cfg.eval.data_dir, var + f'_{self.cfg.process.precision}.npy'))
 
@@ -136,7 +138,16 @@ class EvalDataset(torch.utils.data.Dataset):
                             slice(lat - self.cfg.half_side_size, lat + self.cfg.half_side_size + 1),
                             slice(lon - self.cfg.half_side_size, lon + self.cfg.half_side_size + 1),
                             ]
-        item = torch.from_numpy(item).to(torch.float32) #torch.float32
+        
+        time_pos_month = self.time_coords[t- self.cfg.time_window//2].astype(object).month
+        time_pos_day =  self.time_coords[t- self.cfg.time_window//2].astype(object).day
+        time_pos_day = (time_pos_month * 30.5 + time_pos_day)/365
+        time_pos_month = time_pos_month/12
+        lat_pos = self.lat_coords[lat - self.shift[0]]/90
+        lon_pos = self.lon_coords[lon - self.shift[1]]/180
+        pos = torch.tensor([time_pos_day, time_pos_month, lat_pos, lon_pos], dtype=torch.float32)
+        pos = pos.expand(self.cfg.time_window, 4)
+        item = [torch.from_numpy(item).to(torch.float32), pos]
         coord = np.array([t, lat, lon])
         return item, coord
     
@@ -180,16 +191,13 @@ def predict(model, dataset, use_elevation, batch_size=1, distributed=False, devi
         for batch in tqdm(dataloader, total=num_items_to_predict, desc="Inference"):
             data = batch[0]
             coords_idxs = batch[1]
-            logging.info(f'data {data.max()} {data.min()} {data.std()}')
+            # logging.info(f'data {data[0].max()} {data[0].min()} {data[0].std()}')
             if not distributed:
-                if use_elevation:
-                    data = [t.to(device) for t in data]
-                else:
-                    data = data.to(device)
-            prediction = model(data)[:, 0]
+                data = [t.to(device) for t in data]
+            prediction = model(data)[:, 2]
             prediction = prediction.detach().cpu()
             prediction = prediction.numpy()
-            logging.info(f'preds {prediction.max()} {prediction.min()} {prediction.std()}')
+            # logging.info(f'preds {prediction.max()} {prediction.min()} {prediction.std()}')
             predictions_list = predictions_list + list(prediction)
             coords_indxs_list.append(coords_idxs)
     logging.info("Inference finished")
@@ -234,7 +242,7 @@ def eval(cfg: DictConfig) -> None:
     plot_prediction(cfg, result_df, 1)
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_WindNet27x47.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_GhostWindNet27.yaml")
 def main(cfg: DictConfig):    
     eval(cfg)
 

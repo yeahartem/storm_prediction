@@ -250,9 +250,9 @@ class DataPreLoader:
             raise NotImplementedError
         return True
 
+
     def pixel_aggregation(self, lat, lon, dates, y):
         # aggregate target with given time_agg_window 
-
         time_positions_m = np.array([d.astype(object).month for d in self.time_coords[dates]])
         time_positions_days =  np.array([d.astype(object).day for d in self.time_coords[dates]])
         time_positions = (time_positions_m * 30.5 + time_positions_days)/365
