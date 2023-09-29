@@ -194,7 +194,7 @@ def predict(model, dataset, use_elevation, batch_size=1, distributed=False, devi
             # logging.info(f'data {data[0].max()} {data[0].min()} {data[0].std()}')
             if not distributed:
                 data = [t.to(device) for t in data]
-            prediction = model(data)[:, 2]
+            prediction = model(data)[:, 0]
             prediction = prediction.detach().cpu()
             prediction = prediction.numpy()
             # logging.info(f'preds {prediction.max()} {prediction.min()} {prediction.std()}')

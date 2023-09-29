@@ -7,7 +7,8 @@ import logging
 import glob
 from datetime import datetime
 import pandas as pd
-
+import warnings
+warnings.filterwarnings('ignore')
 
 class PlotGenerator:
 
@@ -95,54 +96,55 @@ class PlotGenerator:
 
     def load_eval_data(self):
         self.eval_df = pd.read_csv('out/predictions/result_world_cmip6.csv') 
-        self.eval_df = self.eval_df[self.eval_df['lat'] in slice(self.cfg.eval.vis_lat_min,
-                                                                 self.cfg.eval.vis_lat_max) ]
-        self.eval_df = self.eval_df[self.eval_df['lon'] in slice(self.cfg.eval.vis_lon_min,
-                                                                 self.cfg.eval.vis_lon_max) ]
+        self.eval_df = self.eval_df[self.eval_df['lat'] > self.cfg.eval.vis_lat_min]
+        self.eval_df = self.eval_df[self.eval_df['lat'] < self.cfg.eval.vis_lat_max]
+        self.eval_df = self.eval_df[self.eval_df['lon'] > self.cfg.eval.vis_lon_min]
+        self.eval_df = self.eval_df[self.eval_df['lon'] <  self.cfg.eval.vis_lon_max]
 
-        reshaped = df_risks.prob.values.reshape(len(df_risks.lat.unique()), len(df_risks.lon.unique()), len(df_risks.timestamp.unique()))
+        reshaped = self.eval_df.prediction.values.reshape(len(self.eval_df.date.unique()), len(self.eval_df.lat.unique()), len(self.eval_df.lon.unique()))
         data_xr = xr.DataArray(reshaped, 
-        coords={'time': np.sort(df_risks.timestamp.unique()),
-                'latitude': np.sort(df_risks.lat.unique()),
-                'longitude': np.sort(df_risks.lon.unique()),}, 
-        dims=["time", "latitude", "longitude"])
+                               coords={'time': np.sort(self.eval_df.date.unique()),
+                                       'latitude': np.sort(self.eval_df.lat.unique()),
+                                       'longitude': np.sort(self.eval_df.lon.unique())}, 
+                                dims=["time", "latitude", "longitude"])
+        
         new_lons = np.arange(self.gt_data_arr["longitude"].min(), self.gt_data_arr["longitude"].max(), self.cfg.eval.gt_res)
         new_lats = np.arange(self.gt_data_arr["latitude"].min(), self.gt_data_arr["latitude"].max(), self.cfg.eval.gt_res)
-        self.eval_data_xr_interpolated = data_xr.interp(lon=new_lons, lat=new_lats)
+        self.eval_data_xr_interpolated = data_xr.interp(longitude=new_lons, latitude=new_lats)[0]
 
+
+    def plot_eval_gt_diff(self):
+        self.load_gt_data('tn', '2018-06-06')
+        self.load_eval_data()
+        eval_arr = self.eval_data_xr_interpolated.data
+        gt_arr = self.gt_data_arr.to_array().data[0, :, :eval_arr.shape[0],  :eval_arr.shape[1]]
+        gt_arr = np.quantile(gt_arr, q=0.97, method='weibull', axis=0)
+        diff = gt_arr - eval_arr
+        logging.info(f"eval sum {np.nansum(np.abs(diff))}")
+        self.plot_map(
+                      diff,
+                      self.gt_data_arr["latitude"][:eval_arr.shape[0]],
+                      self.gt_data_arr["longitude"][:eval_arr.shape[1]],
+                      'diff_eval')
+        
 
     def plot_cmip_gt_diff(self):
-        self.load_gt_data('tn', '2018-12-12')
-        self.load_eval_data()
-        self.get_cmip_by_date('2018-12-12')
+        self.load_gt_data('tn', '2018-06-06')
+        self.load_cmip_data()
+        self.get_cmip_by_date('2018-06-06')
         self.resample_to_gt()
         cmip_arr = (self.data_xr_interpolated.data * 20.841803) +  280.37646 - 271.15
         gt_arr = self.gt_data_arr.to_array().data[0, :, :cmip_arr.shape[1],  :cmip_arr.shape[2]]
         cmip_arr = np.quantile(cmip_arr, q=0.96, method='weibull', axis=0)
         gt_arr = np.quantile(gt_arr, q=0.96, method='weibull', axis=0)
         diff = gt_arr - cmip_arr
+        logging.info(f"cmip sum {np.nansum(np.abs(diff))}")
+
         self.plot_map(
                       diff,
                       self.gt_data_arr["latitude"][:cmip_arr.shape[0]],
                       self.gt_data_arr["longitude"][:cmip_arr.shape[1]],
                       'diff_cmip')
-        
-        
-    def plot_eval_gt_diff(self):
-        self.load_gt_data('tn', '2018-12-12')
-        self.load_cmip_data()
-        self.get_cmip_by_date('2018-12-12')
-        self.resample_to_gt()
-        cmip_arr = (self.data_xr_interpolated.data * 20.841803) +  280.37646 - 271.15
-        gt_arr = self.gt_data_arr.to_array().data[0, :, :cmip_arr.shape[1],  :cmip_arr.shape[2]]
-        cmip_arr = np.quantile(cmip_arr, q=0.96, method='weibull', axis=0)
-        gt_arr = np.quantile(gt_arr, q=0.96, method='weibull', axis=0)
-        diff = gt_arr - cmip_arr
-        self.plot_map(
-                      diff,
-                      self.gt_data_arr["latitude"][:cmip_arr.shape[0]],
-                      self.gt_data_arr["longitude"][:cmip_arr.shape[1]],
-                      'diff')
 
 def date_to_index(date, dates_array):
     date = f'{date} 00:00:00'
@@ -156,6 +158,7 @@ def date_to_index(date, dates_array):
 def main(cfg):    
     PT = PlotGenerator(cfg)
     PT.plot_cmip_gt_diff()
+    PT.plot_eval_gt_diff()
 
 
 if __name__ == "__main__":      
