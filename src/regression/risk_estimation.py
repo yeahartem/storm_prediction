@@ -66,10 +66,8 @@ def risk_estimation(cfg: DictConfig) -> None:
     if cfg.eval.interpolation_res is not None:
         logging.info(f"Interpolating to {cfg.eval.interpolation_res} degrees resolution")
         df_risks = interpolate(df_risks, cfg)
-        
 
     logging.info(f"Preparing format for dumping")
-    
     lat_axis = np.sort(df_risks.lat.unique())
     lon_axis = np.sort(df_risks.lon.unique())
     dlat = np.unique(np.diff(lat_axis))[0]

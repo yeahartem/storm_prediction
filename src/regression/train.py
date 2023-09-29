@@ -33,7 +33,7 @@ def train_regression(cfg: DictConfig) -> None:
     logging.info(f"Starting in {os.getcwd()}")
     start_time = time.process_time()  
     os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
-    os.environ['WANDB_MODE'] = 'offline'
+    os.environ['WANDB_MODE'] = 'online'
     # os.environ['WANDB_DIR'] = '/trinity/home/v.morozov/Wind/out/wandb'
     # os.environ['WANDB_CONFIG_DIR'] = 'trinity/home/v.morozov/Wind/out/wandb'
     # os.environ['WANDB_CACHE_DIR'] = 'trinity/home/v.morozov/Wind/out/wandb'
@@ -69,11 +69,9 @@ def train_regression(cfg: DictConfig) -> None:
                          default_root_dir=default_root_dir,
                          callbacks=[lr_monitor, checkpoint_callback, SWA],
                          #performance
-                         accelerator="gpu",
+                         accelerator="cpu",
                          precision="32",
                          benchmark=True,
-                         gradient_clip_val=0.9,
-                         gradient_clip_algorithm="value",
                          #validation
                          check_val_every_n_epoch=1,
                          num_sanity_val_steps=0,
@@ -92,7 +90,7 @@ def train_regression(cfg: DictConfig) -> None:
     trainer.fit(model, dm)
     
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_TestNet.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_Baseline.yaml")
 def main(cfg: DictConfig):    
     logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
     train_regression(cfg)

@@ -114,11 +114,11 @@ class PlotGenerator:
 
 
     def plot_eval_gt_diff(self):
-        self.load_gt_data('tn', '2018-06-06')
+        self.load_gt_data('fg', '2018-06-06')
         self.load_eval_data()
         eval_arr = self.eval_data_xr_interpolated.data
         gt_arr = self.gt_data_arr.to_array().data[0, :, :eval_arr.shape[0],  :eval_arr.shape[1]]
-        gt_arr = np.quantile(gt_arr, q=0.97, method='weibull', axis=0)
+        gt_arr = np.quantile(gt_arr, q=0.85, method='weibull', axis=0)
         diff = gt_arr - eval_arr
         logging.info(f"eval sum {np.nansum(np.abs(diff))}")
         self.plot_map(
@@ -129,14 +129,15 @@ class PlotGenerator:
         
 
     def plot_cmip_gt_diff(self):
-        self.load_gt_data('tn', '2018-06-06')
+        self.load_gt_data('fg', '2018-06-06')
         self.load_cmip_data()
         self.get_cmip_by_date('2018-06-06')
         self.resample_to_gt()
-        cmip_arr = (self.data_xr_interpolated.data * 20.841803) +  280.37646 - 271.15
+        # cmip_arr = (self.data_xr_interpolated.data * 20.841803) +  280.37646 - 271.15
+        cmip_arr = (self.data_xr_interpolated.data * 4.7078495) +  8.934635
         gt_arr = self.gt_data_arr.to_array().data[0, :, :cmip_arr.shape[1],  :cmip_arr.shape[2]]
-        cmip_arr = np.quantile(cmip_arr, q=0.96, method='weibull', axis=0)
-        gt_arr = np.quantile(gt_arr, q=0.96, method='weibull', axis=0)
+        cmip_arr = np.quantile(cmip_arr, q=0.85, method='weibull', axis=0)
+        gt_arr = np.quantile(gt_arr, q=0.85, method='weibull', axis=0)
         diff = gt_arr - cmip_arr
         logging.info(f"cmip sum {np.nansum(np.abs(diff))}")
 

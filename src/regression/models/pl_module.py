@@ -20,8 +20,12 @@ class WindNetPL(pl.LightningModule):
         super().__init__()     
         self.cfg = cfg        
         self.run_dir = run_dir
-        if cfg.model_name=="WindNet27x47":
-             self.net = WindNet27x47()
+        if cfg.model_name=="BaselineLinear":
+             self.net = BaselineLinear()
+        elif cfg.model_name=="BaselineQT":
+            self.net = BaselineQT()
+        elif cfg.model_name=="BaselineQW":
+            self.net = BaselineQW()
         elif cfg.model_name=="GhostWindNet27":
             self.net = GhostWindNet27()
         else:

@@ -56,9 +56,9 @@ class DataPreLoader:
         self.lon_coords = np.load(os.path.join(self.cfg.train.data_dir, 'lon.npy'))
 
         var_data = np.empty(
-            (len(self.cfg.process.variables), len(self.time_coords), len(self.lat_coords), len(self.lon_coords)),
+            (len(self.cfg.train.variables), len(self.time_coords), len(self.lat_coords), len(self.lon_coords)),
             dtype=dtype)
-        for i, var in enumerate(self.cfg.process.variables):
+        for i, var in enumerate(self.cfg.train.variables):
             var_data[i] = np.load(os.path.join(self.cfg.train.data_dir, var + f'_{self.cfg.process.precision}.npy'))
         logging.info(f"CMIP data loaded {var_data.shape}")
 
@@ -232,9 +232,10 @@ class DataPreLoader:
     def stations_filter(self, lat, lon, dates, y, target_type): 
         if len(y) < max(self.cfg.train.time_agg_window, self.cfg.time_window):
             return "too short"
-        if lat < self.lat_min_idx or lat > self.lat_max_idx or lon < self.lon_min_idx or lon > self.lon_max_idx:
-            # print(f"drop {lat, lon}")
-            return "out of train area"
+        if self.cfg.train.spatial_crop: 
+            if lat < self.lat_min_idx or lat > self.lat_max_idx or lon < self.lon_min_idx or lon > self.lon_max_idx:
+                # print(f"drop {lat, lon}")
+                return "out of train area"
 
         if target_type == 'temp_c':
             if np.count_nonzero(y < -35)/y.size > 0.9:
@@ -319,7 +320,7 @@ class DataPreLoader:
         logging.info(f"Target min: {self.train_data_idxs[7, :].min()}, target max: {self.train_data_idxs[7, :].max()}")
         logging.info(f"Target mean: {self.train_data_idxs[7, :].mean()}, target std: {self.train_data_idxs[7, :].std()}")
         logging.info(f"Balance train: {self.get_class_balance(self.train_data_idxs[7, :])}, balance test:{self.get_class_balance(self.test_data_idxs[7, :])}")
-        for i, var in enumerate(self.cfg.process.variables):
+        for i, var in enumerate(self.cfg.train.variables):
             logging.info(f"{var} mean: {self.dataset_torch[i].mean()}, std: {self.dataset_torch[i].std()}")
 
     def get_class_balance(self, target_array):
