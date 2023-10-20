@@ -27,14 +27,3 @@ path_to_predictions: out/predictions/result_world_cmip6.csv
 output_file: out/predictions/output_file_world_cmip6      #format is chosen from `save_kml` boolean attribute
 cmip_type: CMIP6
 
-#visialisation
-vis_cmip_var:
-- sfcWindmax
-
-gt_data_folder: data/dataset-insitu-gridded-observations-europe-0ddfc2ac-7eb7-48af-b527-bdd5be538903/
-
-vis_lat_min: 39.5
-vis_lat_max: 70.5
-vis_lon_min: -8.5
-vis_lon_max: 42.5
-gt_res: 0.25

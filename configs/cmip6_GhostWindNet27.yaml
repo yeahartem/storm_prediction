@@ -3,6 +3,7 @@ defaults:
   - process: cmip6_dataset        # dataset processing configuration
   - train: train_cmip6_temp     # train configuration and data load configuration
   - eval: test_GhostWindNet_temp
+  - visual: eobs_cmip.yaml
 
 experiment_name: cmip6_GhostWindNet47x27_temp_3vars_multi_4pos
 project_name: Wind-speed-regression
