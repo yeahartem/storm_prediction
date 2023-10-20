@@ -2,34 +2,39 @@ import xarray as xr
 import matplotlib.pyplot as plt
 import numpy as np
 import os, sys
+sys.path.append('/app/wind')
 import hydra
 import logging
 import glob
 from datetime import datetime
 import pandas as pd
 import warnings
+from src.utils.norm_values import *
 warnings.filterwarnings('ignore')
 
 class PlotGenerator:
 
     def __init__(self, cfg):
         self.cfg = cfg
+        if not os.path.exists(cfg.visual.plots_dir):
+            os.makedirs(cfg.visual.plots_dir)
 
-    def load_gt_data(self, var, date, q=0.96, save_gt_plot=False):
+    def load_gt_data(self, var, date, save_gt_plot=False):
 
-        file_paths =  glob.glob(self.cfg.eval.gt_data_folder + '/*' f'{var}_ens_mean_0.25deg*')
+        file_paths =  glob.glob(self.cfg.visual.gt_data_folder + '/*' f'{var}_ens_mean_0.25deg*')
         assert os.path.isfile(file_paths[0])
         self.gt_data_arr = xr.open_mfdataset(file_paths)
         index = date_to_index(date, self.gt_data_arr['time'].to_numpy())
         half_w = self.cfg.train.time_agg_window//2
         i = 1 if self.cfg.train.time_agg_window % 2 == 0 else 0
+        q = self.cfg.visual.quantile_gt
 
         self.gt_data_arr = self.gt_data_arr.sel(time=slice(self.gt_data_arr['time'][index-half_w],
                                                            self.gt_data_arr['time'][index+half_w - i]))
-        self.gt_data_arr = self.gt_data_arr.sel(latitude=slice(self.cfg.eval.vis_lat_min,
-                                                               self.cfg.eval.vis_lat_max))
-        self.gt_data_arr = self.gt_data_arr.sel(longitude=slice(self.cfg.eval.vis_lon_min,
-                                                               self.cfg.eval.vis_lon_max))
+        self.gt_data_arr = self.gt_data_arr.sel(latitude=slice(self.cfg.visual.vis_lat_min,
+                                                               self.cfg.visual.vis_lat_max))
+        self.gt_data_arr = self.gt_data_arr.sel(longitude=slice(self.cfg.visual.vis_lon_min,
+                                                               self.cfg.visual.vis_lon_max))
 
         if save_gt_plot:
             gt_arr = np.quantile(self.gt_data_arr[var].to_numpy(), q=q, method='weibull', axis=0)
@@ -44,7 +49,7 @@ class PlotGenerator:
             (len(self.cfg.process.variables), len(self.time_coords), len(self.lat_coords), len(self.lon_coords)),
             dtype=np.float16)
         
-        var = self.cfg.eval.vis_cmip_var[0]
+        var = self.cfg.visual.vis_cmip_var
         var_data = np.load(os.path.join(self.cfg.train.data_dir, var + f'_{self.cfg.process.precision}.npy'))
 
         self.var_data = var_data.astype(np.float32)
@@ -52,10 +57,10 @@ class PlotGenerator:
 
     def crop_cmip_data(self):
         half_side = self.cfg.half_side_size
-        self.lat_min_idx = np.searchsorted(self.lat_coords, self.cfg.eval.vis_lat_min)
-        self.lat_max_idx = np.searchsorted(self.lat_coords, self.cfg.eval.vis_lat_max)
-        self.lon_min_idx = np.searchsorted(self.lon_coords, self.cfg.eval.vis_lon_min)
-        self.lon_max_idx = np.searchsorted(self.lon_coords, self.cfg.eval.vis_lon_max)
+        self.lat_min_idx = np.searchsorted(self.lat_coords, self.cfg.visual.vis_lat_min)
+        self.lat_max_idx = np.searchsorted(self.lat_coords, self.cfg.visual.vis_lat_max)
+        self.lon_min_idx = np.searchsorted(self.lon_coords, self.cfg.visual.vis_lon_min)
+        self.lon_max_idx = np.searchsorted(self.lon_coords, self.cfg.visual.vis_lon_max)
         
         self.lat_coords = self.lat_coords[self.lat_min_idx: self.lat_max_idx]
         self.lon_coords = self.lon_coords[self.lon_min_idx: self.lon_max_idx]
@@ -79,8 +84,8 @@ class PlotGenerator:
         data_xr = xr.DataArray(self.var_data, 
         coords={'time': self.time_coords, 'latitude': self.lat_coords,'longitude': self.lon_coords,}, 
         dims=[ "time", "latitude", "longitude",])
-        new_lons = np.arange(self.gt_data_arr["longitude"].min(), self.gt_data_arr["longitude"].max(), self.cfg.eval.gt_res)
-        new_lats = np.arange(self.gt_data_arr["latitude"].min(), self.gt_data_arr["latitude"].max(), self.cfg.eval.gt_res)
+        new_lons = np.arange(self.gt_data_arr["longitude"].min(), self.gt_data_arr["longitude"].max(), self.cfg.visual.gt_res)
+        new_lats = np.arange(self.gt_data_arr["latitude"].min(), self.gt_data_arr["latitude"].max(), self.cfg.visual.gt_res)
         self.data_xr_interpolated = data_xr.interp(longitude=new_lons, latitude=new_lats)
 
 
@@ -91,15 +96,15 @@ class PlotGenerator:
         plt.gca().invert_yaxis()
         cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
         fig.colorbar(img, cax=cax)
-        savepath = f'{name}.png'
+        savepath = os.path.join(self.cfg.visual.plots_dir, f'{name}.png')
         plt.savefig(savepath, dpi=200) 
 
     def load_eval_data(self):
-        self.eval_df = pd.read_csv('out/predictions/result_world_cmip6.csv') 
-        self.eval_df = self.eval_df[self.eval_df['lat'] > self.cfg.eval.vis_lat_min]
-        self.eval_df = self.eval_df[self.eval_df['lat'] < self.cfg.eval.vis_lat_max]
-        self.eval_df = self.eval_df[self.eval_df['lon'] > self.cfg.eval.vis_lon_min]
-        self.eval_df = self.eval_df[self.eval_df['lon'] <  self.cfg.eval.vis_lon_max]
+        self.eval_df = pd.read_csv(self.cfg.visual.path_to_predictions) 
+        self.eval_df = self.eval_df[self.eval_df['lat'] > self.cfg.visual.vis_lat_min]
+        self.eval_df = self.eval_df[self.eval_df['lat'] < self.cfg.visual.vis_lat_max]
+        self.eval_df = self.eval_df[self.eval_df['lon'] > self.cfg.visual.vis_lon_min]
+        self.eval_df = self.eval_df[self.eval_df['lon'] <  self.cfg.visual.vis_lon_max]
 
         reshaped = self.eval_df.prediction.values.reshape(len(self.eval_df.date.unique()), len(self.eval_df.lat.unique()), len(self.eval_df.lon.unique()))
         data_xr = xr.DataArray(reshaped, 
@@ -108,17 +113,17 @@ class PlotGenerator:
                                        'longitude': np.sort(self.eval_df.lon.unique())}, 
                                 dims=["time", "latitude", "longitude"])
         
-        new_lons = np.arange(self.gt_data_arr["longitude"].min(), self.gt_data_arr["longitude"].max(), self.cfg.eval.gt_res)
-        new_lats = np.arange(self.gt_data_arr["latitude"].min(), self.gt_data_arr["latitude"].max(), self.cfg.eval.gt_res)
+        new_lons = np.arange(self.gt_data_arr["longitude"].min(), self.gt_data_arr["longitude"].max(), self.cfg.visual.gt_res)
+        new_lats = np.arange(self.gt_data_arr["latitude"].min(), self.gt_data_arr["latitude"].max(), self.cfg.visual.gt_res)
         self.eval_data_xr_interpolated = data_xr.interp(longitude=new_lons, latitude=new_lats)[0]
 
 
     def plot_eval_gt_diff(self):
-        self.load_gt_data('fg', '2018-06-06')
+        self.load_gt_data(self.cfg.visual.vis_eobs_var, self.cfg.visual.timestamp)
         self.load_eval_data()
         eval_arr = self.eval_data_xr_interpolated.data
         gt_arr = self.gt_data_arr.to_array().data[0, :, :eval_arr.shape[0],  :eval_arr.shape[1]]
-        gt_arr = np.quantile(gt_arr, q=0.85, method='weibull', axis=0)
+        gt_arr = np.quantile(gt_arr, q=self.cfg.visual.quantile_gt, method='weibull', axis=0)
         diff = gt_arr - eval_arr
         logging.info(f"eval sum {np.nansum(np.abs(diff))}")
         self.plot_map(
@@ -129,15 +134,27 @@ class PlotGenerator:
         
 
     def plot_cmip_gt_diff(self):
-        self.load_gt_data('fg', '2018-06-06')
+        self.load_gt_data(self.cfg.visual.vis_eobs_var, self.cfg.visual.timestamp)
         self.load_cmip_data()
-        self.get_cmip_by_date('2018-06-06')
+        self.get_cmip_by_date(self.cfg.visual.timestamp)
         self.resample_to_gt()
+
+        variables_order_cmip = self.cfg.process.variables
+        if self.cfg.cmip_type == "CMIP6":
+            mean = mean_channels_cmip6[variables_order_cmip.index(self.cfg.visual.vis_cmip_var)]
+            std = std_channels_cmip6[variables_order_cmip.index(self.cfg.visual.vis_cmip_var)]
+        elif self.cfg.cmip_type == "CMIP5":
+            mean = mean_channels_cmip5[variables_order_cmip.index(self.cfg.visual.vis_cmip_var)]
+            std = std_channels_cmip5[variables_order_cmip.index(self.cfg.visual.vis_cmip_var)]
+        else:
+            raise NotImplementedError(f"No norm values for {self.cfg.cmip_type}")
         # cmip_arr = (self.data_xr_interpolated.data * 20.841803) +  280.37646 - 271.15
-        cmip_arr = (self.data_xr_interpolated.data * 4.7078495) +  8.934635
+        cmip_arr = (self.data_xr_interpolated.data * std) + mean
+        if (self.cfg.visual.vis_cmip_var == "tasmax") or (self.cfg.visual.vis_cmip_var == "tasmin"):
+            cmip_arr = cmip_arr - 273,15
         gt_arr = self.gt_data_arr.to_array().data[0, :, :cmip_arr.shape[1],  :cmip_arr.shape[2]]
-        cmip_arr = np.quantile(cmip_arr, q=0.85, method='weibull', axis=0)
-        gt_arr = np.quantile(gt_arr, q=0.85, method='weibull', axis=0)
+        cmip_arr = np.quantile(cmip_arr, q=self.cfg.visual.quantile_cmip, method='weibull', axis=0)
+        gt_arr = np.quantile(gt_arr, q=self.cfg.visual.quantile_gt, method='weibull', axis=0)
         diff = gt_arr - cmip_arr
         logging.info(f"cmip sum {np.nansum(np.abs(diff))}")
 
