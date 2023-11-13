@@ -42,6 +42,7 @@ def train_regression(cfg: DictConfig) -> None:
     os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
     torch.set_float32_matmul_precision('high')
     run_dir = get_rundir_name()  
+    wandb.init()
     wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
                                project=cfg.project_name,
                                name=cfg.experiment_name,
