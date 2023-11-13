@@ -1,5 +1,5 @@
 paths_to_climate_files_folders: 
-- 'data/cmip5_world2'
+- 'data/cmip/MRI_100km'
 path_to_elevation: 'data/elevation.nc'
 
 path_to_weather_stations_data: "data/weatherstation_data/data_meteo_full.parquet"
