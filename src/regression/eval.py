@@ -73,7 +73,7 @@ class DataLoader:
         """Generate items for inference"""
         for index in np.ndindex(self.var_data_blocks.shape[0], self.var_data_blocks.shape[1], self.var_data_blocks.shape[2]):
             item = self.var_data_blocks[index[0], index[1], index[2]]
-            item = torch.from_numpy(item).to(torch.float16) #torch.float32
+            item = torch.from_numpy(item).to(torch.float32) #torch.float16 для работы на ГПУ (GPU) с методом half()
             item = item.unsqueeze(0)
             yield item, [self.lat_coords[index[0]], self.lon_coords[index[1]], self.time_coords[index[2]]] 
 
@@ -91,7 +91,8 @@ class DataLoader:
 
 
 def load_model(cfg: DictConfig):
-    return WindNetPL.load_from_checkpoint(cfg.path_to_checkpoint, cfg=cfg).half().eval()
+    return WindNetPL.load_from_checkpoint(cfg.path_to_checkpoint, cfg=cfg, map_location=torch.device('cpu')).eval()
+    # return WindNetPL.load_from_checkpoint(cfg.path_to_checkpoint, cfg=cfg).half().eval()
 
 def predict(model, DL):    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

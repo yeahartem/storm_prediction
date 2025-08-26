@@ -45,8 +45,8 @@ variables:
 - tasmin
 
 time_limits:
-- '2024-01-01'
-- '2024-06-01'
+- '2020-01-01'
+- '2020-06-01'
 start_of_test: False
 
 wind_risk_threshold: 20
