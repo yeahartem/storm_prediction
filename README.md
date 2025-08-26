@@ -1,3 +1,14 @@
+# Reproducibility:
+```
+conda env create -f environments\pytorch1.13.1_cuda116\environment.yml
+conda activate wind
+
+pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 --extra-index-url https://download.pytorch.org/whl/cu116
+
+python -c "import torch; print(torch.cuda.is_available())"
+```
+Should return True
+
 # Data preparation:
 ```
 python preprocess.py --config-path <PATH TO FOLDER WITH CONFIGS> --config-name <CONFIG NAME>
