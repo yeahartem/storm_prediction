@@ -62,13 +62,13 @@ def train_regression(cfg: DictConfig) -> None:
     default_root_dir = run_dir
     checkpoint_loc = run_dir
     checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
-    SWA = StochasticWeightAveraging(swa_lrs=0.004, swa_epoch_start=0.8, annealing_epochs=6)
+    # SWA = StochasticWeightAveraging(swa_lrs=0.004, swa_epoch_start=0.8, annealing_epochs=6)
 
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
 
     trainer = pl.Trainer(max_epochs=cfg.train.max_epoch,
                          default_root_dir=default_root_dir,
-                         callbacks=[lr_monitor, checkpoint_callback, SWA],
+                         callbacks=[lr_monitor, checkpoint_callback],
                          #performance
                          accelerator="cpu",
                          precision="32",
