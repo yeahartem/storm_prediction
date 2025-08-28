@@ -17,6 +17,9 @@ import time
 from pytorch_lightning.callbacks import LearningRateMonitor, StochasticWeightAveraging, ModelCheckpoint
 from pytorch_lightning.utilities import rank_zero_only
 
+# torch.backends.cudnn.benchmark = False
+# torch.backends.cudnn.deterministic = True
+
 def get_rundir_name() -> str:
     now = datetime.now()
     return str(f'out/{now:%Y-%m-%d}/{now:%H-%M-%S}')
@@ -70,8 +73,8 @@ def train_regression(cfg: DictConfig) -> None:
                          default_root_dir=default_root_dir,
                          callbacks=[lr_monitor, checkpoint_callback],
                          #performance
-                         accelerator="cpu",
-                         precision="32",
+                         accelerator="gpu",
+                         precision="16-mixed", # 32 - взяли 16-mixed чтобы не было ошибки из-за недостатка памяти
                          benchmark=True,
                          #validation
                          check_val_every_n_epoch=1,

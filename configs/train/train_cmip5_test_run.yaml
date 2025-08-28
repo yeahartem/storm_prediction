@@ -8,7 +8,7 @@ time_freq: 14         # get sample from target every {time_freq} days
 target_threshold: 3
 
 data_dir: data/cmip5_world/      # directory to get climate files for training
-target_data_file: target_pr.parquet  # target data file in data_dir for training
+target_data_file: target.parquet  # target data file in data_dir for training
        
 start_time: '2006-02-02'
 end_time: '2010-02-02'
@@ -33,7 +33,7 @@ optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
 loss_name: 'MSELoss'
 
-num_workers: 8
+num_workers: 0
 gpu_num: 1
 distributed: false
 num_nodes: 1

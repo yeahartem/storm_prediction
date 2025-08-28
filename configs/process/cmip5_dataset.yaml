@@ -1,11 +1,11 @@
-data_dir: data/cmip5_world3/                      #Path to folder which will contain prepocessed data for further training, testing and inferring 
+data_dir: data/cmip5_world/                      #Path to folder which will contain prepocessed data for further training, testing and inferring 
 prepared_target_data_name: target.parquet       #Prepared target will be saved under this name
 
 make_climate_data: true                         #If to prepare climate data. Turn to `false` if you already done this step and do not want to change anything regarding climate data
-make_elevation_data: true                       #If to prepare elevation data. Turn to `false` if you already done this step and do not want to change anything regarding elevation data
+make_elevation_data: false                       #If to prepare elevation data. Turn to `false` if you already done this step and do not want to change anything regarding elevation data
 make_normalization: true                        #If to make normalization for climate and elevation. !Pay attention to saved_normalized and precision!
-make_cleaned_weather_data: true                 #If to pre-prepare target data cleaning - data types
-make_target: true                               #If to assemble target data. Turn `false` this and `make_cleaned_weather_data` if you do not want to change anything regarding target data
+make_cleaned_weather_data: false                 #If to pre-prepare target data cleaning - data types
+make_target: false                               #If to assemble target data. Turn `false` this and `make_cleaned_weather_data` if you do not want to change anything regarding target data
 
 load_normalization: false                        #!Recommended to set True!If to load pre-computed means and stds for variables
 
@@ -25,7 +25,6 @@ max_height: 800                                 #Weather station max height to b
 variables:                                      #CMIP variable names to use
 - sfcWindmax
 - pr
-- sfcWindmax
 - tasmax
 - tasmin
 
