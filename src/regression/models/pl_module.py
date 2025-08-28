@@ -11,6 +11,8 @@ import torch.nn as nn
 import numpy as np
 from src.regression.models.models import *
 from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, get_outliers_p
+from denseweight import DenseLoss
+import logging
 
 
 class WindNetPL(pl.LightningModule):
@@ -43,6 +45,9 @@ class WindNetPL(pl.LightningModule):
                 self.criterion = torch.nn.MSELoss()
             elif cfg.loss_name=='L1Loss':
                 self.criterion = torch.nn.L1Loss()
+            elif cfg.loss_name=='DenseLoss':
+                self.criterion = DenseLoss(alpha=cfg.get('dense_alpha', 1.0), beta=cfg.get('dense_beta', 1.0))
+                logging.info(f"Using DenseLoss with alpha={self.criterion.alpha} and beta={self.criterion.beta}")
             else:
                 raise NotImplementedError(f'Criterion {cfg.loss_name} not found')
         

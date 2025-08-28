@@ -51,7 +51,7 @@ max_epoch: 5
 
 optimizer_name: 'Adam'
 scheduler_name: 'OneCycleLR'
-loss_name: 'MSELoss'
+loss_name: 'DenseLoss'
 eval: false
 
 num_workers: 4
@@ -61,3 +61,7 @@ num_nodes: 1
 strategy: 'ddp'
 
 log_every_n_steps: 100
+
+# Параметры для DenseLoss
+dense_alpha: 1.0
+dense_beta: 4.0 # Рекомендованное значение для начала
