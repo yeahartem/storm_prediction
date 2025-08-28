@@ -64,12 +64,42 @@ def extrect_quadrant_borders(quadrants, half_side_size):
 
 
 def assemble_padded_map(quadrants, q_borders, half_side_size):
+    # Ensure all parts being concatenated along latitude have matching longitude width
     try:
-        column_1 = np.concatenate((q_borders['3_bot'].reindex(lat=list(reversed(q_borders['3_bot'].lat))), quadrants[2], quadrants[1], q_borders['0_top'].reindex(lat=list(reversed(q_borders['0_top'].lat)))), axis=-2)
-        column_2 = np.concatenate((q_borders['2_bot'].reindex(lat=list(reversed(q_borders['2_bot'].lat))), quadrants[3], quadrants[0], q_borders['1_top'].reindex(lat=list(reversed(q_borders['1_top'].lat)))), axis=-2)
+        col1_parts = [
+            q_borders['3_bot'].reindex(lat=list(reversed(q_borders['3_bot'].lat))),
+            quadrants[2],
+            quadrants[1],
+            q_borders['0_top'].reindex(lat=list(reversed(q_borders['0_top'].lat)))
+        ]
+        col2_parts = [
+            q_borders['2_bot'].reindex(lat=list(reversed(q_borders['2_bot'].lat))),
+            quadrants[3],
+            quadrants[0],
+            q_borders['1_top'].reindex(lat=list(reversed(q_borders['1_top'].lat)))
+        ]
     except AttributeError:
-        column_1 = np.concatenate((np.flip(q_borders['3_bot'], axis=-2), quadrants[2], quadrants[1], np.flip(q_borders['0_top'], axis=-2)), axis=-2)
-        column_2 = np.concatenate((np.flip(q_borders['2_bot'], axis=-2), quadrants[3], quadrants[0], np.flip(q_borders['1_top'], axis=-2)), axis=-2)
+        col1_parts = [
+            np.flip(q_borders['3_bot'], axis=-2),
+            quadrants[2],
+            quadrants[1],
+            np.flip(q_borders['0_top'], axis=-2)
+        ]
+        col2_parts = [
+            np.flip(q_borders['2_bot'], axis=-2),
+            quadrants[3],
+            quadrants[0],
+            np.flip(q_borders['1_top'], axis=-2)
+        ]
+
+    # Align widths (lon dimension) within each column to handle odd grid sizes
+    min_w_col1 = min([p.shape[-1] for p in col1_parts])
+    min_w_col2 = min([p.shape[-1] for p in col2_parts])
+    col1_parts = [p[..., :min_w_col1] for p in col1_parts]
+    col2_parts = [p[..., :min_w_col2] for p in col2_parts]
+
+    column_1 = np.concatenate(col1_parts, axis=-2)
+    column_2 = np.concatenate(col2_parts, axis=-2)
     column_0 = column_2[..., :, -half_side_size:]
     column_3 = column_1[..., :, :half_side_size]
 
@@ -86,11 +116,39 @@ def make_padding_torch(data, half_side_size):
 
 def assemble_padded_map_torch(quadrants, q_borders, half_side_size):
     try:
-        column_1 = torch.concatenate((q_borders['3_bot'].reindex(lat=list(reversed(q_borders['3_bot'].lat))), quadrants[2], quadrants[1], q_borders['0_top'].reindex(lat=list(reversed(q_borders['0_top'].lat)))), dims=(-2,))
-        column_2 = torch.concatenate((q_borders['2_bot'].reindex(lat=list(reversed(q_borders['2_bot'].lat))), quadrants[3], quadrants[0], q_borders['1_top'].reindex(lat=list(reversed(q_borders['1_top'].lat)))), dims=(-2,))
+        col1_parts = [
+            q_borders['3_bot'].reindex(lat=list(reversed(q_borders['3_bot'].lat))),
+            quadrants[2],
+            quadrants[1],
+            q_borders['0_top'].reindex(lat=list(reversed(q_borders['0_top'].lat)))
+        ]
+        col2_parts = [
+            q_borders['2_bot'].reindex(lat=list(reversed(q_borders['2_bot'].lat))),
+            quadrants[3],
+            quadrants[0],
+            q_borders['1_top'].reindex(lat=list(reversed(q_borders['1_top'].lat)))
+        ]
     except AttributeError:
-        column_1 = torch.concatenate((torch.flip(q_borders['3_bot'], dims=(-2,)), quadrants[2], quadrants[1], torch.flip(q_borders['0_top'], dims=(-2,))), dim=-2)
-        column_2 = torch.concatenate((torch.flip(q_borders['2_bot'], dims=(-2,)), quadrants[3], quadrants[0], torch.flip(q_borders['1_top'], dims=(-2,))), dim=-2)
+        col1_parts = [
+            torch.flip(q_borders['3_bot'], dims=(-2,)),
+            quadrants[2],
+            quadrants[1],
+            torch.flip(q_borders['0_top'], dims=(-2,))
+        ]
+        col2_parts = [
+            torch.flip(q_borders['2_bot'], dims=(-2,)),
+            quadrants[3],
+            quadrants[0],
+            torch.flip(q_borders['1_top'], dims=(-2,))
+        ]
+
+    min_w_col1 = min([p.shape[-1] for p in col1_parts])
+    min_w_col2 = min([p.shape[-1] for p in col2_parts])
+    col1_parts = [p[..., :min_w_col1] for p in col1_parts]
+    col2_parts = [p[..., :min_w_col2] for p in col2_parts]
+
+    column_1 = torch.concatenate(col1_parts, dim=-2)
+    column_2 = torch.concatenate(col2_parts, dim=-2)
     column_0 = column_2[..., :, -half_side_size:]
     column_3 = column_1[..., :, :half_side_size]
 

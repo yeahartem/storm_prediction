@@ -6,7 +6,7 @@ defaults:
   - visual: eobs_cmip.yaml
 
 experiment_name: cmip6_GhostWindNet47x27_temp_3vars_multi_4pos
-project_name: Wind-speed-regression
+project_name: wind-speed-regression
 target_type: wind_ms #*
 cmip_type: CMIP6 #*
 

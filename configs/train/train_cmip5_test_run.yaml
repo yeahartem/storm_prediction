@@ -1,4 +1,4 @@
-model_name: WindNet27x47 # have no effect
+model_name: WindNet27x47
 make_tmp_target_file: False
 
 use_elevation: false
@@ -7,13 +7,17 @@ time_agg_window: 28   # range in days, used to calculate maximum for every day o
 time_freq: 14         # get sample from target every {time_freq} days
 target_threshold: 3
 
-data_dir: data/cmip5_world3/      # directory to get climate files for training
+data_dir: data/cmip5_world/      # directory to get climate files for training
 target_data_file: target_pr.parquet  # target data file in data_dir for training
        
 start_time: '2006-02-02'
 end_time: '2010-02-02'
 start_of_test: '2008-03-03'
 
+variables:                                      #CMIP variable names to use
+- sfcWindmax
+- tasmax
+- tasmin
 spatial_crop: true
 lat_min: 30
 lat_max: 50

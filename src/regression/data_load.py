@@ -169,7 +169,7 @@ class DataPreLoader:
         target_df = (target_df
                     .lazy()        
                     .sort("time")
-                    .groupby(["lat", "lon", "time"])
+                    .group_by(["lat", "lon", "time"])
                     .agg(
                         [
                          polars.col('y').quantile(0.65).alias("y"),
@@ -179,7 +179,7 @@ class DataPreLoader:
         target_df = (target_df
                     .lazy()        
                     .sort("time")
-                    .groupby(["lat", "lon"])
+                    .group_by(["lat", "lon"])
                     .agg(
                         [
                          polars.col("time"),

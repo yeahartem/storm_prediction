@@ -7,7 +7,7 @@ import logging
 import hydra
 from omegaconf import DictConfig, OmegaConf, ListConfig
 from src.data_assemble.assemble_target import clean_weather_data_RU, clean_weather_data_WORLD, make_target
-import time
+import time as t
 from datetime import datetime
 from src.utils.norm_values import mean_channels_cmip6, std_channels_cmip6, mean_channels_cmip5, std_channels_cmip5
 import warnings
@@ -93,7 +93,15 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
         data_arr = xr.open_mfdataset(file_paths, preprocess=process_coords, parallel=True, drop_variables=['height'])
     
     if time_range:
-        data_arr = data_arr.sel(time=slice(time_range[0], time_range[1]))
+        candidate = data_arr.sel(time=slice(time_range[0], time_range[1]))
+        try:
+            has_time = ('time' in candidate.coords) and (candidate.sizes.get('time', 0) > 0)
+        except Exception:
+            has_time = False
+        if has_time:
+            data_arr = candidate
+        else:
+            logging.warning(f"Requested time_limits {cfg.process.get('time_limits')} yield empty selection; using full available time range.")
     data_arr.coords['lon'] = (data_arr.coords['lon'] + 180) % 360 - 180
     data_arr = data_arr.sortby(data_arr.lon)
     if cfg.process.spatial_crop:
@@ -137,13 +145,41 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
             np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data.astype(dtype))
         else:
             np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data_arr[var].data.astype(dtype))
-        time = data_arr[var]["time"].to_numpy()       
-        lat = data_arr[var]["lat"].to_numpy()
-        lon = data_arr[var]["lon"].to_numpy()
+        # Retrieve coordinates robustly (dataset-level first, then variable-level), and log safely
+        def _get_coord_values(ds, var_da, name_options):
+            for name in name_options:
+                if name in ds.coords:
+                    try:
+                        values = ds.coords[name].to_numpy()
+                    except Exception:
+                        values = np.asarray(ds.coords[name].values)
+                    return values
+            for name in name_options:
+                if name in var_da.coords:
+                    try:
+                        values = var_da[name].to_numpy()
+                    except Exception:
+                        values = np.asarray(var_da[name].values)
+                    return values
+            return np.array([])
+
+        time = _get_coord_values(data_arr, data_arr[var], ["time"])      
+        lat = _get_coord_values(data_arr, data_arr[var], ["lat", "latitude", "y"]) 
+        lon = _get_coord_values(data_arr, data_arr[var], ["lon", "longitude", "x"]) 
+
         np.save(os.path.join(cfg.process.data_dir, "time.npy"), time)
         np.save(os.path.join(cfg.process.data_dir, "lat.npy"), lat)
         np.save(os.path.join(cfg.process.data_dir, "lon.npy"), lon)
-        logging.info(f"Coords saved: time {time.min()}-{time.max()}, lat {lat.min()}-{lat.max()} step {lat[0]-lat[1]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
+
+        # Safe logging without reductions on empty arrays
+        time_str = "EMPTY" if time.size == 0 else f"{time.min()}-{time.max()}"
+        lat_str = "EMPTY" if lat.size == 0 else f"{lat.min()}-{lat.max()}"
+        lon_str = "EMPTY" if lon.size == 0 else f"{lon.min()}-{lon.max()}"
+        lat_step = "N/A" if lat.size < 2 else f"{lat[1] - lat[0]}"
+        lon_step = "N/A" if lon.size < 2 else f"{lon[1] - lon[0]}"
+        logging.info(
+            f"Coords saved: time {time_str}, lat {lat_str} step {lat_step}, lon {lon_str}  step {lon_step} "
+        )
     return mean, std
 
 def elevation_to_npy(file: str, cfg, save: bool = True):
@@ -180,11 +216,24 @@ def elevation_to_npy(file: str, cfg, save: bool = True):
             np.save(os.path.join(cfg.process.data_dir, f"elev_{cfg.process.precision}.npy"), data.astype(dtype))
         else:
             np.save(os.path.join(cfg.process.data_dir, f"elev_{cfg.process.precision}.npy"), data_arr[var].data.astype(dtype))
-        lat = data_arr[var]["lat"].to_numpy()
-        lon = data_arr[var]["lon"].to_numpy()
+        # Retrieve elevation coords robustly and log safely
+        try:
+            lat = data_arr[var]["lat"].to_numpy()
+        except Exception:
+            lat = np.asarray(data_arr.coords.get("lat", np.array([])))
+        try:
+            lon = data_arr[var]["lon"].to_numpy()
+        except Exception:
+            lon = np.asarray(data_arr.coords.get("lon", np.array([])))
         np.save(os.path.join(cfg.process.data_dir, "elev_lat.npy"), lat)
         np.save(os.path.join(cfg.process.data_dir, "elev_lon.npy"), lon)
-        logging.info(f"Coords saved: lat {lat.min()}-{lat.max()} step {lat[1]-lat[0]}, lon {lon.min()}-{lon.max()}  step {lon[1]-lon[0]} ")
+        lat_str = "EMPTY" if lat.size == 0 else f"{lat.min()}-{lat.max()}"
+        lon_str = "EMPTY" if lon.size == 0 else f"{lon.min()}-{lon.max()}"
+        lat_step = "N/A" if lat.size < 2 else f"{lat[1] - lat[0]}"
+        lon_step = "N/A" if lon.size < 2 else f"{lon[1] - lon[0]}"
+        logging.info(
+            f"Coords saved: lat {lat_str} step {lat_step}, lon {lon_str}  step {lon_step} "
+        )
     return mean, std
 
 
@@ -253,9 +302,9 @@ def prepare_cmip(cfg: DictConfig):
         # start_time = time.process_time()
         # clean_weather_data_RU(cfg.raw.path_to_weather_stations_data)
         # logging.info(f"Ru data clean took {time.process_time() - start_time} seconds")
-        start_time = time.process_time()
+        start_time = t.process_time()
         clean_weather_data_WORLD(cfg.raw.path_to_world_weather_stations_data)
-        logging.info(f"World data clean took {time.process_time() - start_time} seconds")
+        logging.info(f"World data clean took {t.process_time() - start_time} seconds")
 
     #save target data   
     if cfg.process.make_target:

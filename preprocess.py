@@ -8,7 +8,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf, ListConfig
 from src.data_assemble.prepare_cmip import prepare_cmip
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_GhostWindNet27.yaml")
+@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_TestNet.yaml")
 def run_prepare(cfg: DictConfig):
     prepare_cmip(cfg)
 

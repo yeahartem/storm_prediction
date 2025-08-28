@@ -102,7 +102,7 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
     df = df.collect()
     df = (df
         .lazy()
-        .groupby([pl.col("station_name"), pl.col("date")])
+        .group_by([pl.col("station_name"), pl.col("date")])
         .agg([pl.col("max_speed").max(),
               pl.col("avg_speed").mean(),
               pl.col("avg_temp").mean(),
