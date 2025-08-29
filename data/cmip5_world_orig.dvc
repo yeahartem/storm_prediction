@@ -1,0 +1,6 @@
+outs:
+- md5: cb2453fe7d9d6eee19b47a0e0618aeca.dir
+  size: 11495523952
+  nfiles: 6
+  hash: md5
+  path: cmip5_world_orig
