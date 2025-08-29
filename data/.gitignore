@@ -1,2 +1,4 @@
 /cmip5_world_orig
-/cmip5_world
+/cmip5_world/*
+!*.dvc
+!**/*.dvc

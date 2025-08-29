@@ -10,14 +10,12 @@ outputs/*
 out/*
 lightning_logs/*
 *pycache*
-data
 wandb
 outputs
 .hydra
 *.html
 *.simg
 tmp*
-data
 *.log
 data_mounted
 *proxy*
@@ -25,3 +23,4 @@ data_mounted
 slurm_run.sh
 *.sif
 data_sl
+!data/cmip5_world/*.dvc
