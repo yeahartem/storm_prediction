@@ -11,11 +11,16 @@ from src.regression.models.pl_module import WindNetPL
 from src.regression.datamodule import WindDataModule
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from pytorch_lightning.loggers import WandbLogger
-import wandb
+# from pytorch_lightning.loggers import WandbLogger
+# import wandb
 import time
 from pytorch_lightning.callbacks import LearningRateMonitor, StochasticWeightAveraging, ModelCheckpoint
 from pytorch_lightning.utilities import rank_zero_only
+# для mlflow dvc:
+import shutil
+import os
+from pytorch_lightning.loggers import MLFlowLogger
+import mlflow
 
 # torch.backends.cudnn.benchmark = False
 # torch.backends.cudnn.deterministic = True
@@ -26,30 +31,54 @@ def get_rundir_name() -> str:
 
 @rank_zero_only
 def log_config(cfg):
-    wandb.config.update(OmegaConf.to_container(cfg, resolve=True))
+    params = OmegaConf.to_container(cfg, resolve=True)
+    flat_params = flatten_dict(params)
+    mlflow.log_params(flat_params)
+# @rank_zero_only
+# def log_config(cfg):
+#     wandb.config.update(OmegaConf.to_container(cfg, resolve=True))
+
 
 @rank_zero_only
 def log_model_arch(model):
     logging.info(model)
 
+# --- ДОБАВЬ ЭТУ ВСПОМОГАТЕЛЬНУЮ ФУНКЦИЮ ---
+def flatten_dict(d, parent_key='', sep='.'):
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+# --- КОНЕЦ ВСПОМОГАТЕЛЬНОЙ ФУНКЦИИ ---
+
 def train_regression(cfg: DictConfig) -> None:
     logging.info(f"Starting in {os.getcwd()}")
     start_time = time.process_time()
-    os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
-    os.environ['WANDB_MODE'] = 'offline'
-    # os.environ['WANDB_DIR'] = '/trinity/home/v.morozov/Wind/out/wandb'
-    # os.environ['WANDB_CONFIG_DIR'] = 'trinity/home/v.morozov/Wind/out/wandb'
-    # os.environ['WANDB_CACHE_DIR'] = 'trinity/home/v.morozov/Wind/out/wandb'
-    os.environ['WANDB_DIR'] = 'out/wandb'
-    os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
-    os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
+    # ------------------COMMENTED
+    # os.environ['WANDB_API_KEY'] = '7ce4e8a3a21df6f25a3a589a9de3f52c759b3633'
+    # os.environ['WANDB_MODE'] = 'offline'
+    # # os.environ['WANDB_DIR'] = '/trinity/home/v.morozov/Wind/out/wandb'
+    # # os.environ['WANDB_CONFIG_DIR'] = 'trinity/home/v.morozov/Wind/out/wandb'
+    # # os.environ['WANDB_CACHE_DIR'] = 'trinity/home/v.morozov/Wind/out/wandb'
+    # os.environ['WANDB_DIR'] = 'out/wandb'
+    # os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
+    # os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
+    # ------------------COMMENTED
     torch.set_float32_matmul_precision('high')
     run_dir = get_rundir_name()
-    wandb.init()
-    wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
-                               project=cfg.project_name,
-                               name=cfg.experiment_name,
-                               log_model='all')
+    # wandb.init()
+    # wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
+    #                            project=cfg.project_name,
+    #                            name=cfg.experiment_name,
+    #                            log_model='all')
+    mlflow_logger = MLFlowLogger(experiment_name=cfg.project_name,
+                                 run_name=cfg.experiment_name,
+                                 tracking_uri="file:./mlruns",
+                                 log_model='all')
     dm = WindDataModule(cfg)
     model = WindNetPL(cfg, run_dir)
     logging.info(f"Asking for {cfg.train.gpu_num} GPUs")
@@ -85,13 +114,34 @@ def train_regression(cfg: DictConfig) -> None:
                          strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
                          #log
                          log_every_n_steps=cfg.train.log_every_n_steps,
-                         logger=wandb_logger,
+                         limit_train_batches=50,   # DELETE !!!!!!!!!!!!!!!!!!!!!!!
+                         logger=mlflow_logger, # wandb_logger
                          #misc
                          profiler='simple',
                          )
     log_config(cfg)
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
+    
+    # ======================== NEW CODE FOR SAVING CHECKPOINT FOR DVC ==================
+    logging.info("Training finished. Copying best checkpoint for DVC...")
+
+    # 1. Находим путь к лучшему чекпоинту, который сохранил Lightning
+    best_checkpoint_path = trainer.checkpoint_callback.best_model_path
+    
+    if best_checkpoint_path and os.path.exists(best_checkpoint_path):
+        logging.info(f"Best checkpoint found at: {best_checkpoint_path}")
+
+        # 2. Создаём папку назначения, если её нет
+        destination_folder = 'model_weights'
+        os.makedirs(destination_folder, exist_ok=True)
+        destination_path = os.path.join(destination_folder, 'best_model.ckpt')
+
+        # 3. Копируем файл
+        shutil.copy(best_checkpoint_path, destination_path)
+        logging.info(f"Checkpoint copied to: {destination_path}")
+    else:
+        logging.warning("Could not find best checkpoint path to copy.")
 
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_TestNet.yaml")
@@ -104,4 +154,5 @@ def main(cfg: DictConfig):
 if __name__ == "__main__":
     sys.argv.append('hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}')
     main()
-    wandb.finish()
+    mlflow.end_run()
+    # wandb.finish()

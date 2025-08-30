@@ -1,0 +1,40 @@
+stages:
+  data_load:
+    cmd: python preprocess.py
+    deps:
+      - preprocess.py
+      - data/cmip5_world/target.parquet
+      - data/cmip5_world_orig/sfcWindmax_day_cmip5_cmip5world_r1i1p1_1950-01-01-2020-11-13.nc
+      - data/cmip5_world_orig/pr_day_cmip5_cmip5world_r1i1p1_1950-01-01-2020-11-13.nc
+      - data/cmip5_world_orig/tasmax_day_cmip5_cmip5world_r1i1p1_1950-01-01-2020-11-13.nc
+      - data/cmip5_world_orig/tasmin_day_cmip5_cmip5world_r1i1p1_1950-01-01-2020-11-13.nc
+    outs:
+      - data/cmip5_world/dataset_config.yaml
+      - data/cmip5_world/lat.npy
+      - data/cmip5_world/lon.npy
+      - data/cmip5_world/mean_32.npy
+      - data/cmip5_world/pr_16.npy
+      - data/cmip5_world/sfcWindmax_16.npy
+      - data/cmip5_world/std_32.npy
+      - data/cmip5_world/tasmax_16.npy
+      - data/cmip5_world/tasmin_16.npy
+      - data/cmip5_world/time.npy
+
+  train:
+    cmd: python train.py
+    deps:
+      - train.py
+      - data/weatherstation_data/weatherstation_list.json  # questionable
+      - data/cmip5_world/dataset_config.yaml
+      - data/cmip5_world/lat.npy
+      - data/cmip5_world/lon.npy
+      - data/cmip5_world/mean_32.npy
+      - data/cmip5_world/pr_16.npy
+      - data/cmip5_world/sfcWindmax_16.npy
+      - data/cmip5_world/std_32.npy
+      - data/cmip5_world/target.parquet
+      - data/cmip5_world/tasmax_16.npy
+      - data/cmip5_world/tasmin_16.npy
+      - data/cmip5_world/time.npy
+    outs:
+      - model_weights/best_model.ckpt

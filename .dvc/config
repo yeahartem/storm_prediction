@@ -1,0 +1,4 @@
+[core]
+    remote = my-storage
+['remote "my-storage"']
+    url = E:/wind-dvc-storage

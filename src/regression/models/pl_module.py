@@ -146,10 +146,13 @@ class WindNetPL(pl.LightningModule):
         self.log("val/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/recall", self.val_recall, on_step=False, on_epoch=True, prog_bar=True)
 
-        if batch_idx%100==0:
-            self.logger.experiment.log({"val/target_96": target[:, 0], "val/prediction_96": predictions[:, 0]})
-            self.logger.experiment.log({"val/target_50": target[:, 3], "val/prediction_50": predictions[:, 3]})
-            self.logger.experiment.log({"val/target_05": target[:, 6], "val/prediction_05": predictions[:, 6]})
+        # if batch_idx%100==0:
+        #     self.log("val/prediction_96", predictions[:, 0], on_step=False, on_epoch=True)
+        #     self.log("val/prediction_50", predictions[:, 3], on_step=False, on_epoch=True)
+        #     self.log("val/prediction_05", predictions[:, 6], on_step=False, on_epoch=True)
+            # self.logger.experiment.log({"val/target_96": target[:, 0], "val/prediction_96": predictions[:, 0]})
+            # self.logger.experiment.log({"val/target_50": target[:, 3], "val/prediction_50": predictions[:, 3]})
+            # self.logger.experiment.log({"val/target_05": target[:, 6], "val/prediction_05": predictions[:, 6]})
 
         output = OrderedDict(
             {
@@ -194,10 +197,16 @@ class WindNetPL(pl.LightningModule):
         self.log("test/recall", self.test_recall, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/AUROC", self.test_auroc, on_epoch=True)
 
-        if batch_idx%100==0:
-            self.logger.experiment.log({"test/target_96": target[:, 0], "test/prediction_96": predictions[:, 0]})
-            self.logger.experiment.log({"test/target_50": target[:, 3], "test/prediction_50": predictions[:, 3]})
-            self.logger.experiment.log({"test/target_05": target[:, 6], "test/prediction_05": predictions[:, 6]})
+        # if batch_idx%100==0:
+        #     self.log("test/target_96", target[:, 0])
+        #     self.log("test/prediction_96", predictions[:, 0])
+        #     self.log("test/target_50", target[:, 3])
+        #     self.log("test/prediction_50", predictions[:, 3])
+        #     self.log("test/target_05", target[:, 6])
+        #     self.log("test/prediction_05", predictions[:, 6])
+            # self.logger.experiment.log({"test/target_96": target[:, 0], "test/prediction_96": predictions[:, 0]})
+            # self.logger.experiment.log({"test/target_50": target[:, 3], "test/prediction_50": predictions[:, 3]})
+            # self.logger.experiment.log({"test/target_05": target[:, 6], "test/prediction_05": predictions[:, 6]})
         
         output = OrderedDict(
             {

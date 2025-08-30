@@ -1,0 +1,73 @@
+schema: '2.0'
+stages:
+  data_load:
+    cmd: python preprocess.py
+    deps:
+    - path: data/cmip5_world/target.parquet
+      hash: md5
+      md5: 4934354f33690eb159a41922ab4519a4
+      size: 449616526
+    - path: data/cmip5_world_orig/pr_day_cmip5_cmip5world_r1i1p1_1950-01-01-2020-11-13.nc
+      hash: md5
+      md5: bdce3ba386a42539a6ce1896e43c4a3d
+      size: 1915920740
+    - path: 
+        data/cmip5_world_orig/sfcWindmax_day_cmip5_cmip5world_r1i1p1_1950-01-01-2020-11-13.nc
+      hash: md5
+      md5: 2b14451ebb5dd67d5473cd1cd7e3d8f3
+      size: 1915920604
+    - path: 
+        data/cmip5_world_orig/tasmax_day_cmip5_cmip5world_r1i1p1_1950-01-01-2020-11-13.nc
+      hash: md5
+      md5: 05cd02fc3514508ccc9018e2fe1fcda3
+      size: 1915920700
+    - path: 
+        data/cmip5_world_orig/tasmin_day_cmip5_cmip5world_r1i1p1_1950-01-01-2020-11-13.nc
+      hash: md5
+      md5: d0224dfff51a2ab2a0947f74e0d98fef
+      size: 1915920700
+    - path: preprocess.py
+      hash: md5
+      md5: 759b8ad0fad03f6b21a2ac26b6024c4a
+      size: 626
+    outs:
+    - path: data/cmip5_world/dataset_config.yaml
+      hash: md5
+      md5: 57a84ef5ff975fd6127b6bf18807ebf0
+      size: 2571
+    - path: data/cmip5_world/lat.npy
+      hash: md5
+      md5: 4f4f1b5d08e8877a63177fae037ddc0d
+      size: 1048
+    - path: data/cmip5_world/lon.npy
+      hash: md5
+      md5: c38a8f82fe1482269e26badd376abb90
+      size: 1416
+    - path: data/cmip5_world/mean_32.npy
+      hash: md5
+      md5: 1c696c96d503173431fde0fad672196c
+      size: 144
+    - path: data/cmip5_world/pr_16.npy
+      hash: md5
+      md5: 6710869811ffbec4d1cf5b576b5fca79
+      size: 957855138
+    - path: data/cmip5_world/sfcWindmax_16.npy
+      hash: md5
+      md5: ce5bb3c0ee4fd523dd14f1bb000a5b90
+      size: 957855138
+    - path: data/cmip5_world/std_32.npy
+      hash: md5
+      md5: 047f07993e8d02da3705d14d7f0c8bbe
+      size: 144
+    - path: data/cmip5_world/tasmax_16.npy
+      hash: md5
+      md5: 551aa6f0e14a61c12360cd4ba640ce38
+      size: 957855138
+    - path: data/cmip5_world/tasmin_16.npy
+      hash: md5
+      md5: c10300a65e8f7c34396ae7180b1fa36a
+      size: 957855138
+    - path: data/cmip5_world/time.npy
+      hash: md5
+      md5: 33379415b482d70b64e48149477134bc
+      size: 207064
