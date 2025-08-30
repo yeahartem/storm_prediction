@@ -1,0 +1,38 @@
+// .devcontainer/devcontainer.json
+{
+  "name": "Kubernetes Learning Environment",
+  // Используем стандартный образ Ubuntu от Microsoft
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+
+  // "Фичи" - это простой способ добавить инструменты в нашу среду
+  "features": {
+    // Устанавливаем Docker, он нужен для работы Kind
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    // Устанавливаем kubectl - основной инструмент для управления кластером
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {
+      "version": "latest", // всегда последняя версия kubectl
+      "helm": "latest"   // и helm
+    },
+    // Устанавливаем Kind
+    "ghcr.io/devcontainers-contrib/features/kind:1": {
+      "version": "latest"
+    }
+  },
+
+  // Эта команда выполнится автоматически ПОСЛЕ создания среды
+  // Она создает кластер Kubernetes с именем "my-dev-cluster"
+  "postCreateCommand": "kind create cluster --name my-dev-cluster",
+
+  // Настройки для VS Code внутри Codespace
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-kubernetes-tools.vscode-kubernetes-tools",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  
+  // Запускаем команду от имени пользователя vscode, а не root
+  "remoteUser": "vscode"
+}
