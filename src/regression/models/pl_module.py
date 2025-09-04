@@ -13,6 +13,7 @@ from src.utils.metrics import float_to_binary, float_to_score, get_outliers_s, g
 from sklearn.metrics import precision_recall_curve
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 class WindNetPL(pl.LightningModule):
 
@@ -96,14 +97,27 @@ class WindNetPL(pl.LightningModule):
         return loss, predictions, target    
     
     def training_step(self, batch, batch_idx):
+        # 1. Получаем предсказания модели
         loss, predictions, target = self.model_step(batch)
-        self.train_loss(loss)
-        self.train_MAE(predictions[:, 0], target[:, 0])
-        self.train_MAE_full(predictions, target)
-        self.train_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0] , thresh=self.cfg.train.target_threshold ))
-        self.train_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold ),
-                      float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
+        
+        # <-- ДОБАВЬ ЭТУ ПРОВЕРКУ -->
+        if torch.isinf(loss) or torch.isnan(loss):
+            logging.warning("!!! Loss is INF or NaN, skipping batch !!!")
+        # <-- КОНЕЦ ПРОВЕРКИ -->
 
+        # 2. Обновляем метрики новыми данными
+        self.train_loss(loss)
+        self.train_MAE(predictions[:, 0], target[:, 0]) # MAE для основного предсказания
+        self.train_MAE_full(predictions, target)
+        
+        # 3. Самое интересное: превращение регрессии в классификацию
+        # Здесь мы считаем MAE только по тем дням, где реальная скорость ветра была выше порога target_threshold из конфига train_cmip5_test_run.yaml
+        self.train_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0] , thresh=self.cfg.train.target_threshold ))
+        # А здесь мы считаем Average Precision
+        self.train_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold ),
+                      float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))  # target_threshold: 3 - Это значит, что любое значение скорости ветра > 3 м/с считается событием класса "1" (опасный ветер), а всё, что <= 3 — классом "0". Функции float_to_binary и float_to_score в pl_module.py как раз и выполняют это преобразование для подсчета метрик классификации.
+
+        # 4. Логируем значения метрик, чтобы их можно было увидеть
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/MAE_full", self.train_MAE_full, on_step=True, on_epoch=True, prog_bar=True)
@@ -252,7 +266,36 @@ class WindNetPL(pl.LightningModule):
         ax.set_title('Precision-Recall Curve')
         ax.set_ylabel('Precision')
         ax.set_xlabel('Recall')
-        fig.savefig(os.path.join(self.run_dir, 'PR_curve.png'))   # save the figure to file        
+        fig.savefig(os.path.join(self.run_dir, 'PR_curve.png'))   # save the figure to file     
+        
+        # 1. Scatter plot
+        fig_scatter, ax_scatter = plt.subplots(figsize=(8, 8))
+        ax_scatter.scatter(target_float.numpy(), preds_float.numpy(), alpha=0.1)
+        ax_scatter.plot([target_float.min(), target_float.max()], [target_float.min(), target_float.max()], 'r--', lw=2) # Диагональ y=x
+        ax_scatter.set_xlabel('Истинные значения (м/с)')
+        ax_scatter.set_ylabel('Предсказанные значения (м/с)')
+        ax_scatter.set_title('Предсказание vs. Истина')
+        ax_scatter.grid(True)
+        # Сохраняем в MLflow
+        self.logger.experiment.log_figure(fig_scatter, "test_scatter_plot.png")
+
+        # 2. Гистограмма ошибок
+        errors = (preds_float - target_float).numpy()
+        fig_hist, ax_hist = plt.subplots()
+        ax_hist.hist(errors, bins=50)
+        ax_hist.set_xlabel('Ошибка предсказания (м/с)')
+        ax_hist.set_ylabel('Частота')
+        ax_hist.set_title('Распределение ошибок')
+        self.logger.experiment.log_figure(fig_hist, "test_error_distribution.png")
+
+        # 3. Сохранение сырых предсказаний для дальнейшего анализа
+        # Это КРАЙНЕ ВАЖНО для воспроизводимости и статистических тестов
+        results_df = pd.DataFrame({
+            'prediction': preds_float.numpy(),
+            'target': target_float.numpy()
+        })
+        results_df.to_csv(os.path.join(self.run_dir, 'test_predictions.csv'), index=False)
+        self.logger.experiment.log_artifact(os.path.join(self.run_dir, 'test_predictions.csv'))   
 
 
     def configure_optimizers(self):

@@ -25,7 +25,7 @@ lon_min: -30
 lon_max: 40
 
 batch_size: 15
-learning_rate: 0.009
+learning_rate: 0.001
 weight_decay: 0.0001
 max_epoch: 2
 

@@ -21,6 +21,8 @@ import shutil
 import os
 from pytorch_lightning.loggers import MLFlowLogger
 import mlflow
+import git
+
 
 # torch.backends.cudnn.benchmark = False
 # torch.backends.cudnn.deterministic = True
@@ -79,6 +81,13 @@ def train_regression(cfg: DictConfig) -> None:
                                  run_name=cfg.experiment_name,
                                  tracking_uri="file:./mlruns",
                                  log_model='all')
+    mlflow.log_artifact(os.path.join(os.getcwd(),"configs/cmip5_TestNet.yaml"), "config.yaml")
+    try:
+        repo = git.Repo(search_parent_directories=True)
+        mlflow.log_param('git_commit_hash', repo.head.object.hexsha)
+    except git.InvalidGitRepositoryError:
+        logging.warning("Not a git repository. Cannot log commit hash.")
+
     dm = WindDataModule(cfg)
     model = WindNetPL(cfg, run_dir)
     logging.info(f"Asking for {cfg.train.gpu_num} GPUs")
@@ -114,7 +123,8 @@ def train_regression(cfg: DictConfig) -> None:
                          strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
                          #log
                          log_every_n_steps=cfg.train.log_every_n_steps,
-                         limit_train_batches=50,   # DELETE !!!!!!!!!!!!!!!!!!!!!!!
+                         #  limit_train_batches=50,   # DELETE !!!!!!!!!!!!!!!!!!!!!!!
+                         gradient_clip_val=0.5, # Чтобы не было ошибки inf в mlflow 
                          logger=mlflow_logger, # wandb_logger
                          #misc
                          profiler='simple',
@@ -131,7 +141,7 @@ def train_regression(cfg: DictConfig) -> None:
     
     if best_checkpoint_path and os.path.exists(best_checkpoint_path):
         logging.info(f"Best checkpoint found at: {best_checkpoint_path}")
-
+        mlflow.log_artifact(best_checkpoint_path, "model_checkpoints") # Сохраняем в mlflow
         # 2. Создаём папку назначения, если её нет
         destination_folder = 'model_weights'
         os.makedirs(destination_folder, exist_ok=True)
