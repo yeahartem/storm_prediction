@@ -81,19 +81,19 @@ class WindNetPL(pl.LightningModule):
     def forward(self, x):
         return self.net(x)
 
-    def loss(self, y_hat, y):        
-        return self.criterion(y_hat, y)
+    def loss(self, y_hat, y, dense_weights):        
+        return self.criterion(y_hat, y) * dense_weights
 
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)
         self.val_MAE_best.reset()
 
     def model_step(self, batch):
-        objs, target = batch
+        objs, target, dense_weights = batch
         # print(objs[0].shape)
         # print(objs[1].shape)
         predictions = self(objs).float()
-        loss = self.loss(predictions, target.float())
+        loss = self.loss(predictions, target.float(), dense_weights)
         return loss, predictions, target    
     
     def training_step(self, batch, batch_idx):

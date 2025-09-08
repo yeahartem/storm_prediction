@@ -9,7 +9,7 @@ import torch
 from omegaconf import DictConfig
 from src.regression.data_load import DataPreLoader
 from src.utils.norm_values import mean_channels_cmip6, std_channels_cmip6
-
+from denseweight import DenseWeight
 
 class WindDataModule(pl.LightningDataModule):
     def __init__(self, cfg: DictConfig):
@@ -77,7 +77,13 @@ class XarrayDataset(Dataset):
         self.dtype = dtype
 
         logging.info(f"Sample shape is {self.get_sample_shape(10)}")
-
+# ====================================================
+        lat_index, lon_index, time_index, y_denseweight = self.data_idxs
+        # Define DenseWeight
+        dw = DenseWeight(alpha=1.0)
+        # Fit DenseWeight and get the weights for the 1000 samples
+        self.weights = dw.fit(y_denseweight)
+        
     def get_sample_shape(self, idx): 
         lat_index, lon_index, time_index, *y = self.data_idxs[:, idx]
         lat_index = int(lat_index)
@@ -91,7 +97,7 @@ class XarrayDataset(Dataset):
         return X.shape
 
     def __len__(self):
-        return self.data_idxs.shape[1]
+        return self.data_idxs.shape[1] # у должны быть равны длине вот этого
 
     def __getitem__(self, idx):
         lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, *y = self.data_idxs[:, idx]
@@ -107,7 +113,7 @@ class XarrayDataset(Dataset):
         pos = torch.tensor([time_pos, time_pos_m, lat_pos, lon_pos], dtype=self.dtype)
         pos = pos.expand(self.cfg.time_window, 4)
         y = torch.tensor(y, dtype=self.dtype)
-        return [X, pos], y
+        return [X, pos], y, torch.tensor(self.weights[idx], dtype=self.dtype)
     
 
 if __name__ == '__main__':

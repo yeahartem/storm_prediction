@@ -21,6 +21,19 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {"PYDEVD_WARN_SLOW_RESOLVE_TIMEOUT": "3"}
+        },
+        {
+            // --- НАША НОВАЯ КОНФИГУРАЦИЯ ДЛЯ ДЕБАГА ---
+            "name": "Debug train_regression (with args)",
+            "type": "python",
+            "request": "launch",
+            "program": "src/regression/train.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {"PYDEVD_WARN_SLOW_RESOLVE_TIMEOUT": "3"},
+            "args": [ // <-- ВОТ ДОБАВЛЕННЫЙ БЛОК
+                "hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}"
+            ]
         }
     ]
 }
