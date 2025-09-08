@@ -25,3 +25,5 @@ slurm_run.sh
 data_sl
 !data/cmip5_world/*.dvc
 mlruns
+model_weights/
+model_weights

@@ -70,19 +70,34 @@ class XarrayDataset(Dataset):
         self.dataset_torch = DPL.dataset_torch
         if test:
             self.data_idxs = DPL.test_data_idxs
+            self.dense_weighter = None # Для тестового набора нам это не нужно
             logging.info("Test dataloader init")
         else:
             self.data_idxs = DPL.train_data_idxs
+            np.save("data_idxs_for_debug.npy", self.data_idxs)
+            
+            y_denseweight = self.data_idxs[7:, :].flatten()
+            # --- ОТЛАДОЧНЫЙ ПРИНТ №1 ---
+            print("\n--- DEBUG: Data for DenseWeight.fit() ---")
+            print(f"Shape of targets: {y_denseweight.shape}")
+            print(f"Min: {y_denseweight.min()}, Max: {y_denseweight.max()}")
+            print(f"Sample 10 targets: {y_denseweight[:10]}")
+            print("----------------------------------------\n")
+            # --- КОНЕЦ ПРИНТА ---
+            dw = DenseWeight(alpha=1.0)
+            dw.fit(y_denseweight)
+            self.dense_weighter = dw
+            
             logging.info("Train dataloader init")
         self.dtype = dtype
 
         logging.info(f"Sample shape is {self.get_sample_shape(10)}")
 # ====================================================
-        lat_index, lon_index, time_index, y_denseweight = self.data_idxs
-        # Define DenseWeight
-        dw = DenseWeight(alpha=1.0)
-        # Fit DenseWeight and get the weights for the 1000 samples
-        self.weights = dw.fit(y_denseweight)
+        # lat_index, lon_index, time_index, y_denseweight = self.data_idxs
+        # # Define DenseWeight
+        # dw = DenseWeight(alpha=1.0)
+        # # Fit DenseWeight and get the weights for the 1000 samples
+        # self.weights = dw.fit(y_denseweight)
         
     def get_sample_shape(self, idx): 
         lat_index, lon_index, time_index, *y = self.data_idxs[:, idx]
@@ -113,7 +128,24 @@ class XarrayDataset(Dataset):
         pos = torch.tensor([time_pos, time_pos_m, lat_pos, lon_pos], dtype=self.dtype)
         pos = pos.expand(self.cfg.time_window, 4)
         y = torch.tensor(y, dtype=self.dtype)
-        return [X, pos], y, torch.tensor(self.weights[idx], dtype=self.dtype)
+        
+        # Проверяем, есть ли у нас обученный "взвешиватель"
+        if self.dense_weighter is not None:
+            # Получаем веса для таргета текущего примера
+            weights = self.dense_weighter(y.cpu().numpy())
+            weights_tensor = torch.tensor(weights, dtype=self.dtype)
+            # --- ОТЛАДОЧНЫЙ ПРИНТ №2 ---
+            if idx < 5: # Печатаем только для первых 5 примеров
+                print(f"\n--- DEBUG: __getitem__ idx={idx} ---")
+                print(f"Target values (shape {y.shape}): {np.round(y.numpy(), 2)}")
+                print(f"Calculated weights (shape {weights_tensor.shape}): {np.round(weights_tensor.numpy(), 2)}")
+                print("----------------------------------")
+            # --- КОНЕЦ ПРИНТА ---
+        else:
+            # Если не используем DenseWeight, создаем тензор-пустышку
+            weights_tensor = torch.tensor([1.0], dtype=self.dtype) # Просто чтобы что-то вернуть
+
+        return [X, pos], y, weights_tensor
     
 
 if __name__ == '__main__':

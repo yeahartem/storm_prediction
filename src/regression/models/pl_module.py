@@ -19,6 +19,7 @@ class WindNetPL(pl.LightningModule):
 
     def __init__(self, cfg, run_dir=None, eval=False): 
         super().__init__()     
+        self.save_hyperparameters()
         self.cfg = cfg        
         self.run_dir = run_dir
         if cfg.model_name=="BaselineLinear":
@@ -44,7 +45,7 @@ class WindNetPL(pl.LightningModule):
                 raise NotImplementedError(f'Optimizer {cfg.train.optimizer_name} not found')
             
             if cfg.train.loss_name=='MSELoss':
-                self.criterion = torch.nn.MSELoss()
+                self.criterion = torch.nn.MSELoss(reduction='none')
             elif cfg.train.loss_name=='L1Loss':
                 self.criterion = torch.nn.L1Loss()
             else:
@@ -81,8 +82,29 @@ class WindNetPL(pl.LightningModule):
     def forward(self, x):
         return self.net(x)
 
-    def loss(self, y_hat, y, dense_weights):        
-        return self.criterion(y_hat, y) * dense_weights
+    # def loss(self, y_hat, y, dense_weights):        
+    #     return self.criterion(y_hat, y) * dense_weights
+
+    def loss(self, y_hat, y, dense_weights):
+        # 1. Считаем ошибку для каждого примера отдельно. 
+        #    Результат - тензор такого же размера, как y_hat и y.
+        per_sample_loss = self.criterion(y_hat, y)
+
+        # 2. Умножаем ошибку каждого примера на его вес.
+        weighted_loss = per_sample_loss * dense_weights
+        
+        # --- ОТЛАДОЧНЫЙ ПРИНТ №3 ---
+        if self.trainer.global_step < 5:
+             print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
+             print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
+             print(f"Loss per sample (first 5): {np.round(per_sample_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
+             print(f"Weights (first 5):         {np.round(dense_weights.flatten()[:5].cpu().detach().numpy(), 2)}")
+             print(f"Weighted loss (first 5): {np.round(weighted_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
+             print("---------------------------------\n")
+        # --- КОНЕЦ ПРИНТА ---
+
+        # 3. Теперь усредняем результат, чтобы получить одно число.
+        return torch.mean(weighted_loss)
 
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)

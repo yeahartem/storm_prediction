@@ -130,6 +130,20 @@ def train_regression(cfg: DictConfig) -> None:
                          profiler='simple',
                          )
     log_config(cfg)
+
+    # Сохраняем Git-хеш для воспроизводимости
+    try:
+        repo = git.Repo(search_parent_directories=True)
+        mlflow.log_param('git_commit_hash', repo.head.object.hexsha)
+    except git.InvalidGitRepositoryError:
+        logging.warning("Not a git repository. Cannot log commit hash.")
+
+    # Сохраняем финальный конфиг как артефакт
+    # Hydra сохраняет его в папке .hydra в директории запуска
+    final_config_path = os.path.join(os.getcwd(), ".hydra", "config.yaml")
+    if os.path.exists(final_config_path):
+        mlflow.log_artifact(final_config_path, "config.yaml")
+
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
     
