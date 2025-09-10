@@ -107,7 +107,7 @@ def train_regression(cfg: DictConfig) -> None:
 
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
 
-    trainer = pl.Trainer(max_epochs=cfg.train.max_epoch,
+    trainer = pl.Trainer(max_epochs=cfg.train.max_epoch, # CORRECT !!!!!!!!!
                          default_root_dir=default_root_dir,
                          callbacks=[lr_monitor, checkpoint_callback],
                          #performance
@@ -123,7 +123,7 @@ def train_regression(cfg: DictConfig) -> None:
                          strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
                          #log
                          log_every_n_steps=cfg.train.log_every_n_steps,
-                         #  limit_train_batches=50,   # DELETE !!!!!!!!!!!!!!!!!!!!!!!
+                         limit_train_batches=30,   # DELETE !!!!!!!!!!!!!!!!!!!!!!!
                          gradient_clip_val=0.5, # Чтобы не было ошибки inf в mlflow 
                          logger=mlflow_logger, # wandb_logger
                          #misc

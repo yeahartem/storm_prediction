@@ -16,6 +16,7 @@ import gc
 from functools import partial
 import glob 
 from pytorch_lightning.utilities import rank_zero_only
+import pickle
 
 
 @rank_zero_only
@@ -88,27 +89,60 @@ class DataPreLoader:
         logging.info(f"Lon: {min(self.lon_coords_crop)} - {max(self.lon_coords_crop)}, len {len(self.lon_coords_crop)}")
         logging.info(f"Lat indexes: {(self.lat_min_idx)} - {(self.lat_max_idx)}, len {len(self.lat_coords_crop)}")
         logging.info(f"Lon indexes: {(self.lon_min_idx)} - {(self.lon_max_idx)}, len {len(self.lon_coords_crop)}")
-        if  (self.lat_min_idx < half_side) or \
-            (self.lon_min_idx < half_side) or \
-            (len(self.lon_coords) - self.lon_max_idx < half_side) or \
-            (len(self.lat_coords) - self.lat_max_idx < half_side):
-            logging.info(f"Pad + crop")
+        # Пути к файлам кэша из конфига
+        pad_data_path = self.cfg.train.cache.pad_crop_data_path
+        shift_path = self.cfg.train.cache.shift_data_path        
+        # Проверяем, нужно ли использовать кэш и существуют ли файлы
+        if self.cfg.train.cache.use_cached_padding and os.path.exists(pad_data_path) and os.path.exists(shift_path):
+            logging.info(f"Загрузка обработанных данных из кэша...")
+            logging.info(f"Файл данных: {pad_data_path}")
+            logging.info(f"Файл сдвига: {shift_path}")
+            
+            # Загружаем данные
+            var_data = np.load(pad_data_path)
+            with open(shift_path, 'rb') as f:
+                self.shift = pickle.load(f)        
 
-            var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
-            var_data = var_data[
-                                :,
-                                :,
-                                self.lat_min_idx: self.lat_max_idx + 2*half_side + 1,
-                                self.lon_min_idx: self.lon_max_idx + 2*half_side + 1
-                                ]
         else:
-            logging.info(f"Just crop")
-            var_data = var_data[
-                                :,
-                                :,
-                                self.lat_min_idx - half_side: self.lat_max_idx + half_side + 1,
-                                self.lon_min_idx - half_side: self.lon_max_idx + half_side + 1
-                                ]
+            # Если кэш не используется или файлы не найдены, выполняем тяжелую операцию
+            logging.info("Кэш не используется или не найден. Выполняется тяжелая операция padding + crop...")
+                
+            if  (self.lat_min_idx < half_side) or \
+                (self.lon_min_idx < half_side) or \
+                (len(self.lon_coords) - self.lon_max_idx < half_side) or \
+                (len(self.lat_coords) - self.lat_max_idx < half_side):
+                logging.info(f"Pad + crop")
+
+                var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
+                var_data = var_data[
+                                    :,
+                                    :,
+                                    self.lat_min_idx: self.lat_max_idx + 2*half_side + 1,
+                                    self.lon_min_idx: self.lon_max_idx + 2*half_side + 1
+                                    ]
+                
+                # --- СОХРАНЯЕМ РЕЗУЛЬТАТЫ В КЭШ ---
+                logging.info(f"Сохранение результатов в кэш для будущего использования...")
+                # Создаем директорию, если её нет
+                os.makedirs(os.path.dirname(pad_data_path), exist_ok=True)
+                
+                # Сохраняем основной массив в формате NetCDF
+                np.save(pad_data_path, var_data)
+                logging.info(f"Данные сохранены в: {pad_data_path}")
+                
+                # Сохраняем объект shift с помощью pickle
+                with open(shift_path, 'wb') as f:
+                    pickle.dump(self.shift, f)
+                logging.info(f"Сдвиг сохранен в: {shift_path}")  
+                
+            else:
+                logging.info(f"Just crop")
+                var_data = var_data[
+                                    :,
+                                    :,
+                                    self.lat_min_idx - half_side: self.lat_max_idx + half_side + 1,
+                                    self.lon_min_idx - half_side: self.lon_max_idx + half_side + 1
+                                    ]
         return var_data
 
     def time_crop(self, var_data):

@@ -14,6 +14,7 @@ from sklearn.metrics import precision_recall_curve
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 class WindNetPL(pl.LightningModule):
 
@@ -77,6 +78,7 @@ class WindNetPL(pl.LightningModule):
         self.train_MAE_OS = torchmetrics.MeanAbsoluteError() # MAE outliers based on station measure
         self.val_MAE_OS = torchmetrics.MeanAbsoluteError() 
         self.test_MAE_OS = torchmetrics.MeanAbsoluteError() 
+        self.validation_step_outputs = []
 
 
     def forward(self, x):
@@ -197,15 +199,47 @@ class WindNetPL(pl.LightningModule):
                 "target": target,
             }
         )
+        self.validation_step_outputs.append(output)
         return output
     
 
     def on_validation_epoch_end(self):
+        # Используем наш список, который мы наполнили
+        outputs = self.validation_step_outputs
+        # Код для расчета val_MAE_best
         MAE = self.val_MAE.compute()
         self.val_MAE_best(MAE)
         self.log("val/MAE_best", self.val_MAE_best.compute(), prog_bar=False)
 
+        # <<< НАЧАЛО БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
 
+        # Собираем все предсказания и таргеты из каждого validation_step
+        preds = torch.cat([x['preds'] for x in outputs]).cpu()
+        targets = torch.cat([x['target'] for x in outputs]).cpu()
+        
+        # Блок для счетчика
+        threshold = self.cfg.train.target_threshold
+        outlier_count = torch.sum(targets > threshold).item()
+        total_samples = targets.numel()
+        print(f"\n--- Статистика по выбросам (валидация, скорость > {threshold} м/с) ---")
+        print(f"Количество случаев: {outlier_count} из {total_samples} ({outlier_count / total_samples:.2%})")
+        
+        print("\n--- Анализ результатов по бинам (валидационный набор) ---")
+        # Вызываем вашу функцию
+        binned_results_df = analyze_performance_by_bins(
+            y_pred=preds.numpy().flatten(), 
+            y_true=targets.numpy().flatten(),
+            n_bins=5
+        )
+        # Выводим таблицу в консоль в конце каждой эпохи валидации
+        print(binned_results_df)
+        print("------------------------------------------------------")
+        
+        # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
+        # <<< ВАЖНО: Очищаем список после использования >>>
+        self.validation_step_outputs.clear()
+
+        
     def test_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
 
@@ -268,6 +302,40 @@ class WindNetPL(pl.LightningModule):
         preds_float = torch.stack([x["float_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
         target_float = torch.stack([x["float_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
 
+        # <<< НАЧАЛО БЛОКА ДЛЯ СЧЕТЧИКА >>>
+
+        # 1. Берем порог из конфига
+        threshold = self.cfg.train.target_threshold
+
+        # 2. Считаем, сколько значений в target_float больше этого порога
+        outlier_count = torch.sum(target_float > threshold).item()
+        total_samples = len(target_float)
+
+        # 3. Выводим информацию в консоль
+        print(f"\n--- Статистика по выбросам (скорость > {threshold} м/с) ---")
+        print(f"Количество случаев: {outlier_count} из {total_samples} ({outlier_count / total_samples:.2%})")
+        print("--------------------------------------------------")
+
+        # <<< КОНЕЦ БЛОКА ДЛЯ СЧЕТЧИКА >>>
+
+        # <<< НАЧАЛО БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
+
+        print("\n--- Анализ результатов по бинам (тестовый набор) ---")
+        # Вызываем вашу функцию с предсказаниями и реальными значениями
+        binned_results_df = analyze_performance_by_bins(
+            y_pred=preds_float.numpy(), 
+            y_true=target_float.numpy(),
+            n_bins=5
+        )
+        print(binned_results_df)
+        print("--------------------------------------------------")
+
+        # (Очень рекомендуется) Сохраняем эту таблицу в CSV и логируем в MLflow как артефакт
+        binned_results_path = os.path.join(self.run_dir, 'binned_test_results.csv')
+        binned_results_df.to_csv(binned_results_path)
+        self.logger.experiment.log_artifact(binned_results_path)
+
+        # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
         thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
         rmses = []
         for th in thrs:
@@ -369,3 +437,66 @@ class WindNetPL(pl.LightningModule):
 
         else:
             return optimizer
+        
+def analyze_performance_by_bins(y_pred: np.ndarray, y_true: np.ndarray, n_bins: int = 5):
+    """
+    Анализирует производительность модели, разбивая тестовые данные на бины
+    по значению целевой переменной, и считает метрики для каждого бина.
+    """
+    
+    # 1. Создаем DataFrame для удобства работы
+    df = pd.DataFrame({
+        'y_true': y_true,
+        'y_pred': y_pred
+    })
+
+    # 2. Разбиваем весь диапазон целевых значений на n_bins равных интервалов (бинов).
+    # Например, если y_true от 0 до 50, и n_bins=5, то бины будут [0-10), [10-20), ..., [40-50].
+    bin_edges = [0, 5, 10, 15, 20, 25, 30, np.inf]
+    bin_labels = ["0-5", "5-10", "10-15", "15-20", "20-25", "25-30", "> 30"]
+    df['bin'] = pd.cut(df['y_true'], bins=bin_edges, labels=bin_labels, right=False)
+    # right=False означает, что интервал включает левую границу: [8, 15), [15, 20)
+    
+    # 3. Считаем, сколько примеров попало в каждый бин, чтобы определить их "редкость"
+    bin_counts = df.groupby('bin').size()
+    
+    # 4. Ранжируем бины: Rank 1 - самый редкий, Rank 5 - самый частый
+    bin_ranks = bin_counts.rank(method='first').astype(int)
+
+    # <<< НАЧАЛО БЛОКА ДЛЯ ПЕЧАТИ РЕДКИХ СЛУЧАЕВ >>>
+
+    # Находим имя самого редкого бина (где ранг равен 1)
+    # .idxmax() на инвертированных рангах найдет индекс минимального значения
+    rarest_bin_name = bin_ranks.idxmin() 
+    
+    # Фильтруем DataFrame, чтобы получить только строки, относящиеся к этому бину
+    rarest_samples_df = df[df['bin'] == rarest_bin_name]
+
+    print(f"\n--- Детальный разбор самого редкого бина: '{rarest_bin_name}' ---")
+    # Округляем значения для наглядности и печатаем
+    print(rarest_samples_df.round(2))
+    
+    # <<< КОНЕЦ БЛОКА ДЛЯ ПЕЧАТИ РЕДКИХ СЛУЧАЕВ >>>
+
+    # 5. Считаем метрики для каждого бина
+    def calculate_rmse(group):
+        return np.sqrt(mean_squared_error(group['y_true'], group['y_pred']))
+
+    def calculate_mae(group):
+        return mean_absolute_error(group['y_true'], group['y_pred'])
+        
+    bin_metrics = df.groupby('bin').apply(lambda x: pd.Series({
+        'RMSE': calculate_rmse(x),
+        'MAE': calculate_mae(x)
+    }))
+
+    # 6. Собираем всё в красивую итоговую таблицу
+    results_df = pd.DataFrame({
+        'Bin Rank': bin_ranks,
+        'Sample Count': bin_counts,
+    }).join(bin_metrics).reset_index()
+
+    # Сортируем по рангу для наглядности
+    results_df = results_df.sort_values(by='Bin Rank').set_index('Bin Rank')
+    
+    return results_df
