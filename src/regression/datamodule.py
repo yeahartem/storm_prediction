@@ -74,7 +74,7 @@ class XarrayDataset(Dataset):
             logging.info("Test dataloader init")
         else:
             self.data_idxs = DPL.train_data_idxs
-            np.save("data_idxs_for_debug.npy", self.data_idxs)
+            # np.save("data_idxs_for_debug.npy", self.data_idxs)
             
             y_denseweight = self.data_idxs[7:, :].flatten()
             # --- ОТЛАДОЧНЫЙ ПРИНТ №1 ---

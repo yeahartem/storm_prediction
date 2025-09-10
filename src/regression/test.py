@@ -10,17 +10,17 @@ from datamodule import WindDataModule
 from datetime import datetime
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.loggers import MLflowLogger # WandbLogger
 import wandb
 import time
 from pytorch_lightning.callbacks import LearningRateMonitor, OnExceptionCheckpoint
 print(os.getcwd())
 warnings.filterwarnings("ignore")
 
-os.environ['WANDB_MODE'] = 'offline'
-os.environ['WANDB_DIR'] = 'out/wandb'
-os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
-os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
+# os.environ['WANDB_MODE'] = 'offline'
+# os.environ['WANDB_DIR'] = 'out/wandb'
+# os.environ['WANDB_CONFIG_DIR'] = 'out/wandb'
+# os.environ['WANDB_CACHE_DIR'] = 'out/wandb'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
 torch.set_float32_matmul_precision('high')
 
@@ -32,14 +32,25 @@ def test(cfg: DictConfig) -> None:
     start_time = time.process_time()  
     run_dir = get_rundir_name()  
 
-    wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
-                               project=cfg.project_name,
-                               name=cfg.experiment_name + '_test')
+    # wandb_logger = WandbLogger(save_dir=os.path.join(os.getcwd(), run_dir),
+    #                            project=cfg.project_name,
+    #                            name=cfg.experiment_name + '_test')
+    mlflow_logger = MLflowLogger(
+        experiment_name=cfg.project_name,
+        run_name=cfg.experiment_name + '_test',
+        save_dir=os.path.join(os.getcwd(), 'mlruns'), # Стандартная папка для MLflow
+        log_model=True # Можно логировать саму модель как артефакт
+    )
     dm = WindDataModule(cfg)
     model = WindNetPL(cfg, run_dir)
     # model.load_from_checkpoint(os.path.join(os.getcwd(), cfg.eval.path_to_checkpoint), cfg=cfg)
+    model = WindNetPL.load_from_checkpoint(
+        checkpoint_path=os.path.join(os.getcwd(), cfg.eval.path_to_checkpoint),
+        cfg=cfg,
+        run_dir=run_dir
+    )
 
-    wandb_logger.watch(model, log='all', log_freq=100)       
+    # wandb_logger.watch(model, log='all', log_freq=100)       
     trainer = pl.Trainer(max_epochs=cfg.train.max_epoch,
                          accelerator="gpu",
                          precision="32",
@@ -47,12 +58,14 @@ def test(cfg: DictConfig) -> None:
                          devices=cfg.eval.gpu_num,
                          default_root_dir=run_dir,
                          strategy=cfg.eval.strategy if cfg.eval.distributed_test else 'auto',
-                         logger=wandb_logger,
+                         logger=mlflow_logger,
                          #limit_test_batches=200
                         )
     
     logging.info(f"Time to start test {time.process_time() - start_time} seconds")
-    trainer.test(model, dm, ckpt_path=os.path.join(os.getcwd()))
+    # trainer.test(model, dm, ckpt_path=os.path.join(os.getcwd()))
+    trainer.test(model, dm, ckpt_path=None)
+
  
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_Baseline.yaml")
@@ -66,4 +79,4 @@ def main(cfg: DictConfig):
 if __name__ == "__main__":    
     sys.argv.append('hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}')
     main()
-    wandb.finish()
+    # wandb.finish()

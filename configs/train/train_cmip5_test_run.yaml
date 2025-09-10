@@ -43,7 +43,7 @@ log_every_n_steps: 100
 
 cache:
   # Поставьте true, чтобы загружать данные из кэша, false - чтобы сгенерировать и сохранить их.
-  use_cached_padding: false 
+  use_cached_padding: true 
   
   # Путь для сохранения основного обработанного массива данных
   pad_crop_data_path: "data/cache/pad_crop_data.npy" # Используем формат NetCDF, идеальный для данных с координатами

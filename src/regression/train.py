@@ -108,27 +108,27 @@ def train_regression(cfg: DictConfig) -> None:
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
 
     trainer = pl.Trainer(max_epochs=cfg.train.max_epoch, # CORRECT !!!!!!!!!
-                         default_root_dir=default_root_dir,
-                         callbacks=[lr_monitor, checkpoint_callback],
-                         #performance
-                         accelerator="gpu",
-                         precision="16-mixed", # 32 - взяли 16-mixed чтобы не было ошибки из-за недостатка памяти
-                         benchmark=True,
-                         #validation
-                         check_val_every_n_epoch=1,
-                         num_sanity_val_steps=0,
-                         #distributed
-                         devices=cfg.train.gpu_num,
-                         num_nodes=cfg.train.num_nodes if cfg.train.distributed else 1,
-                         strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
-                         #log
-                         log_every_n_steps=cfg.train.log_every_n_steps,
-                         limit_train_batches=30,   # DELETE !!!!!!!!!!!!!!!!!!!!!!!
-                         gradient_clip_val=0.5, # Чтобы не было ошибки inf в mlflow 
-                         logger=mlflow_logger, # wandb_logger
-                         #misc
-                         profiler='simple',
-                         )
+                            default_root_dir=default_root_dir,
+                            callbacks=[lr_monitor, checkpoint_callback],
+                            #performance
+                            accelerator="gpu",
+                            precision="16-mixed", # 32 - взяли 16-mixed чтобы не было ошибки из-за недостатка памяти
+                            benchmark=True,
+                            #validation
+                            check_val_every_n_epoch=1,
+                            num_sanity_val_steps=0, # Было 0 !!!
+                            #distributed
+                            devices=cfg.train.gpu_num,
+                            num_nodes=cfg.train.num_nodes if cfg.train.distributed else 1,
+                            strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
+                            #log
+                            log_every_n_steps=cfg.train.log_every_n_steps,
+                            limit_train_batches=30,   # DELETE !!!!!!!!!!!!!!!!!!!!!!!
+                            # gradient_clip_val=100, # Чтобы не было ошибки inf в mlflow 
+                            logger=mlflow_logger, # wandb_logger
+                            #misc
+                            profiler='simple',
+                            )
     log_config(cfg)
 
     # Сохраняем Git-хеш для воспроизводимости

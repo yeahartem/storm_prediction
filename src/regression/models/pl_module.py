@@ -96,13 +96,16 @@ class WindNetPL(pl.LightningModule):
         weighted_loss = per_sample_loss * dense_weights
         
         # --- ОТЛАДОЧНЫЙ ПРИНТ №3 ---
-        if self.trainer.global_step < 5:
-             print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
-             print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
-             print(f"Loss per sample (first 5): {np.round(per_sample_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
-             print(f"Weights (first 5):         {np.round(dense_weights.flatten()[:5].cpu().detach().numpy(), 2)}")
-             print(f"Weighted loss (first 5): {np.round(weighted_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
-             print("---------------------------------\n")
+        if self.trainer.global_step < 10:
+            print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
+            print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
+            print(f"Target y (first 5):      {np.round(y.flatten()[:5].cpu().detach().numpy(), 2)}")
+            print(f"Prediction y_hat (first 5): {np.round(y_hat.flatten()[:5].cpu().detach().numpy(), 2)}")
+            
+            print(f"Loss per sample (first 5): {np.round(per_sample_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
+            print(f"Weights (first 5):         {np.round(dense_weights.flatten()[:5].cpu().detach().numpy(), 2)}")
+            print(f"Weighted loss (first 5): {np.round(weighted_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
+            print("---------------------------------\n")
         # --- КОНЕЦ ПРИНТА ---
 
         # 3. Теперь усредняем результат, чтобы получить одно число.
@@ -480,12 +483,17 @@ def analyze_performance_by_bins(y_pred: np.ndarray, y_true: np.ndarray, n_bins: 
 
     # 5. Считаем метрики для каждого бина
     def calculate_rmse(group):
+        # Если группа (бин) пустая, возвращаем NaN, иначе считаем метрику
+        if group.empty:
+            return np.nan
         return np.sqrt(mean_squared_error(group['y_true'], group['y_pred']))
-
+    
     def calculate_mae(group):
-        return mean_absolute_error(group['y_true'], group['y_pred'])
-        
-    bin_metrics = df.groupby('bin').apply(lambda x: pd.Series({
+        if group.empty:
+            return np.nan
+        return mean_absolute_error(group['y_true'], group['y_pred'])      
+    
+    bin_metrics = df.groupby('bin', observed=False).apply(lambda x: pd.Series({
         'RMSE': calculate_rmse(x),
         'MAE': calculate_mae(x)
     }))
