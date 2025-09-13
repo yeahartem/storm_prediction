@@ -261,6 +261,8 @@ class DataPreLoader:
         self.test_data_idxs = self.test_data_idxs[:, self.test_data_idxs[2, :] < len(self.time_coords)]
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
+        
+        print(f"Форма таргетов: {self.train_data_idxs[7, :].shape}. Примеры сырых таргетов: {self.train_data_idxs[7, :][:10].round(2)}")
         gc.collect()
 
     def stations_filter(self, lat, lon, dates, y, target_type): 

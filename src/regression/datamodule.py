@@ -75,18 +75,21 @@ class XarrayDataset(Dataset):
         else:
             self.data_idxs = DPL.train_data_idxs
             # np.save("data_idxs_for_debug.npy", self.data_idxs)
-            
-            y_denseweight = self.data_idxs[7:, :].flatten()
-            # --- ОТЛАДОЧНЫЙ ПРИНТ №1 ---
-            print("\n--- DEBUG: Data for DenseWeight.fit() ---")
-            print(f"Shape of targets: {y_denseweight.shape}")
-            print(f"Min: {y_denseweight.min()}, Max: {y_denseweight.max()}")
-            print(f"Sample 10 targets: {y_denseweight[:10]}")
-            print("----------------------------------------\n")
-            # --- КОНЕЦ ПРИНТА ---
-            dw = DenseWeight(alpha=1.0)
-            dw.fit(y_denseweight)
-            self.dense_weighter = dw
+            if self.cfg.train.loss_name=='MSELoss_Dense':
+                y_denseweight = self.data_idxs[7, :]
+                # y_denseweight = self.data_idxs[7:, :].flatten() # для Quantile Regression квантильная регрессия
+                # --- ОТЛАДОЧНЫЙ ПРИНТ №1 ---
+                print("\n--- DEBUG: Data for DenseWeight.fit() ---")
+                print(f"Shape of targets: {y_denseweight.shape}")
+                print(f"Min: {y_denseweight.min()}, Max: {y_denseweight.max()}")
+                print(f"Sample 10 targets: {y_denseweight[:10]}")
+                print("----------------------------------------\n")
+                # --- КОНЕЦ ПРИНТА ---
+                dw = DenseWeight(alpha=1.0)
+                dw.fit(y_denseweight)
+                self.dense_weighter = dw
+            else:
+                self.dense_weighter = None
             
             logging.info("Train dataloader init")
         self.dtype = dtype
@@ -115,7 +118,9 @@ class XarrayDataset(Dataset):
         return self.data_idxs.shape[1] # у должны быть равны длине вот этого
 
     def __getitem__(self, idx):
-        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, *y = self.data_idxs[:, idx]
+        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = self.data_idxs[:8, idx]
+        # lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, *y = self.data_idxs[:, idx] # Quantile regression
+
         lat_index = int(lat_index)
         lon_index = int(lon_index)
         time_index = int(time_index)

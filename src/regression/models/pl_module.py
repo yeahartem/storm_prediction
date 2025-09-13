@@ -46,9 +46,11 @@ class WindNetPL(pl.LightningModule):
                 raise NotImplementedError(f'Optimizer {cfg.train.optimizer_name} not found')
             
             if cfg.train.loss_name=='MSELoss':
-                self.criterion = torch.nn.MSELoss(reduction='none')
+                self.criterion = torch.nn.MSELoss()
             elif cfg.train.loss_name=='L1Loss':
                 self.criterion = torch.nn.L1Loss()
+            elif cfg.train.loss_name=='MSELoss_Dense':
+                self.criterion = torch.nn.MSELoss(reduction='none')
             else:
                 raise NotImplementedError(f'Criterion {cfg.train.loss_name} not found')
         
@@ -66,9 +68,9 @@ class WindNetPL(pl.LightningModule):
         self.train_MAE = torchmetrics.MeanAbsoluteError()
         self.val_MAE = torchmetrics.MeanAbsoluteError()
         self.test_MAE = torchmetrics.MeanAbsoluteError()
-        self.train_MAE_full = torchmetrics.MeanAbsoluteError()
-        self.val_MAE_full = torchmetrics.MeanAbsoluteError()
-        self.test_MAE_full = torchmetrics.MeanAbsoluteError()
+        # self.train_MAE_full = torchmetrics.MeanAbsoluteError() # Quantile Regression
+        # self.val_MAE_full = torchmetrics.MeanAbsoluteError()
+        # self.test_MAE_full = torchmetrics.MeanAbsoluteError()
 
         self.val_precision = torchmetrics.Precision(num_classes=1, task='binary')
         self.val_recall = torchmetrics.Recall(num_classes=1, task='binary')
@@ -84,37 +86,53 @@ class WindNetPL(pl.LightningModule):
     def forward(self, x):
         return self.net(x)
 
-    # def loss(self, y_hat, y, dense_weights):        
-    #     return self.criterion(y_hat, y) * dense_weights
 
     def loss(self, y_hat, y, dense_weights):
-        # 1. Считаем ошибку для каждого примера отдельно. 
-        #    Результат - тензор такого же размера, как y_hat и y.
-        per_sample_loss = self.criterion(y_hat, y)
+        # 
+        if self.cfg.train.loss_name=='MSELoss_Dense':
+            # 1. Считаем ошибку для каждого примера отдельно. 
+            #    Результат - тензор такого же размера, как y_hat и y.
+            per_sample_loss = self.criterion(y_hat, y)
 
-        # 2. Умножаем ошибку каждого примера на его вес.
-        weighted_loss = per_sample_loss * dense_weights
-        
-        # --- ОТЛАДОЧНЫЙ ПРИНТ №3 ---
-        if self.trainer.global_step < 10:
-            print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
-            print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
-            print(f"Target y (first 5):      {np.round(y.flatten()[:5].cpu().detach().numpy(), 2)}")
-            print(f"Prediction y_hat (first 5): {np.round(y_hat.flatten()[:5].cpu().detach().numpy(), 2)}")
+            # 2. Умножаем ошибку каждого примера на его вес.
+            weighted_loss = per_sample_loss * dense_weights
             
-            print(f"Loss per sample (first 5): {np.round(per_sample_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
-            print(f"Weights (first 5):         {np.round(dense_weights.flatten()[:5].cpu().detach().numpy(), 2)}")
-            print(f"Weighted loss (first 5): {np.round(weighted_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
-            print("---------------------------------\n")
-        # --- КОНЕЦ ПРИНТА ---
+            # --- ОТЛАДОЧНЫЙ ПРИНТ №3 ---
+            if self.trainer.global_step < 10:
+                print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
+                print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
+                print(f"Target y (first 5):      {np.round(y.flatten()[:5].cpu().detach().numpy(), 2)}")
+                print(f"Prediction y_hat (first 5): {np.round(y_hat.flatten()[:5].cpu().detach().numpy(), 2)}")
+                
+                print(f"Loss per sample (first 5): {np.round(per_sample_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
+                print(f"Weights (first 5):         {np.round(dense_weights.flatten()[:5].cpu().detach().numpy(), 2)}")
+                print(f"Weighted loss (first 5): {np.round(weighted_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
+                print("---------------------------------\n")
+            # --- КОНЕЦ ПРИНТА ---
 
-        # 3. Теперь усредняем результат, чтобы получить одно число.
-        return torch.mean(weighted_loss)
-
+            # 3. Теперь усредняем результат, чтобы получить одно число.
+            return torch.mean(weighted_loss)
+        else:
+            # для любой кроме DenseWeight
+            per_sample_loss = self.criterion(y_hat.squeeze(), y)
+            if self.trainer.global_step < 5:
+                print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
+                print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
+                # y и y_hat здесь должны быть НОРМАЛИЗОВАННЫМИ
+                print(f"Target y (norm, first 5):      {y[:5].cpu().numpy().round(2)}")
+                print(f"Prediction y_hat (norm, first 5): {y_hat.squeeze()[:5].cpu().detach().numpy().round(2)}")
+                print(f"Loss per sample ():     {per_sample_loss}")
+                print("---------------------------------\n")                
+                
+            return per_sample_loss
+            # return self.criterion(y_hat, y) # для Quantile Regression квантильная регрессия
+        
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)
         self.val_MAE_best.reset()
-
+        if self.cfg.model_name=="GhostWindNet27":
+            self.net.trainer = self.trainer
+            
     def model_step(self, batch):
         objs, target, dense_weights = batch
         # print(objs[0].shape)
@@ -134,20 +152,31 @@ class WindNetPL(pl.LightningModule):
 
         # 2. Обновляем метрики новыми данными
         self.train_loss(loss)
-        self.train_MAE(predictions[:, 0], target[:, 0]) # MAE для основного предсказания
-        self.train_MAE_full(predictions, target)
         
-        # 3. Самое интересное: превращение регрессии в классификацию
-        # Здесь мы считаем MAE только по тем дням, где реальная скорость ветра была выше порога target_threshold из конфига train_cmip5_test_run.yaml
-        self.train_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0] , thresh=self.cfg.train.target_threshold ))
-        # А здесь мы считаем Average Precision
-        self.train_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold ),
-                      float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))  # target_threshold: 3 - Это значит, что любое значение скорости ветра > 3 м/с считается событием класса "1" (опасный ветер), а всё, что <= 3 — классом "0". Функции float_to_binary и float_to_score в pl_module.py как раз и выполняют это преобразование для подсчета метрик классификации.
+        # =========================== QUANTILE REGRESSION (comment 5 lines below and uncomment those that are lower) =======================================
+        preds_squeezed = predictions.squeeze()
+        target_squeezed = target
+        self.train_MAE(preds_squeezed, target_squeezed) 
+        self.train_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
+        self.train_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+                    float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))        
+        
+        # =========================== QUANTILE REGRESSION  =======================================
+        # self.train_MAE(predictions[:, 0], target[:, 0]) # MAE для основного предсказания
+        # self.train_MAE_full(predictions, target) # QUANTILE REGRESSION uncomment
+        
+        # # 3. Самое интересное: превращение регрессии в классификацию
+        # # Здесь мы считаем MAE только по тем дням, где реальная скорость ветра была выше порога target_threshold из конфига train_cmip5_test_run.yaml
+        # self.train_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0] , thresh=self.cfg.train.target_threshold ))
+        # # А здесь мы считаем Average Precision
+        # self.train_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold ),
+        #                 float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))  # target_threshold: 3 - Это значит, что любое значение скорости ветра > 3 м/с считается событием класса "1" (опасный ветер), а всё, что <= 3 — классом "0". Функции float_to_binary и float_to_score в pl_module.py как раз и выполняют это преобразование для подсчета метрик классификации.
+        # =========================== QUANTILE REGRESSION =======================================
 
         # 4. Логируем значения метрик, чтобы их можно было увидеть
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train/MAE_full", self.train_MAE_full, on_step=True, on_epoch=True, prog_bar=True)
+        # self.log("train/MAE_full", self.train_MAE_full, on_step=True, on_epoch=True, prog_bar=True) # QUANTILE REGRESSION
         self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
         #if batch_idx%100==0:
@@ -168,20 +197,34 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
 
         self.val_loss(loss)
-        self.val_MAE(predictions[:, 0], target[:, 0])
-        self.val_MAE_full(predictions, target)
-
-        self.val_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
-        self.val_precision(float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-                           float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
-        self.val_recall(float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-                        float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))        
-        self.val_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0], thresh=self.cfg.train.target_threshold))
-
+        
+        # =========================== QUANTILE REGRESSION (comment 5 lines below and uncomment those that are lower) =======================================
+        preds_squeezed = predictions.squeeze()
+        target_squeezed = target
+        self.val_MAE(preds_squeezed, target_squeezed)
+        self.val_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+                    float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))    
+        self.val_precision(float_to_binary(preds_squeezed, thresh=self.cfg.train.target_threshold),
+                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
+        self.val_recall(float_to_binary(preds_squeezed, thresh=self.cfg.train.target_threshold),
+                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))   
+        self.val_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
+        
+        # =========================== QUANTILE REGRESSION ===========================
+        # self.val_MAE(predictions[:, 0], target[:, 0])
+        # self.val_MAE_full(predictions, target) # QUANTILE REGRESSION
+        # self.val_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
+        # self.val_precision(float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
+        # self.val_recall(float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))        
+        # self.val_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0], thresh=self.cfg.train.target_threshold))
+        # =========================== QUANTILE REGRESSION ===========================
+        
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
-        self.log("val/MAE_full", self.val_MAE_full, on_step=True, on_epoch=True, prog_bar=False)
+        # self.log("val/MAE_full", self.val_MAE_full, on_step=True, on_epoch=True, prog_bar=False) # QUANTILE REGRESSION
         self.log("val/MAE_OS", self.val_MAE_OS, on_step=False, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
@@ -220,6 +263,16 @@ class WindNetPL(pl.LightningModule):
         preds = torch.cat([x['preds'] for x in outputs]).cpu()
         targets = torch.cat([x['target'] for x in outputs]).cpu()
         
+        print(f"В on_validation_epoch_end() -> preds.shape: {preds.shape}, target.shape: {targets.shape}")
+        preds = preds.squeeze() # Comment for Quantile Regression квантильная регрессия
+
+        print("\n--- DEBUG: De-normalization on Epoch End ---")
+        print(f"Собранные таргеты (уже реальные): {targets[:5].numpy().round(2)}")
+        print(f"Собранные предсказания (): {preds[:5].numpy().round(2)}")
+        # print(f"Используемый y_mean: {y_mean:.2f}, y_std: {y_std:.2f}")
+        # print(f"Предсказания после де-нормализации (реальные): {preds_real.squeeze()[:5].numpy().round(2)}")
+        print("--------------------------------------------\n")
+                        
         # Блок для счетчика
         threshold = self.cfg.train.target_threshold
         outlier_count = torch.sum(targets > threshold).item()
@@ -245,16 +298,24 @@ class WindNetPL(pl.LightningModule):
         
     def test_step(self, batch, batch_idx):
         loss, predictions, target = self.model_step(batch)
-
-        binary_target = float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold)
-        score_preds = float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold)
-        binary_preds = float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold)
-
         self.test_loss(loss)
-        self.test_MAE(predictions[:, 0], target[:, 0])
-        self.test_MAE_full(predictions, target)
-
-        self.test_MAE_OS(*get_outliers_s(predictions[:, 0], target, thresh=self.cfg.train.target_threshold))
+        # =========================== QUANTILE REGRESSION (comment 5 lines below and uncomment those that are lower) =======================================
+        preds_squeezed = predictions.squeeze()
+        target_squeezed = target
+        binary_target = float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)
+        score_preds = float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold)
+        binary_preds = float_to_binary(preds_squeezed, thresh=self.cfg.train.target_threshold)
+        self.test_MAE(preds_squeezed, target_squeezed)
+        self.test_MAE_OS(*get_outliers_s(preds_squeezed, target, thresh=self.cfg.train.target_threshold))                 
+                
+        # =========================== QUANTILE REGRESSION ============================                
+        # binary_target = float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold)
+        # score_preds = float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold)
+        # binary_preds = float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold)
+        # self.test_MAE(predictions[:, 0], target[:, 0])
+        # self.test_MAE_full(predictions, target) # QUANTILE REGRESSION
+        # self.test_MAE_OS(*get_outliers_s(predictions[:, 0], target, thresh=self.cfg.train.target_threshold)) # Strange, why tagret, not target[:, 0]? 13.09.25 
+        # =========================== QUANTILE REGRESSION ============================        
         self.test_AP(score_preds, binary_target)
         self.test_precision(binary_preds,binary_target)
         self.test_recall(binary_preds, binary_target)
@@ -262,7 +323,7 @@ class WindNetPL(pl.LightningModule):
         
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/MAE", self.test_MAE, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("test/MAE_full", self.test_MAE_full, on_step=True, on_epoch=True, prog_bar=False)
+        # self.log("test/MAE_full", self.test_MAE_full, on_step=True, on_epoch=True, prog_bar=False) # QUANTILE REGRESSION
 
         self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("test/AP", self.test_AP, on_step=False, on_epoch=True, prog_bar=True)
@@ -304,7 +365,8 @@ class WindNetPL(pl.LightningModule):
         target = torch.stack([x["binary_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
         preds_float = torch.stack([x["float_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
         target_float = torch.stack([x["float_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
-
+        print(f"В on_test_epoch_end() -> preds_float.shape: {preds_float.shape}, target_float.shape: {target_float.shape}")
+        preds_float = preds_float.squeeze() # Comment for Quantile Regression квантильная регрессия
         # <<< НАЧАЛО БЛОКА ДЛЯ СЧЕТЧИКА >>>
 
         # 1. Берем порог из конфига
@@ -441,6 +503,32 @@ class WindNetPL(pl.LightningModule):
         else:
             return optimizer
         
+    def on_after_backward(self):
+        # Проверяем градиенты только на первых двух шагах обучения
+        if self.trainer.global_step % 50 == 0:
+            print("\n" + "#"*50)
+            print(f"--- ДЕБАГ ГРАДИЕНТОВ (ПОСЛЕ ШАГА {self.trainer.global_step}) ---")
+
+            # Градиенты для весов первого Linear слоя в "голове"
+            grad_lin1 = self.net.head_lin1.weight.grad
+            if grad_lin1 is not None:
+                print("\nГрадиенты для Linear_1 (до активации):")
+                print(f"  📈 Среднее абсолютное значение градиента: {grad_lin1.abs().mean():.6f}")
+                print(f"  📈 Максимальное абсолютное значение: {grad_lin1.abs().max():.6f}")
+            else:
+                print("\nГрадиенты для Linear_1 отсутствуют (None)!")
+
+            # Градиенты для весов второго, финального Linear слоя
+            grad_lin2 = self.net.head_lin2.weight.grad
+            if grad_lin2 is not None:
+                print("\nГрадиенты для Linear_2 (финальный слой):")
+                print(f"  📈 Среднее абсолютное значение градиента: {grad_lin2.abs().mean():.6f}")
+                print(f"  📈 Максимальное абсолютное значение: {grad_lin2.abs().max():.6f}")
+            else:
+                print("\nГрадиенты для Linear_2 отсутствуют (None)!")
+            
+            print("#"*50 + "\n")
+            
 def analyze_performance_by_bins(y_pred: np.ndarray, y_true: np.ndarray, n_bins: int = 5):
     """
     Анализирует производительность модели, разбивая тестовые данные на бины
