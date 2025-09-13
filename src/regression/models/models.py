@@ -41,15 +41,18 @@ class GhostWindNet27(nn.Module):
         # --- Мы разбираем head1 на отдельные слои для отладки ---
         self.head_dropout = nn.Dropout(0.4)
         self.head_lin1 = nn.Linear(self.time_window * (self.embed + 4), 70)
+        # self.head_lin1 = nn.Linear(self.time_window * 4, 70) 
+
         # Используем LeakyReLU, как и обсуждали, чтобы сразу проверить гипотезу
         self.head_activation = nn.LeakyReLU(inplace=True) 
-        self.head_bn = nn.BatchNorm1d(70)
+        # self.head_bn = nn.BatchNorm1d(70)
         self.head_lin2 = nn.Linear(70, 1)
 
     def forward(self, X) -> torch.Tensor:
         X, pos = X
         b = X.shape[0]
         days = X.shape[2]
+        # X = torch.reshape(pos, [b, days * 4])
         X = torch.reshape(X, [b * days, X.shape[1], X.shape[3], X.shape[4]])
         X = self.ghostnetv2(X)
         pos = torch.reshape(pos, [b * days, 4])
@@ -103,7 +106,7 @@ class GhostWindNet27(nn.Module):
             X = self.head_dropout(X)
             X = self.head_lin1(X)
             X = self.head_activation(X)
-            X = self.head_bn(X)
+            # X = self.head_bn(X)
             X = self.head_lin2(X)
         # ======================== КОНЕЦ БЛОКА ОТЛАДКИ ========================
             

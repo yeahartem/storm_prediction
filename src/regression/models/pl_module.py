@@ -92,13 +92,13 @@ class WindNetPL(pl.LightningModule):
         if self.cfg.train.loss_name=='MSELoss_Dense':
             # 1. Считаем ошибку для каждого примера отдельно. 
             #    Результат - тензор такого же размера, как y_hat и y.
-            per_sample_loss = self.criterion(y_hat, y)
+            per_sample_loss = self.criterion(y_hat.squeeze(), y)
 
             # 2. Умножаем ошибку каждого примера на его вес.
             weighted_loss = per_sample_loss * dense_weights
             
             # --- ОТЛАДОЧНЫЙ ПРИНТ №3 ---
-            if self.trainer.global_step < 10:
+            if self.trainer.global_step % 50 == 0:
                 print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
                 print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
                 print(f"Target y (first 5):      {np.round(y.flatten()[:5].cpu().detach().numpy(), 2)}")
@@ -115,7 +115,7 @@ class WindNetPL(pl.LightningModule):
         else:
             # для любой кроме DenseWeight
             per_sample_loss = self.criterion(y_hat.squeeze(), y)
-            if self.trainer.global_step < 5:
+            if self.trainer.global_step % 50 == 0:
                 print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
                 print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
                 # y и y_hat здесь должны быть НОРМАЛИЗОВАННЫМИ
