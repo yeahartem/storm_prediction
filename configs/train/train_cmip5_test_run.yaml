@@ -31,7 +31,7 @@ max_epoch: 1      # 2 !!!!!!!!!!!!!!!!
 
 optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
-loss_name: 'MSELoss' # _Dense
+loss_name: 'MSELoss_Dense' # _Dense
 
 num_workers: 0
 gpu_num: 1

@@ -90,27 +90,55 @@ class WindNetPL(pl.LightningModule):
     def loss(self, y_hat, y, dense_weights):
         # 
         if self.cfg.train.loss_name=='MSELoss_Dense':
-            # 1. Считаем ошибку для каждого примера отдельно. 
-            #    Результат - тензор такого же размера, как y_hat и y.
-            per_sample_loss = self.criterion(y_hat.squeeze(), y)
-
-            # 2. Умножаем ошибку каждого примера на его вес.
-            weighted_loss = per_sample_loss * dense_weights
             
-            # --- ОТЛАДОЧНЫЙ ПРИНТ №3 ---
-            if self.trainer.global_step % 50 == 0:
-                print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
-                print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
-                print(f"Target y (first 5):      {np.round(y.flatten()[:5].cpu().detach().numpy(), 2)}")
-                print(f"Prediction y_hat (first 5): {np.round(y_hat.flatten()[:5].cpu().detach().numpy(), 2)}")
-                
-                print(f"Loss per sample (first 5): {np.round(per_sample_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
-                print(f"Weights (first 5):         {np.round(dense_weights.flatten()[:5].cpu().detach().numpy(), 2)}")
-                print(f"Weighted loss (first 5): {np.round(weighted_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
-                print("---------------------------------\n")
-            # --- КОНЕЦ ПРИНТА ---
+            # --- НАЧАЛО ИСПРАВЛЕНИЙ ---
 
-            # 3. Теперь усредняем результат, чтобы получить одно число.
+            # Убедимся, что и y_hat, и dense_weights - это 1D векторы
+            y_hat_squeezed = y_hat.squeeze()
+            dense_weights_squeezed = dense_weights.squeeze()
+            
+            # 1. Считаем ошибку для каждого примера.
+            # self.criterion должен быть инициализирован с reduction='none'
+            per_sample_loss = self.criterion(y_hat_squeezed, y)
+
+            # 2. Умножаем ошибку на вес. Теперь оба тензора гарантированно 1D.
+            weighted_loss = per_sample_loss * dense_weights_squeezed
+            
+            # --- КОНЕЦ ИСПРАВЛЕНИЙ ---
+            
+            # --- ОТЛАДОЧНЫЙ ПРИНТ (оставляем как есть, он полезен) ---
+            if self.trainer.global_step % 50 == 0:
+                print("\n" + "v"*50)
+                print(f"--- ВЗВЕШЕННЫЙ LOSS (ШАГ {self.trainer.global_step}) ---")
+                print(f"Истинные значения y (первые 5):   {y[:5].cpu().numpy().round(2)}")
+                print(f"Предсказания y_hat (первые 5):   {y_hat_squeezed[:5].cpu().detach().numpy().round(2)}")
+                print(f"Веса dense_weights (первые 5):  {dense_weights_squeezed[:5].cpu().detach().numpy().round(2)}")
+                print(f"🔥 Взвешенный Loss (первые 5):    {weighted_loss[:5].cpu().detach().numpy().round(2)}")
+                print("^"*50 + "\n")
+
+            # 3. Усредняем взвешенные ошибки.
+            return torch.mean(weighted_loss)            
+            # # 1. Считаем ошибку для каждого примера отдельно. 
+            # #    Результат - тензор такого же размера, как y_hat и y.
+            # per_sample_loss = self.criterion(y_hat.squeeze(), y)
+
+            # # 2. Умножаем ошибку каждого примера на его вес.
+            # weighted_loss = per_sample_loss * dense_weights
+            
+            # # --- ОТЛАДОЧНЫЙ ПРИНТ №3 ---
+            # if self.trainer.global_step % 50 == 0:
+            #     print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
+            #     print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
+            #     print(f"Target y (first 5):      {np.round(y.flatten()[:5].cpu().detach().numpy(), 2)}")
+            #     print(f"Prediction y_hat (first 5): {np.round(y_hat.flatten()[:5].cpu().detach().numpy(), 2)}")
+                
+            #     print(f"Loss per sample (first 5): {np.round(per_sample_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
+            #     print(f"Weights (first 5):         {np.round(dense_weights.flatten()[:5].cpu().detach().numpy(), 2)}")
+            #     print(f"Weighted loss (first 5): {np.round(weighted_loss.flatten()[:5].cpu().detach().numpy(), 2)}")
+            #     print("---------------------------------\n")
+            # # --- КОНЕЦ ПРИНТА ---
+
+            # # 3. Теперь усредняем результат, чтобы получить одно число.
             return torch.mean(weighted_loss)
         else:
             # для любой кроме DenseWeight
