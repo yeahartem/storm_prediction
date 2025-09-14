@@ -9,7 +9,7 @@ target_threshold: 20
 
 data_dir: data/cmip5_world/      # directory to get climate files for training
 target_data_file: target.parquet  # target data file in data_dir for training
-       
+
 start_time: '2006-02-02'
 end_time: '2010-02-02'
 start_of_test: '2008-03-03'
@@ -27,11 +27,11 @@ lon_max: 40
 batch_size: 7
 learning_rate: 0.0001
 weight_decay: 0.0001
-max_epoch: 1      # 2 !!!!!!!!!!!!!!!!
+max_epoch: 4      # 2 !!!!!!!!!!!!!!!!
 
 optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
-loss_name: 'MSELoss_Dense' # _Dense
+loss_name: 'L1Loss_Dense' # BCELoss  L1Loss  MSELoss  MSELoss_Dense
 
 num_workers: 0
 gpu_num: 1

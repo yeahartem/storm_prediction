@@ -23,8 +23,10 @@ class WindNetPL(pl.LightningModule):
         self.save_hyperparameters()
         self.cfg = cfg        
         self.run_dir = run_dir
+        if self.run_dir:
+            os.makedirs(self.run_dir, exist_ok=True)
         if cfg.model_name=="BaselineLinear":
-             self.net = BaselineLinear()
+            self.net = BaselineLinear()
         elif cfg.model_name=="BaselineQT":
             self.net = BaselineQT()
         elif cfg.model_name=="BaselineQW":
@@ -51,6 +53,27 @@ class WindNetPL(pl.LightningModule):
                 self.criterion = torch.nn.L1Loss()
             elif cfg.train.loss_name=='MSELoss_Dense':
                 self.criterion = torch.nn.MSELoss(reduction='none')
+            elif cfg.train.loss_name=='L1Loss_Dense':
+                self.criterion = torch.nn.L1Loss(reduction='none')    
+            elif cfg.train.loss_name=='BCELoss':
+                print("\n--- ИСПОЛЬЗУЕТСЯ BCELoss С ВЕСАМИ КЛАССОВ ---")
+                # Получаем статистику по всему тренировочному датасету
+                targets = self.trainer.datamodule.DPL.train_data_idxs[7, :]
+                threshold = self.cfg.train.target_threshold
+                
+                positive_samples = np.sum(targets > threshold)
+                negative_samples = len(targets) - positive_samples
+                
+                # Считаем вес для положительного класса (сильный ветер)
+                pos_weight = torch.tensor(negative_samples / positive_samples)
+                
+                print(f"Статистика для BCELoss:")
+                print(f"  Позитивных примеров (> {threshold} м/с): {positive_samples}")
+                print(f"  Негативных примеров (<= {threshold} м/с): {negative_samples}")
+                print(f"  🔥 Вес для позитивного класса (pos_weight): {pos_weight:.2f}")
+                print("--------------------------------------------------\n")
+                
+                self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)            
             else:
                 raise NotImplementedError(f'Criterion {cfg.train.loss_name} not found')
         
@@ -80,6 +103,8 @@ class WindNetPL(pl.LightningModule):
         self.train_MAE_OS = torchmetrics.MeanAbsoluteError() # MAE outliers based on station measure
         self.val_MAE_OS = torchmetrics.MeanAbsoluteError() 
         self.test_MAE_OS = torchmetrics.MeanAbsoluteError() 
+        
+        self.val_confusion_matrix = torchmetrics.ConfusionMatrix(task='binary')
         self.validation_step_outputs = []
 
 
@@ -89,7 +114,7 @@ class WindNetPL(pl.LightningModule):
 
     def loss(self, y_hat, y, dense_weights):
         # 
-        if self.cfg.train.loss_name=='MSELoss_Dense':
+        if self.cfg.train.loss_name=='MSELoss_Dense' or self.cfg.train.loss_name=='L1Loss_Dense':
             
             # --- НАЧАЛО ИСПРАВЛЕНИЙ ---
 
@@ -107,13 +132,14 @@ class WindNetPL(pl.LightningModule):
             # --- КОНЕЦ ИСПРАВЛЕНИЙ ---
             
             # --- ОТЛАДОЧНЫЙ ПРИНТ (оставляем как есть, он полезен) ---
-            if self.trainer.global_step % 50 == 0:
+            if self.trainer.global_step % 100 == 0:
                 print("\n" + "v"*50)
                 print(f"--- ВЗВЕШЕННЫЙ LOSS (ШАГ {self.trainer.global_step}) ---")
                 print(f"Истинные значения y (первые 5):   {y[:5].cpu().numpy().round(2)}")
                 print(f"Предсказания y_hat (первые 5):   {y_hat_squeezed[:5].cpu().detach().numpy().round(2)}")
                 print(f"Веса dense_weights (первые 5):  {dense_weights_squeezed[:5].cpu().detach().numpy().round(2)}")
                 print(f"🔥 Взвешенный Loss (первые 5):    {weighted_loss[:5].cpu().detach().numpy().round(2)}")
+                print(f"Loss per sample ():     {per_sample_loss}")
                 print("^"*50 + "\n")
 
             # 3. Усредняем взвешенные ошибки.
@@ -139,11 +165,14 @@ class WindNetPL(pl.LightningModule):
             # # --- КОНЕЦ ПРИНТА ---
 
             # # 3. Теперь усредняем результат, чтобы получить одно число.
-            return torch.mean(weighted_loss)
+            # return torch.mean(weighted_loss)
+        elif self.cfg.train.loss_name=='BCELoss':
+            # Новая, простая логика. Веса уже "встроены" в self.criterion
+            return self.criterion(y_hat.squeeze(), y)
         else:
             # для любой кроме DenseWeight
             per_sample_loss = self.criterion(y_hat.squeeze(), y)
-            if self.trainer.global_step % 50 == 0:
+            if self.trainer.global_step % 100 == 0:
                 print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
                 print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
                 # y и y_hat здесь должны быть НОРМАЛИЗОВАННЫМИ
@@ -163,10 +192,14 @@ class WindNetPL(pl.LightningModule):
             
     def model_step(self, batch):
         objs, target, dense_weights = batch
+        predictions = self(objs).float()
         # print(objs[0].shape)
         # print(objs[1].shape)
-        predictions = self(objs).float()
-        loss = self.loss(predictions, target.float(), dense_weights)
+        if self.cfg.train.loss_name == 'BCELoss':
+            loss_target = float_to_binary(target, thresh=self.cfg.train.target_threshold).float()
+        else:
+            loss_target = target.float()        
+        loss = self.loss(predictions, loss_target, dense_weights)
         return loss, predictions, target    
     
     def training_step(self, batch, batch_idx):
@@ -178,6 +211,19 @@ class WindNetPL(pl.LightningModule):
             logging.warning("!!! Loss is INF or NaN, skipping batch !!!")
         # <-- КОНЕЦ ПРОВЕРКИ -->
 
+        # --- НАЧАЛО БЛОКА ДЛЯ ОТЛОВА СКАЧКОВ MAE ---
+        with torch.no_grad(): # Считаем метрику без вычисления градиентов
+            batch_mae = torch.nn.functional.l1_loss(predictions.squeeze(), target)
+        
+        MAE_THRESHOLD = 15.0 # Установи порог, который ты считаешь "аномальным"
+        if batch_mae > MAE_THRESHOLD:
+            print("\n" + "!"*60)
+            print(f"🚨 ОБНАРУЖЕН СКАЧОК MAE НА ШАГЕ {self.trainer.global_step}! MAE = {batch_mae:.2f}")
+            print(f"  Истинные значения y: {target.cpu().numpy().round(1)}")
+            print(f"  Предсказания y_hat: {predictions.squeeze().cpu().detach().numpy().round(1)}")
+            print("!"*60 + "\n")
+        # --- КОНЕЦ БЛОКА ---
+        
         # 2. Обновляем метрики новыми данными
         self.train_loss(loss)
         
@@ -232,9 +278,9 @@ class WindNetPL(pl.LightningModule):
         self.val_MAE(preds_squeezed, target_squeezed)
         self.val_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
                     float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))    
-        self.val_precision(float_to_binary(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        self.val_precision(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
                             float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
-        self.val_recall(float_to_binary(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        self.val_recall(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
                             float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))   
         self.val_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
         
@@ -243,12 +289,14 @@ class WindNetPL(pl.LightningModule):
         # self.val_MAE_full(predictions, target) # QUANTILE REGRESSION
         # self.val_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
         #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
-        # self.val_precision(float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+        # self.val_precision(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
         #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
-        # self.val_recall(float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+        # self.val_recall(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
         #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))        
         # self.val_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0], thresh=self.cfg.train.target_threshold))
         # =========================== QUANTILE REGRESSION ===========================
+        self.val_confusion_matrix(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)) 
         
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
@@ -320,6 +368,130 @@ class WindNetPL(pl.LightningModule):
         print("------------------------------------------------------")
         
         # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
+        
+        preds_float = preds
+        target_float = targets
+        thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
+        rmses = []
+        for th in thrs:
+            if len(torch.where(target_float >= th)[0])>0:
+                tgt_th = target_float[torch.where(target_float >= th)[0]]
+                pred_th = preds_float[torch.where(target_float >= th)[0]]
+                rmses.append(np.squeeze(torch.sqrt(torch.mean((pred_th - tgt_th) ** 2)).numpy()))
+        
+        fig, ax = plt.subplots()
+        ax.plot(thrs, rmses, color='purple')
+        ax.set_ylabel('RMSE')
+        ax.set_xlabel('Wind Speed (m/s)')
+        ax.set_title(f'RMSE vs Target (Epoch {self.current_epoch})')
+        # fig.savefig(os.path.join(self.run_dir, 'RMSE_vs_target.png'))   # save the figure to file  
+        # self.logger.experiment.log_figure(fig, f"epoch_{self.current_epoch}_RMSE_vs_target.png")
+        # 1. Сначала сохраняем график в файл
+        figure_path = os.path.join(self.run_dir, f"epoch_{self.current_epoch}_RMSE_vs_target.png")
+        fig.savefig(figure_path)
+        # 2. Затем логируем этот файл как артефакт
+        self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=figure_path)
+        plt.close(fig)
+
+        precision, recall, thresholds = precision_recall_curve(float_to_binary(targets, thresh=self.cfg.train.target_threshold),
+                                                            float_to_score(preds, thresh=self.cfg.train.target_threshold)
+                    )
+        fig_pr, ax_pr = plt.subplots()
+        ax_pr.plot(recall, precision, color='purple')
+        ax_pr.set_title(f'Precision-Recall Curve (Epoch {self.current_epoch})')
+        ax_pr.set_ylabel('Precision')
+        ax_pr.set_xlabel('Recall')
+        # fig.savefig(os.path.join(self.run_dir, 'PR_curve.png'))   # save the figure to file  
+        self.logger.experiment.log_figure(run_id=self.logger.run_id,
+                                            figure=fig_pr,
+                                            artifact_file=f"epoch_{self.current_epoch}_PR_curve.png")  
+        plt.close(fig_pr)
+        
+        # 1. Scatter plot
+        fig_scatter, ax_scatter = plt.subplots(figsize=(8, 8))
+        ax_scatter.scatter(target_float.numpy(), preds_float.numpy(), alpha=0.1)
+        ax_scatter.plot([target_float.min(), target_float.max()], [target_float.min(), target_float.max()], 'r--', lw=2) # Диагональ y=x
+        ax_scatter.set_xlabel('Истинные значения (м/с)')
+        ax_scatter.set_ylabel('Предсказанные значения (м/с)')
+        ax_scatter.set_title('Предсказание vs. Истина')
+        ax_scatter.grid(True)
+        # Сохраняем в MLflow
+        self.logger.experiment.log_figure(self.logger.run_id, fig_scatter, f"epoch_{self.current_epoch}_scatter_plot.png")
+        plt.close(fig_scatter)
+
+        # 2. Гистограмма ошибок
+        errors = (preds_float - target_float).numpy()
+        fig_hist, ax_hist = plt.subplots()
+        ax_hist.hist(errors, bins=50)
+        ax_hist.set_xlabel('Ошибка предсказания (м/с)')
+        ax_hist.set_ylabel('Частота')
+        ax_hist.set_title('Распределение ошибок')
+        self.logger.experiment.log_figure(self.logger.run_id, fig_hist, f"epoch_{self.current_epoch}_error_distribution.png")
+        plt.close(fig_hist)
+
+        # 3. Сохранение сырых предсказаний для дальнейшего анализа
+        # Это КРАЙНЕ ВАЖНО для воспроизводимости и статистических тестов
+        results_df = pd.DataFrame({
+            'prediction': preds_float.numpy(),
+            'target': target_float.numpy()
+        })
+        # results_df.to_csv(os.path.join(self.run_dir, f'epoch_{self.current_epoch}_predictions.csv'))
+        # self.logger.experiment.log_artifact(os.path.join(self.run_dir, f'epoch_{self.current_epoch}_predictions.csv'))  
+        # Путь к файлу лучше сохранить в переменную для читаемости
+        csv_path = os.path.join(self.run_dir, f'epoch_{self.current_epoch}_predictions.csv')
+        results_df.to_csv(csv_path)
+        self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=csv_path)
+        
+        print("\n--- Матрица ошибок (валидация) ---")
+        cm = self.val_confusion_matrix.compute().cpu().numpy()
+        print(f"               Предсказано 'Слабый' | Предсказано 'Сильный'")
+        print(f"Реально 'Слабый' | {cm[0][0]:<20} | {cm[0][1]:<20} ")
+        print(f"Реально 'Сильный'| {cm[1][0]:<20} | {cm[1][1]:<20} ")
+        print("------------------------------------")
+        # <<< НАЧАЛО БЛОКА ДЛЯ ЛОГИРОВАНИЯ МАТРИЦЫ ОШИБОК >>>
+        fig_cm, ax_cm = plt.subplots()
+        # Используем imshow для отрисовки матрицы как картинки, cmap='Blues' задает синюю цветовую схему
+        im = ax_cm.imshow(cm, cmap='Blues')
+
+        # Добавляем подписи к осям
+        ax_cm.set_xticks(np.arange(2))
+        ax_cm.set_yticks(np.arange(2))
+        ax_cm.set_xticklabels(['Предсказано "Слабый"', 'Предсказано "Сильный"'])
+        ax_cm.set_yticklabels(['Реально "Слабый"', 'Реально "Сильный"'])
+
+        # Добавляем цифры в каждую ячейку
+        # Этот цикл проходит по каждой ячейке (0,0), (0,1), (1,0), (1,1) и пишет в ней её значение
+        for i in range(2):
+            for j in range(2):
+                # Выбираем цвет текста (белый на тёмном фоне, чёрный на светлом) для читаемости
+                text_color = "white" if cm[i, j] > cm.max() / 2. else "black"
+                text = ax_cm.text(j, i, cm[i, j],
+                            ha="center", va="center", color=text_color)
+
+        ax_cm.set_title(f'Матрица ошибок (Эпоха {self.current_epoch})')
+        fig_cm.tight_layout() # Делает график более компактным
+
+        # Логируем и закрываем фигуру, как и с другими графиками
+        self.logger.experiment.log_figure(self.logger.run_id, fig_cm, f"epoch_{self.current_epoch}_confusion_matrix.png")
+        plt.close(fig_cm)
+        tn, fp, fn, tp = cm.flatten() # Распаковываем значения из матрицы
+
+        # Считаем F1-score, избегая деления на ноль
+        if (tp + fp == 0) or (tp + fn == 0):
+            f1_score = 0.0
+        else:
+            precision = tp / (tp + fp)
+            recall = tp / (tp + fn)
+            if precision + recall == 0:
+                f1_score = 0.0
+            else:
+                f1_score = 2 * (precision * recall) / (precision + recall)
+
+        # Логируем F1-score в MLflow
+        self.log("val/F1_score", f1_score, on_epoch=True, prog_bar=True)
+        # Не забудь сбросить метрику в конце
+        self.val_confusion_matrix.reset()
+
         # <<< ВАЖНО: Очищаем список после использования >>>
         self.validation_step_outputs.clear()
 
@@ -483,8 +655,8 @@ class WindNetPL(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = self.optimizer(self.net.parameters(),
-                                   lr=self.cfg.train.learning_rate,
-                                   weight_decay=self.cfg.train.weight_decay)        
+                                    lr=self.cfg.train.learning_rate,
+                                    weight_decay=self.cfg.train.weight_decay)        
         if self.scheduler_name is not None:
             if self.scheduler_name == "ReduceLROnPlateau":
                 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, mode="min", factor=0.7, patience=300, verbose=True, interval="step", frequency=1)
@@ -516,8 +688,8 @@ class WindNetPL(pl.LightningModule):
                 }
             elif self.scheduler_name == "LinearLR":
                 scheduler = torch.optim.lr_scheduler.LinearLR(optimizer,
-                                                             start_factor=1.0, end_factor=0.2, 
-                                                             total_iters=self.trainer.estimated_stepping_batches)
+                                                            start_factor=1.0, end_factor=0.2, 
+                                                            total_iters=self.trainer.estimated_stepping_batches)
                 return {
                     'optimizer': optimizer,
                     'lr_scheduler': {
@@ -533,7 +705,7 @@ class WindNetPL(pl.LightningModule):
         
     def on_after_backward(self):
         # Проверяем градиенты только на первых двух шагах обучения
-        if self.trainer.global_step % 50 == 0:
+        if self.trainer.global_step % 100 == 0:
             print("\n" + "#"*50)
             print(f"--- ДЕБАГ ГРАДИЕНТОВ (ПОСЛЕ ШАГА {self.trainer.global_step}) ---")
 

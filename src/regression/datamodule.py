@@ -75,7 +75,7 @@ class XarrayDataset(Dataset):
         else:
             self.data_idxs = DPL.train_data_idxs
             # np.save("data_idxs_for_debug.npy", self.data_idxs)
-            if self.cfg.train.loss_name=='MSELoss_Dense':
+            if self.cfg.train.loss_name=='MSELoss_Dense' or self.cfg.train.loss_name=='L1Loss_Dense':
                 y_denseweight = self.data_idxs[7, :]
                 # y_denseweight = self.data_idxs[7:, :].flatten() # для Quantile Regression квантильная регрессия
                 # --- ОТЛАДОЧНЫЙ ПРИНТ №1 ---

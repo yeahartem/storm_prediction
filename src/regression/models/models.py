@@ -62,7 +62,7 @@ class GhostWindNet27(nn.Module):
         # ======================= НАЧАЛО БЛОКА ОТЛАДКИ =======================
         # Печатаем только для первых нескольких шагов обучения, чтобы не засорять лог
         # torch.is_grad_enabled() гарантирует, что это происходит только во время обучения
-        if torch.is_grad_enabled() and hasattr(self, 'trainer') and self.trainer.global_step % 50 == 0:
+        if torch.is_grad_enabled() and hasattr(self, 'trainer') and self.trainer.global_step % 100 == 0:
             print("\n" + "="*50)
             print(f"--- ДЕБАГ ПРЯМОГО ПРОХОДА (ШАГ {self.trainer.global_step}) ---")
             print(f"Вход в 'голову' | Форма: {X.shape}")
