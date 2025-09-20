@@ -31,7 +31,7 @@ max_epoch: 4      # 2 !!!!!!!!!!!!!!!!
 
 optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
-loss_name: 'L1Loss_Dense' # BCELoss  L1Loss  MSELoss  MSELoss_Dense
+loss_name: 'L1Loss' # BCELoss  L1Loss  MSELoss  MSELoss_Dense   L1Loss_Dense
 
 num_workers: 0
 gpu_num: 1
