@@ -46,7 +46,8 @@ class GhostWindNet27(nn.Module):
         # Используем LeakyReLU, как и обсуждали, чтобы сразу проверить гипотезу
         self.head_activation = nn.LeakyReLU(inplace=True) 
         # self.head_bn = nn.BatchNorm1d(70)
-        self.head_lin2 = nn.Linear(70, 1)
+        # self.head_lin2 = nn.Linear(70, 1)
+        self.head_lin2 = nn.Linear(70, 7) # для Quantile Regression квантильная регрессия
 
     def forward(self, X) -> torch.Tensor:
         X, pos = X
@@ -96,7 +97,8 @@ class GhostWindNet27(nn.Module):
             # X_final = self.head_lin2(X_bn)
             X_final = self.head_lin2(X_act)
             print("\n[ФИНАЛ] Итоговое предсказание:")
-            print(f"  Первые 5 предсказаний: {X_final.squeeze()[:5].detach().cpu().numpy().round(3)}")
+            # print(f"  Первые 5 предсказаний: {X_final.squeeze()[:5].detach().cpu().numpy().round(3)}")
+            print(f"  Предсказанные квантили для 1-го примера: {X_final[0].cpu().detach().numpy().round(2)}") # для Quantile Regression квантильная регрессия
             print("="*50 + "\n")
             
             # Повторяем вычисления, чтобы вернуть результат

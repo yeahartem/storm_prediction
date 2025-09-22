@@ -24,14 +24,14 @@ lat_max: 50
 lon_min: -30
 lon_max: 40
 
-batch_size: 7
+batch_size: 4
 learning_rate: 0.0001
 weight_decay: 0.0001
-max_epoch: 4      # 2 !!!!!!!!!!!!!!!!
+max_epoch: 4     # 2 !!!!!!!!!!!!!!!!
 
 optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
-loss_name: 'L1Loss' # BCELoss  L1Loss  MSELoss  MSELoss_Dense   L1Loss_Dense
+loss_name: 'L1Loss_Dense' # BCELoss  L1Loss  MSELoss  MSELoss_Dense   L1Loss_Dense
 
 num_workers: 0
 gpu_num: 1

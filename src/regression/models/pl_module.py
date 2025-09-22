@@ -91,9 +91,9 @@ class WindNetPL(pl.LightningModule):
         self.train_MAE = torchmetrics.MeanAbsoluteError()
         self.val_MAE = torchmetrics.MeanAbsoluteError()
         self.test_MAE = torchmetrics.MeanAbsoluteError()
-        # self.train_MAE_full = torchmetrics.MeanAbsoluteError() # Quantile Regression
-        # self.val_MAE_full = torchmetrics.MeanAbsoluteError()
-        # self.test_MAE_full = torchmetrics.MeanAbsoluteError()
+        self.train_MAE_full = torchmetrics.MeanAbsoluteError() # Quantile Regression
+        self.val_MAE_full = torchmetrics.MeanAbsoluteError()
+        self.test_MAE_full = torchmetrics.MeanAbsoluteError()
 
         self.val_precision = torchmetrics.Precision(num_classes=1, task='binary')
         self.val_recall = torchmetrics.Recall(num_classes=1, task='binary')
@@ -115,31 +115,21 @@ class WindNetPL(pl.LightningModule):
     def loss(self, y_hat, y, dense_weights):
         # 
         if self.cfg.train.loss_name=='MSELoss_Dense' or self.cfg.train.loss_name=='L1Loss_Dense':
-            
-            # --- НАЧАЛО ИСПРАВЛЕНИЙ ---
-
-            # Убедимся, что и y_hat, и dense_weights - это 1D векторы
-            y_hat_squeezed = y_hat.squeeze()
-            dense_weights_squeezed = dense_weights.squeeze()
-            
-            # 1. Считаем ошибку для каждого примера.
-            # self.criterion должен быть инициализирован с reduction='none'
-            per_sample_loss = self.criterion(y_hat_squeezed, y)
-
-            # 2. Умножаем ошибку на вес. Теперь оба тензора гарантированно 1D.
-            weighted_loss = per_sample_loss * dense_weights_squeezed
-            
-            # --- КОНЕЦ ИСПРАВЛЕНИЙ ---
-            
+            # для Quantile Regression квантильная регрессия
+            # для Quantile Здесь большие изменения были, возьми код для НЕквантильной регрессии в ветке experiment/loss_functions. weighted_loss = self.criterion(y_hat.squeeze(), y) * dense_weights.squeeze() 
+            per_sample_loss = self.criterion(y_hat, y)
+            weighted_loss = per_sample_loss * dense_weights.squeeze().unsqueeze(1)
             # --- ОТЛАДОЧНЫЙ ПРИНТ (оставляем как есть, он полезен) ---
             if self.trainer.global_step % 100 == 0:
                 print("\n" + "v"*50)
-                print(f"--- ВЗВЕШЕННЫЙ LOSS (ШАГ {self.trainer.global_step}) ---")
-                print(f"Истинные значения y (первые 5):   {y[:5].cpu().numpy().round(2)}")
-                print(f"Предсказания y_hat (первые 5):   {y_hat_squeezed[:5].cpu().detach().numpy().round(2)}")
-                print(f"Веса dense_weights (первые 5):  {dense_weights_squeezed[:5].cpu().detach().numpy().round(2)}")
-                print(f"🔥 Взвешенный Loss (первые 5):    {weighted_loss[:5].cpu().detach().numpy().round(2)}")
-                print(f"Loss per sample ():     {per_sample_loss}")
+                print(f"--- ВЗВЕШЕННЫЙ LOSS (КВАНТИЛИ) (ШАГ {self.trainer.global_step}) ---")
+                print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
+                
+                # Выводим все 7 квантилей для ПЕРВОГО примера
+                print(f"Истинные квантили y (1-й пример):   {y[0].cpu().numpy().round(2)}")
+                print(f"Предсказанные квантили (1-й пример): {y_hat[0].cpu().detach().numpy().round(2)}")
+                print(f"Вес для 1-го примера:               {dense_weights.squeeze()[0].cpu().detach().numpy().round(2)}")
+                print(f"🔥 Итоговый Loss на батче:          {torch.mean(weighted_loss).item():.2f}")
                 print("^"*50 + "\n")
 
             # 3. Усредняем взвешенные ошибки.
@@ -166,23 +156,26 @@ class WindNetPL(pl.LightningModule):
 
             # # 3. Теперь усредняем результат, чтобы получить одно число.
             # return torch.mean(weighted_loss)
-        elif self.cfg.train.loss_name=='BCELoss':
+        elif self.cfg.train.loss_name=='BCELoss': # ни разу не запускал
             # Новая, простая логика. Веса уже "встроены" в self.criterion
             return self.criterion(y_hat.squeeze(), y)
         else:
             # для любой кроме DenseWeight
-            per_sample_loss = self.criterion(y_hat.squeeze(), y)
+            # per_sample_loss = self.criterion(y_hat.squeeze(), y)
+            per_sample_loss = self.criterion(y_hat, y) # для Quantile Regression квантильная регрессия
             if self.trainer.global_step % 100 == 0:
                 print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
                 print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
                 # y и y_hat здесь должны быть НОРМАЛИЗОВАННЫМИ
-                print(f"Target y (norm, first 5):      {y[:5].cpu().numpy().round(2)}")
-                print(f"Prediction y_hat (norm, first 5): {y_hat.squeeze()[:5].cpu().detach().numpy().round(2)}")
-                print(f"Loss per sample ():     {per_sample_loss}")
+                # print(f"Target y (norm, first 5):      {y[:5].cpu().numpy().round(2)}") 
+                # print(f"Prediction y_hat (norm, first 5): {y_hat.squeeze()[:5].cpu().detach().numpy().round(2)}")
+                # print(f"Loss per sample ():     {per_sample_loss}")
+                print(f"Истинные квантили y (1-й пример):   {y[0].cpu().numpy().round(2)}") # для Quantile Regression квантильная регрессия
+                print(f"Предсказанные квантили (1-й пример): {y_hat[0].cpu().detach().numpy().round(2)}")
+                print(f"🔥 Итоговый Loss на батче:          {per_sample_loss.item():.2f}")
                 print("---------------------------------\n")                
                 
             return per_sample_loss
-            # return self.criterion(y_hat, y) # для Quantile Regression квантильная регрессия
         
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)
@@ -211,46 +204,46 @@ class WindNetPL(pl.LightningModule):
             logging.warning("!!! Loss is INF or NaN, skipping batch !!!")
         # <-- КОНЕЦ ПРОВЕРКИ -->
 
-        # --- НАЧАЛО БЛОКА ДЛЯ ОТЛОВА СКАЧКОВ MAE ---
-        with torch.no_grad(): # Считаем метрику без вычисления градиентов
-            batch_mae = torch.nn.functional.l1_loss(predictions.squeeze(), target)
+        # # --- НАЧАЛО БЛОКА ДЛЯ ОТЛОВА СКАЧКОВ MAE --- # для Quantile Regression НЕ подходит
+        # with torch.no_grad(): # Считаем метрику без вычисления градиентов
+        #     batch_mae = torch.nn.functional.l1_loss(predictions.squeeze(), target)
         
-        MAE_THRESHOLD = 15.0 # Установи порог, который ты считаешь "аномальным"
-        if batch_mae > MAE_THRESHOLD:
-            print("\n" + "!"*60)
-            print(f"🚨 ОБНАРУЖЕН СКАЧОК MAE НА ШАГЕ {self.trainer.global_step}! MAE = {batch_mae:.2f}")
-            print(f"  Истинные значения y: {target.cpu().numpy().round(1)}")
-            print(f"  Предсказания y_hat: {predictions.squeeze().cpu().detach().numpy().round(1)}")
-            print("!"*60 + "\n")
-        # --- КОНЕЦ БЛОКА ---
+        # MAE_THRESHOLD = 15.0 # Установи порог, который ты считаешь "аномальным"
+        # if batch_mae > MAE_THRESHOLD:
+        #     print("\n" + "!"*60)
+        #     print(f"🚨 ОБНАРУЖЕН СКАЧОК MAE НА ШАГЕ {self.trainer.global_step}! MAE = {batch_mae:.2f}")
+        #     print(f"  Истинные значения y: {target.cpu().numpy().round(1)}")
+        #     print(f"  Предсказания y_hat: {predictions.squeeze().cpu().detach().numpy().round(1)}")
+        #     print("!"*60 + "\n")
+        # # --- КОНЕЦ БЛОКА ---
         
         # 2. Обновляем метрики новыми данными
         self.train_loss(loss)
         
         # =========================== QUANTILE REGRESSION (comment 5 lines below and uncomment those that are lower) =======================================
-        preds_squeezed = predictions.squeeze()
-        target_squeezed = target
-        self.train_MAE(preds_squeezed, target_squeezed) 
-        self.train_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
-        self.train_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
-                    float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))        
+        # preds_squeezed = predictions.squeeze()
+        # target_squeezed = target
+        # self.train_MAE(preds_squeezed, target_squeezed) 
+        # self.train_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
+        # self.train_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        #             float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))        
         
         # =========================== QUANTILE REGRESSION  =======================================
-        # self.train_MAE(predictions[:, 0], target[:, 0]) # MAE для основного предсказания
-        # self.train_MAE_full(predictions, target) # QUANTILE REGRESSION uncomment
+        self.train_MAE(predictions[:, 0], target[:, 0]) # MAE для основного предсказания
+        self.train_MAE_full(predictions, target) # QUANTILE REGRESSION uncomment
         
-        # # 3. Самое интересное: превращение регрессии в классификацию
-        # # Здесь мы считаем MAE только по тем дням, где реальная скорость ветра была выше порога target_threshold из конфига train_cmip5_test_run.yaml
-        # self.train_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0] , thresh=self.cfg.train.target_threshold ))
-        # # А здесь мы считаем Average Precision
-        # self.train_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold ),
-        #                 float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))  # target_threshold: 3 - Это значит, что любое значение скорости ветра > 3 м/с считается событием класса "1" (опасный ветер), а всё, что <= 3 — классом "0". Функции float_to_binary и float_to_score в pl_module.py как раз и выполняют это преобразование для подсчета метрик классификации.
+        # 3. Самое интересное: превращение регрессии в классификацию
+        # Здесь мы считаем MAE только по тем дням, где реальная скорость ветра была выше порога target_threshold из конфига train_cmip5_test_run.yaml
+        self.train_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0] , thresh=self.cfg.train.target_threshold ))
+        # А здесь мы считаем Average Precision
+        self.train_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold ),
+                        float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))  # target_threshold: 3 - Это значит, что любое значение скорости ветра > 3 м/с считается событием класса "1" (опасный ветер), а всё, что <= 3 — классом "0". Функции float_to_binary и float_to_score в pl_module.py как раз и выполняют это преобразование для подсчета метрик классификации.
         # =========================== QUANTILE REGRESSION =======================================
 
         # 4. Логируем значения метрик, чтобы их можно было увидеть
         self.log("train/loss", self.train_loss, on_step=True, on_epoch=True)
         self.log("train/MAE", self.train_MAE, on_step=True, on_epoch=True, prog_bar=True)
-        # self.log("train/MAE_full", self.train_MAE_full, on_step=True, on_epoch=True, prog_bar=True) # QUANTILE REGRESSION
+        self.log("train/MAE_full", self.train_MAE_full, on_step=True, on_epoch=True, prog_bar=True) # QUANTILE REGRESSION
         self.log("train/MAE_OS", self.train_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("train/AP", self.train_AP, on_step=True, on_epoch=True, prog_bar=True)
         #if batch_idx%100==0:
@@ -273,34 +266,35 @@ class WindNetPL(pl.LightningModule):
         self.val_loss(loss)
         
         # =========================== QUANTILE REGRESSION (comment 5 lines below and uncomment those that are lower) =======================================
-        preds_squeezed = predictions.squeeze()
-        target_squeezed = target
-        self.val_MAE(preds_squeezed, target_squeezed)
-        self.val_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
-                    float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))    
-        self.val_precision(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
-                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
-        self.val_recall(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
-                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))   
-        self.val_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
-        
+        # preds_squeezed = predictions.squeeze()
+        # target_squeezed = target
+        # self.val_MAE(preds_squeezed, target_squeezed)
+        # self.val_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        #             float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))    
+        # self.val_precision(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        #                     float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
+        # self.val_recall(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        #                     float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))   
+        # self.val_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
+        # self.val_confusion_matrix(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        #             float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)) 
         # =========================== QUANTILE REGRESSION ===========================
-        # self.val_MAE(predictions[:, 0], target[:, 0])
-        # self.val_MAE_full(predictions, target) # QUANTILE REGRESSION
-        # self.val_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
-        # self.val_precision(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
-        # self.val_recall(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))        
-        # self.val_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0], thresh=self.cfg.train.target_threshold))
+        self.val_MAE(predictions[:, 0], target[:, 0])
+        self.val_MAE_full(predictions, target) # QUANTILE REGRESSION
+        self.val_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+                            float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
+        self.val_precision(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+                            float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
+        self.val_recall(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+                            float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))        
+        self.val_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0], thresh=self.cfg.train.target_threshold))
         # =========================== QUANTILE REGRESSION ===========================
-        self.val_confusion_matrix(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
-                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)) 
+        self.val_confusion_matrix(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
+                            float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold)) 
         
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
-        # self.log("val/MAE_full", self.val_MAE_full, on_step=True, on_epoch=True, prog_bar=False) # QUANTILE REGRESSION
+        self.log("val/MAE_full", self.val_MAE_full, on_step=True, on_epoch=True, prog_bar=False) # QUANTILE REGRESSION
         self.log("val/MAE_OS", self.val_MAE_OS, on_step=False, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
@@ -340,7 +334,9 @@ class WindNetPL(pl.LightningModule):
         targets = torch.cat([x['target'] for x in outputs]).cpu()
         
         print(f"В on_validation_epoch_end() -> preds.shape: {preds.shape}, target.shape: {targets.shape}")
-        preds = preds.squeeze() # Comment for Quantile Regression квантильная регрессия
+        preds = preds[:, 0]
+        targets = targets[:, 0]
+        # preds = preds.squeeze() # Comment for Quantile Regression квантильная регрессия
 
         print("\n--- DEBUG: De-normalization on Epoch End ---")
         print(f"Собранные таргеты (уже реальные): {targets[:5].numpy().round(2)}")
@@ -359,8 +355,8 @@ class WindNetPL(pl.LightningModule):
         print("\n--- Анализ результатов по бинам (валидационный набор) ---")
         # Вызываем вашу функцию
         binned_results_df = analyze_performance_by_bins(
-            y_pred=preds.numpy().flatten(), 
-            y_true=targets.numpy().flatten(),
+            y_pred=preds.numpy(),  # Different for Quantile Regression квантильная регрессия
+            y_true=targets.numpy(),
             n_bins=5
         )
         # Выводим таблицу в консоль в конце каждой эпохи валидации
@@ -372,15 +368,19 @@ class WindNetPL(pl.LightningModule):
         preds_float = preds
         target_float = targets
         thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
-        rmses = []
+        plot_thrs = []  # Ось X для графика
+        plot_rmses = [] # Ось Y для графика
+
         for th in thrs:
-            if len(torch.where(target_float >= th)[0])>0:
-                tgt_th = target_float[torch.where(target_float >= th)[0]]
-                pred_th = preds_float[torch.where(target_float >= th)[0]]
-                rmses.append(np.squeeze(torch.sqrt(torch.mean((pred_th - tgt_th) ** 2)).numpy()))
+            indices = torch.where(targets >= th)[0]
+            if len(indices) > 0:
+                # Добавляем значения в ОБА списка, только если есть данные
+                plot_thrs.append(th)
+                plot_rmses.append(torch.sqrt(torch.mean((preds[indices] - targets[indices]) ** 2)).numpy())
+
         
         fig, ax = plt.subplots()
-        ax.plot(thrs, rmses, color='purple')
+        ax.plot(plot_thrs, plot_rmses, color='purple')
         ax.set_ylabel('RMSE')
         ax.set_xlabel('Wind Speed (m/s)')
         ax.set_title(f'RMSE vs Target (Epoch {self.current_epoch})')
@@ -393,8 +393,8 @@ class WindNetPL(pl.LightningModule):
         self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=figure_path)
         plt.close(fig)
 
-        precision, recall, thresholds = precision_recall_curve(float_to_binary(targets, thresh=self.cfg.train.target_threshold),
-                                                            float_to_score(preds, thresh=self.cfg.train.target_threshold)
+        precision, recall, thresholds = precision_recall_curve(float_to_binary(targets, thresh=self.cfg.train.target_threshold).numpy(),
+                                                            float_to_score(preds, thresh=self.cfg.train.target_threshold).numpy()
                     )
         fig_pr, ax_pr = plt.subplots()
         ax_pr.plot(recall, precision, color='purple')
@@ -500,21 +500,21 @@ class WindNetPL(pl.LightningModule):
         loss, predictions, target = self.model_step(batch)
         self.test_loss(loss)
         # =========================== QUANTILE REGRESSION (comment 5 lines below and uncomment those that are lower) =======================================
-        preds_squeezed = predictions.squeeze()
-        target_squeezed = target
-        binary_target = float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)
-        score_preds = float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold)
-        binary_preds = float_to_binary(preds_squeezed, thresh=self.cfg.train.target_threshold)
-        self.test_MAE(preds_squeezed, target_squeezed)
-        self.test_MAE_OS(*get_outliers_s(preds_squeezed, target, thresh=self.cfg.train.target_threshold))                 
+        # preds_squeezed = predictions.squeeze()
+        # target_squeezed = target
+        # binary_target = float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)
+        # score_preds = float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold)
+        # binary_preds = float_to_binary(preds_squeezed, thresh=self.cfg.train.target_threshold)
+        # self.test_MAE(preds_squeezed, target_squeezed)
+        # self.test_MAE_OS(*get_outliers_s(preds_squeezed, target, thresh=self.cfg.train.target_threshold))                 
                 
         # =========================== QUANTILE REGRESSION ============================                
-        # binary_target = float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold)
-        # score_preds = float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold)
-        # binary_preds = float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold)
-        # self.test_MAE(predictions[:, 0], target[:, 0])
-        # self.test_MAE_full(predictions, target) # QUANTILE REGRESSION
-        # self.test_MAE_OS(*get_outliers_s(predictions[:, 0], target, thresh=self.cfg.train.target_threshold)) # Strange, why tagret, not target[:, 0]? 13.09.25 
+        binary_target = float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold)
+        score_preds = float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold)
+        binary_preds = float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold)
+        self.test_MAE(predictions[:, 0], target[:, 0])
+        self.test_MAE_full(predictions, target) # QUANTILE REGRESSION
+        self.test_MAE_OS(*get_outliers_s(predictions[:, 0], target, thresh=self.cfg.train.target_threshold)) # Strange, why tagret, not target[:, 0]? 13.09.25 
         # =========================== QUANTILE REGRESSION ============================        
         self.test_AP(score_preds, binary_target)
         self.test_precision(binary_preds,binary_target)
@@ -523,7 +523,7 @@ class WindNetPL(pl.LightningModule):
         
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/MAE", self.test_MAE, on_step=True, on_epoch=True, prog_bar=True)
-        # self.log("test/MAE_full", self.test_MAE_full, on_step=True, on_epoch=True, prog_bar=False) # QUANTILE REGRESSION
+        self.log("test/MAE_full", self.test_MAE_full, on_step=True, on_epoch=True, prog_bar=False) # QUANTILE REGRESSION
 
         self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("test/AP", self.test_AP, on_step=False, on_epoch=True, prog_bar=True)
@@ -560,97 +560,97 @@ class WindNetPL(pl.LightningModule):
         print(f'Plots will be saved to {self.run_dir}')
         self.test_outputs = []
 
-    def on_test_epoch_end(self):
-        preds = torch.stack([x["binary_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
-        target = torch.stack([x["binary_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
-        preds_float = torch.stack([x["float_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
-        target_float = torch.stack([x["float_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
-        print(f"В on_test_epoch_end() -> preds_float.shape: {preds_float.shape}, target_float.shape: {target_float.shape}")
-        preds_float = preds_float.squeeze() # Comment for Quantile Regression квантильная регрессия
-        # <<< НАЧАЛО БЛОКА ДЛЯ СЧЕТЧИКА >>>
+    def on_test_epoch_end(self): # Quantile Regression квантильная регрессия НЕ ЗАПУСКАЛ, НАДЕЮСЬ отработает
+        # Собираем все предсказания и таргеты в матрицы
+        preds_matrix = torch.cat([x["float_preds"] for x in self.test_outputs]).cpu()
+        targets_matrix = torch.cat([x["float_target"] for x in self.test_outputs]).cpu()
 
-        # 1. Берем порог из конфига
+        # <<< ГЛАВНОЕ ИСПРАВЛЕНИЕ: ВЫБИРАЕМ ОДИН КВАНТИЛЬ ДЛЯ ВСЕГО АНАЛИЗА >>>
+        # Будем использовать 0.96 квантиль (индекс 0) для всех графиков и метрик
+        preds = preds_matrix[:, 0]
+        targets = targets_matrix[:, 0]
+
+        # --- Статистика по выбросам ---
         threshold = self.cfg.train.target_threshold
-
-        # 2. Считаем, сколько значений в target_float больше этого порога
-        outlier_count = torch.sum(target_float > threshold).item()
-        total_samples = len(target_float)
-
-        # 3. Выводим информацию в консоль
-        print(f"\n--- Статистика по выбросам (скорость > {threshold} м/с) ---")
+        outlier_count = torch.sum(targets > threshold).item()
+        total_samples = targets.numel()
+        print(f"\n--- Статистика по выбросам (тест, скорость > {threshold} м/с) ---")
         print(f"Количество случаев: {outlier_count} из {total_samples} ({outlier_count / total_samples:.2%})")
-        print("--------------------------------------------------")
 
-        # <<< КОНЕЦ БЛОКА ДЛЯ СЧЕТЧИКА >>>
-
-        # <<< НАЧАЛО БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
-
+        # --- Анализ по бинам ---
         print("\n--- Анализ результатов по бинам (тестовый набор) ---")
-        # Вызываем вашу функцию с предсказаниями и реальными значениями
         binned_results_df = analyze_performance_by_bins(
-            y_pred=preds_float.numpy(), 
-            y_true=target_float.numpy(),
-            n_bins=5
+            y_pred=preds.numpy(), 
+            y_true=targets.numpy()
         )
         print(binned_results_df)
-        print("--------------------------------------------------")
-
-        # (Очень рекомендуется) Сохраняем эту таблицу в CSV и логируем в MLflow как артефакт
+        # Сохраняем эту таблицу как артефакт
         binned_results_path = os.path.join(self.run_dir, 'binned_test_results.csv')
         binned_results_df.to_csv(binned_results_path)
         self.logger.experiment.log_artifact(binned_results_path)
 
-        # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
-        thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
-        rmses = []
-        for th in thrs:
-            if len(torch.where(target_float >= th)[0])>0:
-                tgt_th = target_float[torch.where(target_float >= th)[0]]
-                pred_th = preds_float[torch.where(target_float >= th)[0]]
-                rmses.append(np.squeeze(torch.sqrt(torch.mean((pred_th - tgt_th) ** 2)).numpy()))
-        
-        fig, ax = plt.subplots()
-        ax.plot(thrs, rmses, color='purple')
-        ax.set_ylabel('RMSE')
-        ax.set_xlabel('Wind Speed (m/s)')
-        fig.savefig(os.path.join(self.run_dir, 'RMSE_vs_target.png'))   # save the figure to file        
+        # --- ПОСТРОЕНИЕ И ЛОГИРОВАНИЕ ГРАФИКОВ (ИСПРАВЛЕННАЯ ЛОГИКА) ---
 
-        precision, recall, thresholds = precision_recall_curve(target, preds)
-        fig, ax = plt.subplots()
-        ax.plot(recall, precision, color='purple')
-        ax.set_title('Precision-Recall Curve')
-        ax.set_ylabel('Precision')
-        ax.set_xlabel('Recall')
-        fig.savefig(os.path.join(self.run_dir, 'PR_curve.png'))   # save the figure to file     
+        # 1. RMSE vs Target
+        all_thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
+        plot_thrs, plot_rmses = [], []
+        for th in all_thrs:
+            indices = torch.where(targets >= th)[0]
+            if len(indices) > 0:
+                plot_thrs.append(th)
+                plot_rmses.append(torch.sqrt(torch.mean((preds[indices] - targets[indices]) ** 2)).numpy())
         
-        # 1. Scatter plot
+        fig_rmse, ax_rmse = plt.subplots()
+        ax_rmse.plot(plot_thrs, plot_rmses, color='purple', marker='o')
+        ax_rmse.set_title('RMSE vs Target (Test Set)')
+        ax_rmse.set_ylabel('RMSE')
+        ax_rmse.set_xlabel('Wind Speed (m/s)')
+        # Используем надёжный способ сохранения
+        figure_path = os.path.join(self.run_dir, "test_RMSE_vs_target.png")
+        fig_rmse.savefig(figure_path)
+        self.logger.experiment.log_artifact(figure_path)
+        plt.close(fig_rmse)
+
+        # 2. PR-кривая
+        binary_target = float_to_binary(targets, thresh=self.cfg.train.target_threshold)
+        score_preds = float_to_score(preds, thresh=self.cfg.train.target_threshold)
+        precision, recall, _ = precision_recall_curve(binary_target.numpy(), score_preds.numpy())
+        
+        fig_pr, ax_pr = plt.subplots()
+        ax_pr.plot(recall, precision, color='purple')
+        ax_pr.set_title('Precision-Recall Curve (Test Set)')
+        ax_pr.set_ylabel('Precision')
+        ax_pr.set_xlabel('Recall')
+        # Используем надёжный способ сохранения
+        figure_path = os.path.join(self.run_dir, "test_PR_curve.png")
+        fig_pr.savefig(figure_path)
+        self.logger.experiment.log_artifact(figure_path)
+        plt.close(fig_pr)
+
+        # 3. Scatter plot
         fig_scatter, ax_scatter = plt.subplots(figsize=(8, 8))
-        ax_scatter.scatter(target_float.numpy(), preds_float.numpy(), alpha=0.1)
-        ax_scatter.plot([target_float.min(), target_float.max()], [target_float.min(), target_float.max()], 'r--', lw=2) # Диагональ y=x
+        ax_scatter.scatter(targets.numpy(), preds.numpy(), alpha=0.1)
+        ax_scatter.plot([targets.min(), targets.max()], [targets.min(), targets.max()], 'r--', lw=2)
         ax_scatter.set_xlabel('Истинные значения (м/с)')
         ax_scatter.set_ylabel('Предсказанные значения (м/с)')
-        ax_scatter.set_title('Предсказание vs. Истина')
+        ax_scatter.set_title('Предсказание vs. Истина (Test Set)')
         ax_scatter.grid(True)
-        # Сохраняем в MLflow
-        self.logger.experiment.log_figure(fig_scatter, "test_scatter_plot.png")
+        # Используем надёжный способ сохранения
+        figure_path = os.path.join(self.run_dir, "test_scatter_plot.png")
+        fig_scatter.savefig(figure_path)
+        self.logger.experiment.log_artifact(figure_path)
+        plt.close(fig_scatter)
 
-        # 2. Гистограмма ошибок
-        errors = (preds_float - target_float).numpy()
-        fig_hist, ax_hist = plt.subplots()
-        ax_hist.hist(errors, bins=50)
-        ax_hist.set_xlabel('Ошибка предсказания (м/с)')
-        ax_hist.set_ylabel('Частота')
-        ax_hist.set_title('Распределение ошибок')
-        self.logger.experiment.log_figure(fig_hist, "test_error_distribution.png")
-
-        # 3. Сохранение сырых предсказаний для дальнейшего анализа
-        # Это КРАЙНЕ ВАЖНО для воспроизводимости и статистических тестов
-        results_df = pd.DataFrame({
-            'prediction': preds_float.numpy(),
-            'target': target_float.numpy()
-        })
-        results_df.to_csv(os.path.join(self.run_dir, 'test_predictions.csv'), index=False)
-        self.logger.experiment.log_artifact(os.path.join(self.run_dir, 'test_predictions.csv'))   
+        # 4. Сохранение сырых предсказаний (всех квантилей)
+        # Создаём колонки для каждого квантиля
+        q_labels = [0.96, 0.85, 0.70, 0.50, 0.25, 0.15, 0.05]
+        pred_cols = {f'pred_q{q}': preds_matrix[:, i].numpy() for i, q in enumerate(q_labels)}
+        target_cols = {f'target_q{q}': targets_matrix[:, i].numpy() for i, q in enumerate(q_labels)}
+        
+        results_df = pd.DataFrame({**pred_cols, **target_cols})
+        csv_path = os.path.join(self.run_dir, 'test_predictions_all_quantiles.csv')
+        results_df.to_csv(csv_path, index=False)
+        self.logger.experiment.log_artifact(csv_path)
 
 
     def configure_optimizers(self):

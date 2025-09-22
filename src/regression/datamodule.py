@@ -77,7 +77,7 @@ class XarrayDataset(Dataset):
             # np.save("data_idxs_for_debug.npy", self.data_idxs)
             if self.cfg.train.loss_name=='MSELoss_Dense' or self.cfg.train.loss_name=='L1Loss_Dense':
                 y_denseweight = self.data_idxs[7, :]
-                # y_denseweight = self.data_idxs[7:, :].flatten() # для Quantile Regression квантильная регрессия
+                # y_denseweight = self.data_idxs[7:, :].flatten() # (Не подходит ->) для Quantile Regression квантильная регрессия. Потому что надо обучать на распределении 0.96 квантиля, чтобы на выбросы не обращать внимания
                 # --- ОТЛАДОЧНЫЙ ПРИНТ №1 ---
                 print("\n--- DEBUG: Data for DenseWeight.fit() ---")
                 print(f"Shape of targets: {y_denseweight.shape}")
@@ -118,8 +118,8 @@ class XarrayDataset(Dataset):
         return self.data_idxs.shape[1] # у должны быть равны длине вот этого
 
     def __getitem__(self, idx):
-        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = self.data_idxs[:8, idx]
-        # lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, *y = self.data_idxs[:, idx] # Quantile regression
+        # lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = self.data_idxs[:8, idx]
+        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, *y = self.data_idxs[:, idx] # Quantile regression
 
         lat_index = int(lat_index)
         lon_index = int(lon_index)
