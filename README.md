@@ -1,3 +1,12 @@
+# Воспроизведение
+```
+conda env create -f environments/pytorch1.13.1_cuda116/environment.yml -y
+conda activate wind
+pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 --extra-index-url https://download.pytorch.org/whl/cu116
+python -c "import torch; print(torch.cuda.is_available())"
+pip install denseweight
+```
+
 # Конфигурационные файлы
 Конфигурационные файлы обрабатываются с помощью пакета [hydra](https://hydra.cc/docs/intro/). Они находятся в папке `configs`.
 Папка `configs` содержит **корневой** конфигурационный файл, описывающий логику модели, подготовки и обучения. Предполагается, что пользователь будет задавать всю логику через **корнейвой** файл, а именно: выбор модели, исходных сырых данных, этапы предобработки, обучения и предсказания. Пример файла -  `configs/cmip6_WindNet27x47.yaml`. **Корневой конфигурационный файл** содержит атрибуты `time_start` и `time_end`, которые используются только на этапе предсказания.

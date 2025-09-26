@@ -87,7 +87,7 @@ class GhostWindNet27(nn.Module):
             print(f"  Значения (min, mean, max): {X_act.min():.3f}, {X_act.mean():.3f}, {X_act.max():.3f}")
             print(f"  🔥 Процент НУЛЕВЫХ значений: {percent_zeros:.1f}%")
 
-            # --- Шаг 4: BatchNorm ---
+            # # --- Шаг 4: BatchNorm ---
             # X_bn = self.head_bn(X_act)
             # print("\n[ПОСЛЕ BATCHNORM] Выход из BatchNorm1d:")
             # print(f"  Форма: {X_bn.shape}")
