@@ -5,7 +5,7 @@ use_elevation: false
 normalize: false      # precision 16 is already normalized
 time_agg_window: 28   # range in days, used to calculate maximum for every day of target
 time_freq: 14         # get sample from target every {time_freq} days
-target_threshold: 20
+target_threshold: 15
 
 data_dir: data/cmip5_world/      # directory to get climate files for training
 target_data_file: target.parquet  # target data file in data_dir for training
@@ -31,7 +31,7 @@ max_epoch: 100     # 2 !!!!!!!!!!!!!!!!
 
 optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
-loss_name: 'MSELoss' # BCELoss  L1Loss  MSELoss  MSELoss_Dense   L1Loss_Dense
+loss_name: 'L1Loss' # BCELoss  L1Loss  MSELoss  MSELoss_Dense   L1Loss_Dense
 
 num_workers: 0 # it was 0     8
 gpu_num: 1
