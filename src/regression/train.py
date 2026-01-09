@@ -146,9 +146,31 @@ def train_regression(cfg: DictConfig) -> None:
     if os.path.exists(final_config_path):
         mlflow.log_artifact(final_config_path, "config.yaml")
 
+    # ---- NEW: test-only mode ----
+    if getattr(cfg.train, "test_only", False):
+        ckpt = getattr(cfg.train, "ckpt_path", None)
+        if not ckpt:
+            raise ValueError("cfg.train.test_only=True but cfg.train.ckpt_path is not set")
+        logging.info(f"TEST-ONLY mode. Using checkpoint: {ckpt}")
+        test_results = trainer.test(model=model, datamodule=dm, ckpt_path=ckpt)
+        logging.info(f"Test results: {test_results}")
+        return
+
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
-    
+
+    # ---- NEW: run TEST on best checkpoint ----
+    logging.info("Running test on best checkpoint...")
+    test_results = trainer.test(model=model, datamodule=dm, ckpt_path="best")
+    logging.info(f"Test results: {test_results}")
+
+    # (опционально) залогировать test метрики явно в mlflow
+    if test_results and isinstance(test_results, list) and len(test_results) > 0:
+        for k, v in test_results[0].items():
+            try:
+                mlflow.log_metric(f"test/{k}", float(v))
+            except Exception:
+                pass    
     # ======================== NEW CODE FOR SAVING CHECKPOINT FOR DVC ==================
     logging.info("Training finished. Copying best checkpoint for DVC...")
 

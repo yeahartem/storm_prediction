@@ -27,11 +27,11 @@ lon_max: 40
 batch_size: 16
 learning_rate: 0.0001
 weight_decay: 0.0001
-max_epoch: 100      # 2 !!!!!!!!!!!!!!!!
+max_epoch: 2      # 2 !!!!!!!!!!!!!!!!
 
 optimizer_name: 'AdamW'
 scheduler_name: 'LinearLR'
-loss_name: 'MSELoss_Dense' # BCELoss  L1Loss  MSELoss  MSELoss_Dense   L1Loss_Dense
+loss_name: 'MSELoss' # BCELoss  L1Loss  MSELoss  MSELoss_Dense   L1Loss_Dense
 
 num_workers: 0
 gpu_num: 1
@@ -40,6 +40,9 @@ num_nodes: 1
 strategy: 'ddp'
 
 log_every_n_steps: 100 
+
+test_only: true
+ckpt_path: 'mlruns/785490677828161635/4e1ea565ec054888a7785d785a36d447/artifacts/model/checkpoints/epoch=95-step=60096/epoch=95-step=60096.ckpt'
 
 cache:
   # Поставьте true, чтобы загружать данные из кэша, false - чтобы сгенерировать и сохранить их.

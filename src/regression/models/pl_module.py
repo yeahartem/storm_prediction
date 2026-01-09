@@ -564,7 +564,7 @@ class WindNetPL(pl.LightningModule):
         preds = torch.stack([x["binary_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
         target = torch.stack([x["binary_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
         preds_float = torch.stack([x["float_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
-        target_float = torch.stack([x["float_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
+        target_float = torch.stack([x["float_target"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
         print(f"В on_test_epoch_end() -> preds_float.shape: {preds_float.shape}, target_float.shape: {target_float.shape}")
         preds_float = preds_float.squeeze() # Comment for Quantile Regression квантильная регрессия
         # <<< НАЧАЛО БЛОКА ДЛЯ СЧЕТЧИКА >>>
@@ -598,7 +598,7 @@ class WindNetPL(pl.LightningModule):
         # (Очень рекомендуется) Сохраняем эту таблицу в CSV и логируем в MLflow как артефакт
         binned_results_path = os.path.join(self.run_dir, 'binned_test_results.csv')
         binned_results_df.to_csv(binned_results_path)
-        self.logger.experiment.log_artifact(binned_results_path)
+        self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=binned_results_path)
 
         # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
         thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
@@ -614,14 +614,20 @@ class WindNetPL(pl.LightningModule):
         ax.set_ylabel('RMSE')
         ax.set_xlabel('Wind Speed (m/s)')
         fig.savefig(os.path.join(self.run_dir, 'RMSE_vs_target.png'))   # save the figure to file        
+        self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=os.path.join(self.run_dir, 'RMSE_vs_target.png'))
+        plt.close(fig)
 
         precision, recall, thresholds = precision_recall_curve(target, preds)
-        fig, ax = plt.subplots()
+        fig_pr, ax = plt.subplots()
         ax.plot(recall, precision, color='purple')
         ax.set_title('Precision-Recall Curve')
-        ax.set_ylabel('Precision')
+        ax.set_ylabel('Precision') 
         ax.set_xlabel('Recall')
-        fig.savefig(os.path.join(self.run_dir, 'PR_curve.png'))   # save the figure to file     
+        fig_pr.savefig(os.path.join(self.run_dir, 'PR_curve.png'))   # save the figure to file     
+        self.logger.experiment.log_figure(run_id=self.logger.run_id,
+                                    figure=fig_pr,
+                                    artifact_file=f"test_PR_curve.png")  
+        plt.close(fig_pr)
         
         # 1. Scatter plot
         fig_scatter, ax_scatter = plt.subplots(figsize=(8, 8))
@@ -632,7 +638,9 @@ class WindNetPL(pl.LightningModule):
         ax_scatter.set_title('Предсказание vs. Истина')
         ax_scatter.grid(True)
         # Сохраняем в MLflow
-        self.logger.experiment.log_figure(fig_scatter, "test_scatter_plot.png")
+        # self.logger.experiment.log_figure(fig_scatter, "test_scatter_plot.png")
+        self.logger.experiment.log_figure(self.logger.run_id, fig_scatter, f"test_scatter_plot.png")
+        plt.close(fig_scatter)
 
         # 2. Гистограмма ошибок
         errors = (preds_float - target_float).numpy()
@@ -641,7 +649,7 @@ class WindNetPL(pl.LightningModule):
         ax_hist.set_xlabel('Ошибка предсказания (м/с)')
         ax_hist.set_ylabel('Частота')
         ax_hist.set_title('Распределение ошибок')
-        self.logger.experiment.log_figure(fig_hist, "test_error_distribution.png")
+        self.logger.experiment.log_figure(self.logger.run_id, fig_hist, "test_error_distribution.png")
 
         # 3. Сохранение сырых предсказаний для дальнейшего анализа
         # Это КРАЙНЕ ВАЖНО для воспроизводимости и статистических тестов
@@ -650,7 +658,7 @@ class WindNetPL(pl.LightningModule):
             'target': target_float.numpy()
         })
         results_df.to_csv(os.path.join(self.run_dir, 'test_predictions.csv'), index=False)
-        self.logger.experiment.log_artifact(os.path.join(self.run_dir, 'test_predictions.csv'))   
+        self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=os.path.join(self.run_dir, 'test_predictions.csv'))  
 
 
     def configure_optimizers(self):
