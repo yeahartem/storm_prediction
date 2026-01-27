@@ -118,11 +118,13 @@ def clean_weather_data_RU(path_to_weather_stations: str) -> pd.DataFrame:
 
 def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
     """ To load weather stations data from all world 
-        Features: ['DATE', 'STATION', 'NAME', 'MXWDSP', 'WDSP', 'TEMP', 'STP', 'SLP',
-       'PRCP', 'DEWP', 'LATITUDE', 'LONGITUDE', 'ELEVATION'] 
+        Features: ['DATE', 'MXWDSP', 'WDSP', 'TEMP', 'STP', 'SLP',
+       'PRCP', 'DEWP', 'LATITUDE', 'LONGITUDE', 'ELEVATION']
+
+       It saves file world_stations_25_days_6_months_cleaned.parquet 
     """  
 
-    columns = ["STATION", "LATITUDE",  "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP', 'DEWP', 'SLP', 'STP', 'PRCP'] 
+    columns = ["LATITUDE",  "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP', 'DEWP', 'SLP', 'STP', 'PRCP'] # "STATION", 
     start_time = time.process_time()
     df = pl.read_parquet(path_to_weather_stations, columns=columns)
     logging.info(f"Time to open world parquet {time.process_time() - start_time} seconds")
@@ -130,7 +132,7 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
         .lazy()
         .select(
             [
-                pl.col("STATION").cast(pl.Categorical).alias("station_name"),
+                # pl.col("STATION").cast(pl.Categorical).alias("station_name"),
                 pl.col("MXWDSP").round().cast(pl.Float32).alias("max_speed"),
                 pl.col("WDSP").round().cast(pl.Float32).alias("avg_speed"),
                 pl.col("DATE").cast(pl.Date).alias("time"),                
@@ -186,10 +188,14 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
     
 
 def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
+    """    
+    It takes cleaned stations data, changes target_column on 'y'.
+    Then it saves file data/cmip5_world/target.parquet.pp2    
+    """
 
     start_time = time.process_time()
 
-    df = pl.read_parquet(cfg.raw.path_to_world_weather_stations_data.replace(".parquet", "_cleaned.parquet"), use_pyarrow=True)
+    df = pl.read_parquet(cfg.raw.path_to_world_weather_stations_data.replace(".parquet", "_cleaned.parquet"), use_pyarrow=True) # data/weatherstation_data/world_stations_25_days_6_months_cleaned.parquet
     logging.info(f"Time to open world parquet {time.process_time() - start_time} seconds")
     df = df.drop_nulls()
 
@@ -206,10 +212,11 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
     else:
         raise ValueError
         
-    df = df.select(pl.col(["time", "station_name", "y", "lat", "lon"]))
+    # df = df.select(pl.col(["time", "station_name", "y", "lat", "lon"]))
+    # df = df.drop("station_name") # 27.01.26 обновил, убрал "station_name", т.к. в моем скрипте я эту колонку не оставляю 
+    df = df.select(pl.col(["time", "y", "lat", "lon"]))
     gc.collect()      
     # df = stations_to_data_grid(dataset_xarray=dataset_xarray, stations_df=df)
-    df = df.drop("station_name")
     df.write_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp2'))
 
 
@@ -217,17 +224,17 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
 def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):    
 
     # pre_prepare_target_RU(cfg, dataset_xarray)
-    pre_prepare_target_WORLD(cfg, dataset_xarray)
+    pre_prepare_target_WORLD(cfg, dataset_xarray)  # saves file data/cmip5_world/target.parquet.pp2
 
     # df_ru = pl.read_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'), use_pyarrow=True)
     # logging.info(f'RU len: {len(df_ru)}')
-    df_world = pl.read_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp2'), use_pyarrow=True)
+    df_world = pl.read_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp2'), use_pyarrow=True) # Stations data
     logging.info(f'WORLD len: {len(df_world)}')
     start_time = time.process_time()
     # target_df = pl.concat([df_ru, df_world], how='diagonal')
     target_df = df_world
     print(target_df)
-    logging.info(f"Concat took {time.process_time() - start_time} seconds")
+    # logging.info(f"Concat took {time.process_time() - start_time} seconds") # 27.01.26
     target_df = target_df.drop_nulls()
-    logging.info(f'TOTAL len: {len(target_df)}')
-    target_df.write_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name))
+    logging.info(f'TOTAL len (should be the same): {len(target_df)}')
+    target_df.write_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name)) # data/cmip5_world/target.parquet

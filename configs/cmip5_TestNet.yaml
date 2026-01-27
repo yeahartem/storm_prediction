@@ -4,14 +4,14 @@ defaults:
   - train: train_cmip5_test_run  # train configuration and data load configuration
   - eval: test_GhostWindNet_temp                        # test and eval configuration
 
-experiment_name: cmip5_reg_GhostWindNet27x47
-project_name: wind-speed-regression
-target_type: temp_c 
-cmip_type: CMIP6 
+experiment_name: cmip5_reg_GhostWindNet27x47_FINAL
+project_name: wind-speed-regression-FINAL
+# target_type: temp_c 
+cmip_type: CMIP5 
 
 model_name: GhostWindNet27      # {name}{time_window}x{half_side_size}
 time_window: 27               # must match model, odd only
 half_side_size: 47            # must match model, odd only
 
-start_date: '2019-03-30'                   #for eval only
-end_date: '2019-03-31'
+start_date: '2000-01-01'                   #for eval only   before 20.01.26 2019-03-30
+end_date: '2018-12-31'                     #                before 20.01.26 2019-03-31

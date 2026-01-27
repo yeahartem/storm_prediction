@@ -10,6 +10,7 @@ from src.data_assemble.prepare_cmip import prepare_cmip
 
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_TestNet.yaml")
 def run_prepare(cfg: DictConfig):
+    print(cfg.process, "everything is OK, we work with CMIP5")
     prepare_cmip(cfg)
 
 if __name__ == "__main__":

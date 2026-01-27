@@ -73,7 +73,7 @@ def erase_leap_years(data_arr):
     return data_arr.sel(time=~((data_arr.time.dt.month == 2) & (data_arr.time.dt.day == 29)))
 
 def climate_to_npy(files: list, var: str, cfg, save: bool = True):
-    """Convert climate data to nc files."""
+    """Convert climate CMIP data to nc files."""
 
     assert (cfg.process.precision == 16 and cfg.process.saved_normalized) or (cfg.process.precision == 32 and not cfg.process.saved_normalized), \
     ''' 16 bit precision works only normalized,
@@ -127,22 +127,26 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
             stds = std_channels_cmip6
             means = mean_channels_cmip6
         elif cfg.cmip_type == 'CMIP5':
-            stds = std_channels_cmip5
-            means = mean_channels_cmip5
+            stds = std_channels_cmip5      # Это заранее посчитанные значения. Выглядит так: 
+            means = mean_channels_cmip5    # mean_channels_cmip5 = [9.64286994934082,  # sfcWindmax  7.422664165496826,  # sfcWind...]
         else:
             raise NotImplementedError
         std = stds[cfg.process.variables.index(var)]
         mean = means[cfg.process.variables.index(var)]
     else:
-        std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()
-        mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()
+        std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()      # На трейне считают статистику
+        mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()    # var is one from [sfcWindmax pr tasmax tasmin]
+
+
+# STOPPED HERE, разбираюсь с нормализацией. Оставлять старую для высоких метрик или переходить на новую.
+
 
     if save:
         logging.info(f"Saving: {var}")
         if cfg.process.saved_normalized:
             data = data_arr[var].data
-            data = np.divide((data - data.mean()), data.std())
-            np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data.astype(dtype))
+            data = np.divide((data - data.mean()), data.std())  # Тут надо вычитать посчитанные статистики mean, std
+            np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data.astype(dtype)) # Сохраняется ведь трейн+тест слито, даже без разбиения, а когда он бьется то тогда??? Где отдельный трейн???
         else:
             np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data_arr[var].data.astype(dtype))
         # Retrieve coordinates robustly (dataset-level first, then variable-level), and log safely
@@ -180,6 +184,7 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
         logging.info(
             f"Coords saved: time {time_str}, lat {lat_str} step {lat_step}, lon {lon_str}  step {lon_step} "
         )
+    # print(f'For {var} mean, std =', mean, std)
     return mean, std
 
 def elevation_to_npy(file: str, cfg, save: bool = True):
@@ -241,12 +246,12 @@ def save_normalization_values(mean_channels: np.array, std_channels: np.array, c
     """Save normalization values for the climate data in given folder"""
     for i in zip(mean_channels, std_channels):
         print(f" mean: {i[0]}, std:  {i[1]}")
-    np.save(os.path.join(cfg.process.data_dir, prefix + "mean_32.npy"), mean_channels.astype(np.float32))
+    np.save(os.path.join(cfg.process.data_dir, prefix + "mean_32.npy"), mean_channels.astype(np.float32)) # Посмотреть как и где это будет вызываться, проверить тип восстановленных данных, чтобы не было “тихого object dtype”. И порядок проверить, чтобы не было мусора
     np.save(os.path.join(cfg.process.data_dir, prefix + "std_32.npy"), std_channels.astype(np.float32))
     
 
 def load_dataset(cfg: DictConfig):
-    """Load climate data from folder in cfg.raw.paths_to_climate_files_folders"""
+    """Load climate CMIP data from folder in cfg.raw.paths_to_climate_files_folders""" # ...in './data/cmip5_world_orig' - CMIP
     files = get_cmip5_files(cfg.raw.paths_to_climate_files_folders, cfg.process.variables)
     file_paths = [file.path for file in files]
     logging.info(f'loading {file_paths}')
@@ -257,8 +262,8 @@ def load_dataset(cfg: DictConfig):
     return data_arr
 
 
-@hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_GhostWindNet27")
-def prepare_cmip(cfg: DictConfig):    
+# @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip6_GhostWindNet27")
+def prepare_cmip(cfg: DictConfig):     # cfg == 'cmip5_TestNet.yaml'
     print(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'))
     logging.info(OmegaConf.to_yaml(cfg))
     logging.info(f"Starting climate data processing")    
@@ -267,8 +272,8 @@ def prepare_cmip(cfg: DictConfig):
     #save netcdf files to npy and get normalization values
     mean_channels, std_channels = [], []
     if cfg.process.make_climate_data:
-        for folder in cfg.raw.paths_to_climate_files_folders:
-            for var in cfg.process.variables:
+        for folder in cfg.raw.paths_to_climate_files_folders:   # './data/cmip5_world_orig'
+            for var in cfg.process.variables:                   # sfcWindmax pr tasmax tasmin  
                 logging.info(f"{var} in work")
                 files = get_cmip5_files(folder, var)
                 mean, std = climate_to_npy(files, var, cfg)
@@ -282,33 +287,33 @@ def prepare_cmip(cfg: DictConfig):
         logging.info(f"elevation data saved to {cfg.process.data_dir}")
 
     #save normalization values
-    if cfg.process.make_normalization and cfg.process.make_climate_data:
+    if cfg.process.make_normalization and cfg.process.make_climate_data:  # Почему передаются общим array и сохраняются с префиксом 32?
         save_normalization_values(np.array(mean_channels), np.array(std_channels), cfg)
         logging.info(f"Normalization values saved to {cfg.process.data_dir}")
-    elif cfg.process.make_normalization:
+    elif cfg.process.make_normalization: # Можно просто сделать нормализацию без подготовки данных (make_climate_data = False)
         for folder in cfg.raw.paths_to_climate_files_folders:
             for var in cfg.process.variables:
                 logging.info(f"{var} in work")
                 files = get_cmip5_files(folder, var)
-                mean, std = climate_to_npy(files, var, cfg, False)
+                mean, std = climate_to_npy(files, var, cfg, False) #  Почему False ? - потому что это выполняется при make_climate_data = false
                 mean_channels.append(mean)
                 std_channels.append(std)
 
         save_normalization_values(np.array(mean_channels), np.array(std_channels), cfg)
         logging.info(f"Normalization values saved to {cfg.process.data_dir}")
-    
+
     #save cleaned target data
     if cfg.process.make_cleaned_weather_data:
         # start_time = time.process_time()
         # clean_weather_data_RU(cfg.raw.path_to_weather_stations_data)
         # logging.info(f"Ru data clean took {time.process_time() - start_time} seconds")
         start_time = t.process_time()
-        clean_weather_data_WORLD(cfg.raw.path_to_world_weather_stations_data)
+        clean_weather_data_WORLD(cfg.raw.path_to_world_weather_stations_data) # It saves to "data/weatherstation_data/world_stations_25_days_6_months_cleaned.parquet". (all columns preserved)
         logging.info(f"World data clean took {t.process_time() - start_time} seconds")
 
     #save target data   
     if cfg.process.make_target:
-        make_target(cfg, load_dataset(cfg))        
+        make_target(cfg, load_dataset(cfg))   # load_dataset(cfg) is not used here. It loads original CMIP data, but target is based on Stations data     
         logging.info(f"Target data saved to {cfg.process.data_dir} as {cfg.process.prepared_target_data_name}")
 
     with open(os.path.join(cfg.process.data_dir, 'dataset_config.yaml'), 'w') as file:
