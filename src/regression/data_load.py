@@ -19,24 +19,26 @@ from pytorch_lightning.utilities import rank_zero_only
 import pickle
 
 
-@rank_zero_only
+@rank_zero_only 
 def clean_start():
+    """ограничивает выполнение функции только “нулевым” процессом в распределённом запуске и удаляет временные файлы по маске (я не нашел у нас tmp файлы)"""
     for f in glob.glob("tmp_Q_t*"):
         os.remove(f)
 
 
 
 class DataPreLoader:
-    def __init__(self, cfg: DictConfig):
+    def __init__(self, cfg: DictConfig): # self это dm.DPL
         self.cfg = cfg    
         logging.info("--- MULTI REGRESSION ---")
         assert (cfg.process.precision == 16 and not cfg.train.normalize) or (cfg.process.precision == 32 and cfg.train.normalize), \
         ''' 16 bit is already normalized. 32 bit is not normalized'''        
         self.generate_hash()       
-        self.dataset_torch = self.load_climate_data()
+        self.dataset_torch = self.load_climate_data() # понять зачем в float32 переводят? Если в обучении будет падать из-за памяти, перевести в 16
         self.dataset_torch = self.time_crop(self.dataset_torch)
 
-        clean_start()
+        clean_start() # ограничивает выполнение функции только “нулевым” процессом в распределённом запуске и удаляет временные файлы по маске
+
         if self.cfg.train.make_tmp_target_file:
             if self.data_exists():
                 self.load_data()
@@ -46,11 +48,14 @@ class DataPreLoader:
                 self.save_data()
         else:   
             self.prepare_target_df()
-            self.target_df_to_array()
+            self.target_df_to_array() # Переводит в индексы и в форму, чтобы таргет y был на индексе 7
         self.log_data()
 
 
     def load_climate_data(self):
+        '''
+        Подгружаются обработанные CMIP
+        '''
         dtype = np.float16 if self.cfg.process.precision == 16 else np.float32
         self.time_coords = np.load(os.path.join(self.cfg.train.data_dir, 'time.npy')).astype('datetime64[D]')
         self.lat_coords = np.load(os.path.join(self.cfg.train.data_dir, 'lat.npy'))
@@ -63,16 +68,15 @@ class DataPreLoader:
             var_data[i] = np.load(os.path.join(self.cfg.train.data_dir, var + f'_{self.cfg.process.precision}.npy'))
         logging.info(f"CMIP data loaded {var_data.shape}")
 
-        if self.cfg.train.spatial_crop:
+        if self.cfg.train.spatial_crop: # пока false сделали, так как в preprocess.py сделали кроп 07.02.26
             var_data = self.spatial_crop(var_data)
             logging.info(f"Cropped data shape {var_data.shape}")
-
         else:
-            var_data, self.shift = make_padding(var_data, self.cfg.half_side_size)
+            var_data, self.shift = make_padding(var_data, self.cfg.half_side_size) # Возвращает padded_map, (half_side_size, half_side_size)
             logging.info(f"Padded data shape {var_data.shape}")
 
         # var_data_torch = torch.from_numpy(var_data).half() if self.cfg.process.precision == 16 else torch.from_numpy(var_data)
-        var_data_torch = torch.from_numpy(var_data).type(torch.float32)
+        var_data_torch = torch.from_numpy(var_data).type(torch.float32) # Сомнительное дело, понять зачем в 32 переводят?
 
         return var_data_torch
 
@@ -146,6 +150,7 @@ class DataPreLoader:
         return var_data
 
     def time_crop(self, var_data):
+        logging.info(f"Shape before time limits in time_crop() in data_load.py: {var_data.shape}")
         start_date = datetime.strptime(self.cfg.train.start_time, '%Y-%m-%d').date()
         end_date = datetime.strptime(self.cfg.train.end_time, '%Y-%m-%d').date()
         start_index = self.time_coords.searchsorted(start_date)
@@ -153,12 +158,13 @@ class DataPreLoader:
         var_data = var_data[:, start_index:end_index, :, :]
         self.time_coords = self.time_coords[start_index:end_index]
         assert len(self.time_coords) == var_data.shape[1]
-        logging.info(f"Shape with time limits {var_data.shape}")
+        logging.info(f"Shape with time limits: {var_data.shape}")
         return var_data
     
 
     #### Target prep
     def time_to_data_grid(self, target_df):
+        """перевести реальные временные метки станционных наблюдений в индексы ближайших узлов временной сетки модели"""
         start_time = time.process_time()   
         dates = target_df["time"].to_numpy()
         y = target_df["y"].to_numpy()
@@ -188,14 +194,14 @@ class DataPreLoader:
     
 
     def prepare_target_df(self):
-        target_df = polars.read_parquet(os.path.join(self.cfg.train.data_dir, self.cfg.train.target_data_file))
+        target_df = polars.read_parquet(os.path.join(self.cfg.train.data_dir, self.cfg.train.target_data_file)) # data/cmip5_world/target.parquet - станционные данные
         logging.info(f"Records before preparation {len(target_df)}")
         start_date = pd.to_datetime(self.cfg.train.start_time)
         end_date = pd.to_datetime(self.cfg.train.end_time)
         logging.info(f"Target time bounds before filter {target_df['time'].min()}, {target_df['time'].max()}")
-        target_df = target_df.filter((polars.col('time') >= start_date) & (polars.col('time') < end_date))
+        target_df = target_df.filter((polars.col('time') >= start_date) & (polars.col('time') < end_date)) # Может <= ??????
         logging.info(f"Target time bounds after filter {target_df['time'].min()}, {target_df['time'].max()}")
-        logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}")
+        logging.info(f"Data time bounds {self.time_coords.min()}, {self.time_coords.max()}") # self.time_coords = np.load(os.path.join(self.cfg.train.data_dir, 'time.npy')).astype('datetime64[D]')
         logging.info(f"Stations before aggregation: {target_df.n_unique(subset=['lat', 'lon'])}")
         target_df = self.time_to_data_grid(target_df)
         target_df = self.stations_to_data_grid(target_df)
@@ -206,7 +212,7 @@ class DataPreLoader:
                     .group_by(["lat", "lon", "time"])
                     .agg(
                         [
-                         polars.col('y').quantile(0.65).alias("y"),
+                         polars.col('y').quantile(0.65).alias("y"), # ?
                         ])
                     .collect())
         
@@ -225,6 +231,8 @@ class DataPreLoader:
 
 
     def target_df_to_array(self):
+        """Функция берёт агрегированные станционные наблюдения, преобразует их в массив “индексированных” обучающих примеров,
+        корректирует индексы под кроп/сдвиг, затем делит на train/test по времени."""
         start_time = time.process_time()   
         split_date = datetime.strptime(self.cfg.train.start_of_test, '%Y-%m-%d').date()
         split_index = self.time_coords.searchsorted(split_date)

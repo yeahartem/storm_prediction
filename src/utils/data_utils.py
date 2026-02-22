@@ -7,6 +7,13 @@ import torch
 
 
 def round_to_closest_indices(arr, values):
+    """перевести реальные временные метки станционных наблюдений в индексы ближайших узлов временной сетки модели
+    arr — массив значений, которые нужно “прилепить” к сетке (у тебя это dates, т.е. timestamps наблюдений).
+    values — отсортированный массив узлов сетки (у тебя self.time_coords, временная сетка модели).
+    
+    Выход:
+    массив индексов в values, соответствующих ближайшему узлу сетки для каждого элемента arr."""
+    
     values = np.array(values)
     indices = np.searchsorted(values, arr)
     indices = np.clip(indices, 1, len(values) - 1)

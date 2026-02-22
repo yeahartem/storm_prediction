@@ -222,7 +222,8 @@ def pre_prepare_target_WORLD(cfg: DictConfig, dataset_xarray: xr.DataArray):
 
 
 def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):    
-
+    """Создает data/cmip5_world/target.parquet
+    Функция нужна была когда приходилось объединять российские станции и мировые. Сейчас она просто переводит готовый таргет после pre_prepare_target_WORLD() из target.pp2 в target.parquet"""
     # pre_prepare_target_RU(cfg, dataset_xarray)
     pre_prepare_target_WORLD(cfg, dataset_xarray)  # saves file data/cmip5_world/target.parquet.pp2
 

@@ -1,7 +1,7 @@
 model_name: WindNet27x47
 make_tmp_target_file: False
 
-use_elevation: false
+use_elevation: false # -> true ? Спросить Сашу, думаю не надо
 normalize: false      # precision 16 is already normalized
 time_agg_window: 28   # range in days, used to calculate maximum for every day of target
 time_freq: 14         # get sample from target every {time_freq} days
@@ -10,15 +10,15 @@ target_threshold: 20
 data_dir: data/cmip5_world/      # directory to get climate files for training
 target_data_file: target.parquet  # target data file in data_dir for training
 
-start_time: '2006-02-02'
-end_time: '2010-02-02'
-start_of_test: '2008-03-03'
+start_time: '2000-01-01'
+end_time: '2018-12-31'
+start_of_test: '2017-01-01'
 
 variables:                                      #CMIP variable names to use
 - sfcWindmax
 - tasmax
 - tasmin
-spatial_crop: true
+spatial_crop: false # Change for experiments MAYBE
 lat_min: 30
 lat_max: 50
 lon_min: -30
@@ -41,12 +41,12 @@ strategy: 'ddp'
 
 log_every_n_steps: 100 
 
-test_only: true
+test_only: false
 ckpt_path: 'mlruns/785490677828161635/4e1ea565ec054888a7785d785a36d447/artifacts/model/checkpoints/epoch=95-step=60096/epoch=95-step=60096.ckpt'
 
 cache:
   # Поставьте true, чтобы загружать данные из кэша, false - чтобы сгенерировать и сохранить их.
-  use_cached_padding: true 
+  use_cached_padding: false 
   
   # Путь для сохранения основного обработанного массива данных
   pad_crop_data_path: "data/cache/pad_crop_data.npy" # Используем формат NetCDF, идеальный для данных с координатами

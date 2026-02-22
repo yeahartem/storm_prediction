@@ -82,13 +82,14 @@ def train_regression(cfg: DictConfig) -> None:
                                  tracking_uri="file:./mlruns",
                                  log_model='all')
     mlflow.log_artifact(os.path.join(os.getcwd(),"configs/cmip5_TestNet.yaml"), "config.yaml")
+    # mlflow.log_artifact(os.path.join(os.getcwd(),"configs/cmip5_TestNet.yaml"), "config.yaml")
     try:
         repo = git.Repo(search_parent_directories=True)
         mlflow.log_param('git_commit_hash', repo.head.object.hexsha)
     except git.InvalidGitRepositoryError:
         logging.warning("Not a git repository. Cannot log commit hash.")
 
-    dm = WindDataModule(cfg)
+    dm = WindDataModule(cfg) # self.DPL = DataPreLoader(cfg)
     model = WindNetPL(cfg, run_dir)
     logging.info(f"Asking for {cfg.train.gpu_num} GPUs")
     logging.info(f"Visible is {torch.cuda.device_count()} GPUs")
@@ -96,16 +97,18 @@ def train_regression(cfg: DictConfig) -> None:
 
     if torch.__version__ == "2.0.1" or torch.__version__ == "2.0.0" or  torch.__version__ == "2.0.1+cu117":
         # model.net = torch.compile(model.net)
-        logging.info("Model compiled")
+        logging.info("Model compiled") # Почему коммент сверху?
     else:
         logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
 
     default_root_dir = run_dir
-    checkpoint_loc = run_dir
+    checkpoint_loc = run_dir 
     checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
     # SWA = StochasticWeightAveraging(swa_lrs=0.004, swa_epoch_start=0.8, annealing_epochs=6)
 
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
+
+# ОСТАНОВИЛИСЬ ТУТ
 
     trainer = pl.Trainer(max_epochs=cfg.train.max_epoch, # CORRECT !!!!!!!!!
                             profiler=None,

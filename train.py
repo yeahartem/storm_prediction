@@ -14,7 +14,7 @@ def main(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    experiment_name = 'latest'
+    experiment_name = 'latest_final'
     rundir_name = get_rundir_name()
     sys.argv.append(f'hydra.run.dir={rundir_name}')
     main()

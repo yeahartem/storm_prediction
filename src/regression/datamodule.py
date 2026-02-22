@@ -17,7 +17,7 @@ class WindDataModule(pl.LightningDataModule):
         self.cfg = cfg      
         self.DPL = DataPreLoader(cfg)
         
-        if self.cfg.train.normalize:
+        if self.cfg.train.normalize: # Похоже нигде не используется
             self.transform = torchvision.transforms.Compose(
                 [
                     torchvision.transforms.Normalize(mean=mean_channels_cmip6, std=std_channels_cmip6),
@@ -62,6 +62,9 @@ class WindDataModule(pl.LightningDataModule):
                           pin_memory=True,
                           drop_last=True,
                           )
+
+
+# РАЗБИРАЕМ ТУТ, СЕЙЧАС РАЗБИРАЕМ DataPreLoader , это DPL, там происходит разбивка на тест по split_date
 
 
 class XarrayDataset(Dataset):
@@ -152,6 +155,33 @@ class XarrayDataset(Dataset):
 
         return [X, pos], y, weights_tensor
     
+# class XarrayDatasetElev(XarrayDataset): # Я добавил 02.02.26 из ветки elevation_integration в гите makboard
+#     def __init__(self, DPL, test=False, dtype=torch.float16, ):
+#         super(XarrayDatasetElev, self).__init__(DPL, test=test, dtype=dtype,)
+#         self.elevation_torch = DPL.elevation_torch
+#         self.elev_hss = DPL.elev_hss
+#         self.r_lat = DPL.r_lat
+#         self.r_lon = DPL.r_lon
+#         self.shift_clim = DPL.shift
+#         self.shift_elev = DPL.shift_elev
 
+#     def __getitem__(self, idx):
+#         lat_index, lon_index, time_index, y = self.data_idxs[:, idx]
+#         X = self.dataset_torch[:,
+#                                slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
+#                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
+#                                slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
+#                                ]
+#         # print([time_index, lat_index, lon_index])
+#         lat_index_elev = int((lat_index - self.shift_clim[0]) * self.r_lat) + self.shift_elev[0]
+#         lon_index_elev = int((lon_index - self.shift_clim[1]) * self.r_lon) + self.shift_elev[1]
+#         X_elev = self.elevation_torch[
+#                                     slice(lat_index_elev - self.elev_hss, lat_index_elev + self.elev_hss + 1),
+#                                     slice(lon_index_elev - self.elev_hss, lon_index_elev + self.elev_hss + 1),
+#                                     ]
+#         X_elev = X_elev.view(1, X_elev.shape[-2], X_elev.shape[-1])
+#         y = torch.tensor(y, dtype=self.dtype)
+#         return (X, X_elev), y    
+    
 if __name__ == '__main__':
     pass
