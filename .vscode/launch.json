@@ -5,6 +5,19 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug ROOT train.py (wind)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "env": {"PYDEVD_WARN_SLOW_RESOLVE_TIMEOUT": "3"},
+            // "args": [
+            //     "hydra.run.dir=out/${now:%Y-%m-%d}/${now:%H-%M-%S}"
+            // ]
+        },
+        {
             "name": "train_regression",
             "type": "python",
             "request": "launch",
