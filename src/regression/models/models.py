@@ -8,7 +8,7 @@ import timm
 #         super(GhostWindNet27, self).__init__()
 #         self.embed = 70
 #         self.time_window = 27
-#         self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False)
+#         self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False, in_chans=4)
 #         self.head1 = nn.Sequential(
 #             nn.Dropout(0.4),
 #             nn.Linear(self.time_window*(self.embed + 4), 70),
@@ -36,7 +36,7 @@ class GhostWindNet27(nn.Module):
         super(GhostWindNet27, self).__init__()
         self.embed = 70
         self.time_window = 27
-        self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False)
+        self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False, in_chans=4)
         
         # --- Мы разбираем head1 на отдельные слои для отладки ---
         self.head_dropout = nn.Dropout(0.4)
@@ -76,7 +76,7 @@ class GhostWindNet27(nn.Module):
             print("\n[ДО АКТИВАЦИИ] Выход из Linear_1:")
             print(f"  Форма: {X_lin1.shape}")
             print(f"  Значения (min, mean, max): {X_lin1.min():.3f}, {X_lin1.mean():.3f}, {X_lin1.max():.3f}")
-            print(f"  🔥 Процент отрицательных значений: {percent_non_positive:.1f}%")
+            print(f"  Процент отрицательных значений: {percent_non_positive:.1f}%")
 
             # --- Шаг 3: Функция активации (LeakyReLU) ---
             X_act = self.head_activation(X_lin1)
@@ -84,7 +84,7 @@ class GhostWindNet27(nn.Module):
             print("\n[ПОСЛЕ АКТИВАЦИИ] Выход из LeakyReLU:")
             print(f"  Форма: {X_act.shape}")
             print(f"  Значения (min, mean, max): {X_act.min():.3f}, {X_act.mean():.3f}, {X_act.max():.3f}")
-            print(f"  🔥 Процент НУЛЕВЫХ значений: {percent_zeros:.1f}%")
+            print(f"  Процент НУЛЕВЫХ значений: {percent_zeros:.1f}%")
 
             # --- Шаг 4: BatchNorm ---
             # X_bn = self.head_bn(X_act)

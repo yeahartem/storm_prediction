@@ -1,6 +1,7 @@
 import sys,os
 sys.path.append(os.getcwd())
 from typing import List, Any
+import logging
 import torch
 import pytorch_lightning as pl
 from collections import OrderedDict
@@ -56,24 +57,8 @@ class WindNetPL(pl.LightningModule):
             elif cfg.train.loss_name=='L1Loss_Dense':
                 self.criterion = torch.nn.L1Loss(reduction='none')    
             elif cfg.train.loss_name=='BCELoss':
-                print("\n--- ИСПОЛЬЗУЕТСЯ BCELoss С ВЕСАМИ КЛАССОВ ---")
-                # Получаем статистику по всему тренировочному датасету
-                targets = self.trainer.datamodule.DPL.train_data_idxs[7, :]
-                threshold = self.cfg.train.target_threshold
-                
-                positive_samples = np.sum(targets > threshold)
-                negative_samples = len(targets) - positive_samples
-                
-                # Считаем вес для положительного класса (сильный ветер)
-                pos_weight = torch.tensor(negative_samples / positive_samples)
-                
-                print(f"Статистика для BCELoss:")
-                print(f"  Позитивных примеров (> {threshold} м/с): {positive_samples}")
-                print(f"  Негативных примеров (<= {threshold} м/с): {negative_samples}")
-                print(f"  🔥 Вес для позитивного класса (pos_weight): {pos_weight:.2f}")
-                print("--------------------------------------------------\n")
-                
-                self.criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)            
+                # pos_weight вычисляется в on_train_start, когда self.trainer уже доступен
+                self.criterion = nn.BCEWithLogitsLoss()
             else:
                 raise NotImplementedError(f'Criterion {cfg.train.loss_name} not found')
         
@@ -111,6 +96,17 @@ class WindNetPL(pl.LightningModule):
     def forward(self, x):
         return self.net(x)
 
+    def _score(self, preds):
+        """Classification score: sigmoid for BCELoss (logits), float_to_score for regression."""
+        if self.cfg.train.loss_name == 'BCELoss':
+            return torch.sigmoid(preds)
+        return float_to_score(preds, thresh=self.cfg.train.target_threshold)
+
+    def _binary_pred(self, preds):
+        """Binary prediction: logit > 0 for BCELoss, float_to_binary for regression."""
+        if self.cfg.train.loss_name == 'BCELoss':
+            return (preds > 0).int()
+        return float_to_binary(preds, thresh=self.cfg.train.target_threshold)
 
     def loss(self, y_hat, y, dense_weights):
         # 
@@ -138,7 +134,7 @@ class WindNetPL(pl.LightningModule):
                 print(f"Истинные значения y (первые 5):   {y[:5].cpu().numpy().round(2)}")
                 print(f"Предсказания y_hat (первые 5):   {y_hat_squeezed[:5].cpu().detach().numpy().round(2)}")
                 print(f"Веса dense_weights (первые 5):  {dense_weights_squeezed[:5].cpu().detach().numpy().round(2)}")
-                print(f"🔥 Взвешенный Loss (первые 5):    {weighted_loss[:5].cpu().detach().numpy().round(2)}")
+                print(f"Взвешенный Loss (первые 5):    {weighted_loss[:5].cpu().detach().numpy().round(2)}")
                 print(f"Loss per sample ():     {per_sample_loss}")
                 print("^"*50 + "\n")
 
@@ -189,6 +185,14 @@ class WindNetPL(pl.LightningModule):
         self.val_MAE_best.reset()
         if self.cfg.model_name=="GhostWindNet27":
             self.net.trainer = self.trainer
+        if self.cfg.train.loss_name == 'BCELoss':
+            targets = self.trainer.datamodule.DPL.train_data_idxs[7, :]
+            threshold = self.cfg.train.target_threshold
+            positive_samples = np.sum(targets > threshold)
+            negative_samples = len(targets) - positive_samples
+            pos_weight = torch.tensor(negative_samples / positive_samples, device=self.device)
+            self.criterion.pos_weight = pos_weight
+            logging.info(f"BCELoss pos_weight={pos_weight:.2f} (pos={positive_samples}, neg={negative_samples})")
             
     def model_step(self, batch):
         objs, target, dense_weights = batch
@@ -212,16 +216,16 @@ class WindNetPL(pl.LightningModule):
         # <-- КОНЕЦ ПРОВЕРКИ -->
 
         # --- НАЧАЛО БЛОКА ДЛЯ ОТЛОВА СКАЧКОВ MAE ---
-        with torch.no_grad(): # Считаем метрику без вычисления градиентов
-            batch_mae = torch.nn.functional.l1_loss(predictions.squeeze(), target)
-        
-        MAE_THRESHOLD = 15.0 # Установи порог, который ты считаешь "аномальным"
-        if batch_mae > MAE_THRESHOLD:
-            print("\n" + "!"*60)
-            print(f"🚨 ОБНАРУЖЕН СКАЧОК MAE НА ШАГЕ {self.trainer.global_step}! MAE = {batch_mae:.2f}")
-            print(f"  Истинные значения y: {target.cpu().numpy().round(1)}")
-            print(f"  Предсказания y_hat: {predictions.squeeze().cpu().detach().numpy().round(1)}")
-            print("!"*60 + "\n")
+        if self.cfg.train.loss_name != 'BCELoss':
+            with torch.no_grad():
+                batch_mae = torch.nn.functional.l1_loss(predictions.squeeze(), target)
+            MAE_THRESHOLD = 15.0
+            if batch_mae > MAE_THRESHOLD:
+                print("\n" + "!"*60)
+                print(f"ОБНАРУЖЕН СКАЧОК MAE НА ШАГЕ {self.trainer.global_step}! MAE = {batch_mae:.2f}")
+                print(f"  Истинные значения y: {target.cpu().numpy().round(1)}")
+                print(f"  Предсказания y_hat: {predictions.squeeze().cpu().detach().numpy().round(1)}")
+                print("!"*60 + "\n")
         # --- КОНЕЦ БЛОКА ---
         
         # 2. Обновляем метрики новыми данными
@@ -232,7 +236,7 @@ class WindNetPL(pl.LightningModule):
         target_squeezed = target
         self.train_MAE(preds_squeezed, target_squeezed) 
         self.train_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
-        self.train_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        self.train_AP(self._score(preds_squeezed),
                     float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))        
         
         # =========================== QUANTILE REGRESSION  =======================================
@@ -276,12 +280,12 @@ class WindNetPL(pl.LightningModule):
         preds_squeezed = predictions.squeeze()
         target_squeezed = target
         self.val_MAE(preds_squeezed, target_squeezed)
-        self.val_AP(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
-                    float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))    
-        self.val_precision(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        self.val_AP(self._score(preds_squeezed),
+                    float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
+        self.val_precision(self._score(preds_squeezed),
                             float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
-        self.val_recall(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
-                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))   
+        self.val_recall(self._score(preds_squeezed),
+                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
         self.val_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
         
         # =========================== QUANTILE REGRESSION ===========================
@@ -295,7 +299,7 @@ class WindNetPL(pl.LightningModule):
         #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))        
         # self.val_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0], thresh=self.cfg.train.target_threshold))
         # =========================== QUANTILE REGRESSION ===========================
-        self.val_confusion_matrix(float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold),
+        self.val_confusion_matrix(self._score(preds_squeezed),
                             float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)) 
         
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
@@ -373,14 +377,16 @@ class WindNetPL(pl.LightningModule):
         target_float = targets
         thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
         rmses = []
+        thrs_used = []
         for th in thrs:
             if len(torch.where(target_float >= th)[0])>0:
                 tgt_th = target_float[torch.where(target_float >= th)[0]]
                 pred_th = preds_float[torch.where(target_float >= th)[0]]
                 rmses.append(np.squeeze(torch.sqrt(torch.mean((pred_th - tgt_th) ** 2)).numpy()))
-        
+                thrs_used.append(th)
+
         fig, ax = plt.subplots()
-        ax.plot(thrs, rmses, color='purple')
+        ax.plot(thrs_used, rmses, color='purple')
         ax.set_ylabel('RMSE')
         ax.set_xlabel('Wind Speed (m/s)')
         ax.set_title(f'RMSE vs Target (Epoch {self.current_epoch})')
@@ -394,7 +400,7 @@ class WindNetPL(pl.LightningModule):
         plt.close(fig)
 
         precision, recall, thresholds = precision_recall_curve(float_to_binary(targets, thresh=self.cfg.train.target_threshold),
-                                                            float_to_score(preds, thresh=self.cfg.train.target_threshold)
+                                                            self._score(preds)
                     )
         fig_pr, ax_pr = plt.subplots()
         ax_pr.plot(recall, precision, color='purple')
@@ -503,8 +509,8 @@ class WindNetPL(pl.LightningModule):
         preds_squeezed = predictions.squeeze()
         target_squeezed = target
         binary_target = float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)
-        score_preds = float_to_score(preds_squeezed, thresh=self.cfg.train.target_threshold)
-        binary_preds = float_to_binary(preds_squeezed, thresh=self.cfg.train.target_threshold)
+        score_preds = self._score(preds_squeezed)
+        binary_preds = self._binary_pred(preds_squeezed)
         self.test_MAE(preds_squeezed, target_squeezed)
         self.test_MAE_OS(*get_outliers_s(preds_squeezed, target, thresh=self.cfg.train.target_threshold))                 
                 
@@ -603,21 +609,24 @@ class WindNetPL(pl.LightningModule):
         # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
         thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
         rmses = []
+        thrs_used = []
         for th in thrs:
             if len(torch.where(target_float >= th)[0])>0:
                 tgt_th = target_float[torch.where(target_float >= th)[0]]
                 pred_th = preds_float[torch.where(target_float >= th)[0]]
                 rmses.append(np.squeeze(torch.sqrt(torch.mean((pred_th - tgt_th) ** 2)).numpy()))
-        
+                thrs_used.append(th)
+
         fig, ax = plt.subplots()
-        ax.plot(thrs, rmses, color='purple')
+        ax.plot(thrs_used, rmses, color='purple')
         ax.set_ylabel('RMSE')
         ax.set_xlabel('Wind Speed (m/s)')
         fig.savefig(os.path.join(self.run_dir, 'RMSE_vs_target.png'))   # save the figure to file        
         self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=os.path.join(self.run_dir, 'RMSE_vs_target.png'))
         plt.close(fig)
 
-        precision, recall, thresholds = precision_recall_curve(target, preds)
+        score_preds_for_pr = torch.stack([x["score_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
+        precision, recall, thresholds = precision_recall_curve(target, score_preds_for_pr)
         fig_pr, ax = plt.subplots()
         ax.plot(recall, precision, color='purple')
         ax.set_title('Precision-Recall Curve')
@@ -721,8 +730,8 @@ class WindNetPL(pl.LightningModule):
             grad_lin1 = self.net.head_lin1.weight.grad
             if grad_lin1 is not None:
                 print("\nГрадиенты для Linear_1 (до активации):")
-                print(f"  📈 Среднее абсолютное значение градиента: {grad_lin1.abs().mean():.6f}")
-                print(f"  📈 Максимальное абсолютное значение: {grad_lin1.abs().max():.6f}")
+                print(f"  Среднее абсолютное значение градиента: {grad_lin1.abs().mean():.6f}")
+                print(f"  Максимальное абсолютное значение: {grad_lin1.abs().max():.6f}")
             else:
                 print("\nГрадиенты для Linear_1 отсутствуют (None)!")
 
@@ -730,8 +739,8 @@ class WindNetPL(pl.LightningModule):
             grad_lin2 = self.net.head_lin2.weight.grad
             if grad_lin2 is not None:
                 print("\nГрадиенты для Linear_2 (финальный слой):")
-                print(f"  📈 Среднее абсолютное значение градиента: {grad_lin2.abs().mean():.6f}")
-                print(f"  📈 Максимальное абсолютное значение: {grad_lin2.abs().max():.6f}")
+                print(f"  Среднее абс. знач. градиента grad_lin2: {grad_lin2.abs().mean():.6f}")
+                print(f"  Максимальное абсолютное значение: {grad_lin2.abs().max():.6f}")
             else:
                 print("\nГрадиенты для Linear_2 отсутствуют (None)!")
             

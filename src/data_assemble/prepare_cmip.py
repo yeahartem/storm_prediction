@@ -134,8 +134,8 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
         std = stds[cfg.process.variables.index(var)]
         mean = means[cfg.process.variables.index(var)]
     else:
-        std = data_arr[var].sel({'time': slice(None, split_date)}).std().compute()      # На трейне считают статистику
-        mean = data_arr[var].sel({'time': slice(None, split_date)}).mean().compute()    # var is one from [sfcWindmax pr tasmax tasmin]
+        std = float(data_arr[var].sel({'time': slice(None, split_date)}).std().compute())      # На трейне считают статистику
+        mean = float(data_arr[var].sel({'time': slice(None, split_date)}).mean().compute())    # var is one from [sfcWindmax pr tasmax tasmin]
 
 
 # STOPPED HERE, разбираюсь с нормализацией. Оставлять старую для высоких метрик или переходить на новую.
@@ -145,7 +145,7 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
         logging.info(f"Saving: {var}")
         if cfg.process.saved_normalized:
             data = data_arr[var].data
-            data = np.divide((data - data.mean()), data.std())  # Тут надо вычитать посчитанные статистики mean, std
+            data = np.divide((data - mean), std)
             np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data.astype(dtype)) # Сохраняется ведь трейн+тест слито, даже без разбиения, а когда он бьется то тогда??? Где отдельный трейн???
         else:
             np.save(os.path.join(cfg.process.data_dir, var + f"_{cfg.process.precision}.npy"), data_arr[var].data.astype(dtype))

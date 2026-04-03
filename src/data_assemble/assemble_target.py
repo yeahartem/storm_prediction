@@ -124,7 +124,10 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
        It saves file world_stations_25_days_6_months_cleaned.parquet 
     """  
 
-    columns = ["LATITUDE",  "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP', 'DEWP', 'SLP', 'STP', 'PRCP'] # "STATION", 
+    # STP/SLP/PRCP/DEWP не используются в обучении (финальный select берёт только time/y/lat/lon),
+    # но их NaN (~38M строк) убивали данные при drop_nulls(). Грузим только нужные колонки.
+    columns = ["LATITUDE", "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP']
+    # columns = ["LATITUDE",  "LONGITUDE", "ELEVATION", "DATE", 'MXWDSP', 'WDSP', 'TEMP', 'DEWP', 'SLP', 'STP', 'PRCP'] # "STATION", 
     start_time = time.process_time()
     df = pl.read_parquet(path_to_weather_stations, columns=columns)
     logging.info(f"Time to open world parquet {time.process_time() - start_time} seconds")
@@ -137,10 +140,10 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
                 pl.col("WDSP").round().cast(pl.Float32).alias("avg_speed"),
                 pl.col("DATE").cast(pl.Date).alias("time"),                
                 pl.col("TEMP").round().cast(pl.Float32).alias("avg_temp"),
-                pl.col("DEWP").round().cast(pl.Float32).alias("dew_point_temp"),
-                pl.col("STP").round().cast(pl.Float32).alias("station_level_pressure"),
-                pl.col("SLP").round().cast(pl.Float32).alias("sea_level_pressure"),
-                pl.col("PRCP").round().cast(pl.Float32).alias("precipitation"),
+                # pl.col("DEWP").round().cast(pl.Float32).alias("dew_point_temp"),
+                # pl.col("STP").round().cast(pl.Float32).alias("station_level_pressure"),
+                # pl.col("SLP").round().cast(pl.Float32).alias("sea_level_pressure"),
+                # pl.col("PRCP").round().cast(pl.Float32).alias("precipitation"),
                 pl.col("LATITUDE").round().cast(pl.Float32).alias("lat"),
                 pl.col("LONGITUDE").round().cast(pl.Float32).alias("lon"),
                 pl.col("ELEVATION").round().cast(pl.Float32).alias("height"),
@@ -149,6 +152,9 @@ def clean_weather_data_WORLD(path_to_weather_stations: str) -> pd.DataFrame:
         )
     
     q = q.collect()
+    # drop_nulls только по колонкам которые нужны — до сохранения
+    q = q.drop_nulls(subset=["max_speed", "lat", "lon", "time"])
+    logging.info(f"Rows after drop_nulls on required cols: {len(q)}")
     q.write_parquet(path_to_weather_stations.replace(".parquet", "_cleaned.parquet"))    
 
 
@@ -182,7 +188,7 @@ def pre_prepare_target_RU(cfg: DictConfig, dataset_xarray: xr.DataArray):
     df = df.select([pl.all().exclude("station_name"), pl.col("station_name").cast(str).keep_name()])   
     df = df.join(stations_df_ru, on='station_name', how='left')
     df = df.select(pl.col(["time", "y", "lat", "lon"])).drop_nulls()
-    print(df)
+    logging.info(f'RU df shape: {df.shape}')
     df.write_parquet(os.path.join(cfg.process.data_dir, cfg.process.prepared_target_data_name + '.pp1'))
 
     
@@ -234,7 +240,7 @@ def make_target(cfg: DictConfig, dataset_xarray: xr.DataArray):
     start_time = time.process_time()
     # target_df = pl.concat([df_ru, df_world], how='diagonal')
     target_df = df_world
-    print(target_df)
+    logging.info(f'target_df shape: {target_df.shape}, columns: {target_df.columns}')
     # logging.info(f"Concat took {time.process_time() - start_time} seconds") # 27.01.26
     target_df = target_df.drop_nulls()
     logging.info(f'TOTAL len (should be the same): {len(target_df)}')

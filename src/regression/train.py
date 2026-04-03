@@ -3,6 +3,15 @@ sys.path.append(os.getcwd())
 import warnings
 warnings.filterwarnings("ignore")
 import torch
+
+# PyTorch 2.6+ changed torch.load default to weights_only=True, which breaks
+# pytorch_lightning 2.0.2 checkpoint loading (contains OmegaConf DictConfig).
+# Monkey-patch to restore backward-compatible behavior.
+_orig_torch_load = torch.load
+def _patched_torch_load(*args, **kwargs):
+    kwargs.setdefault('weights_only', False)
+    return _orig_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
 import random
 import logging
 from datetime import datetime
@@ -81,7 +90,7 @@ def train_regression(cfg: DictConfig) -> None:
                                  run_name=cfg.experiment_name,
                                  tracking_uri="file:./mlruns",
                                  log_model='all')
-    mlflow.log_artifact(os.path.join(os.getcwd(),"configs/cmip5_TestNet.yaml"), "config.yaml")
+    # mlflow.log_artifact(os.path.join(os.getcwd(),"configs/cmip5_TestNet.yaml"), "config.yaml")
     # mlflow.log_artifact(os.path.join(os.getcwd(),"configs/cmip5_TestNet.yaml"), "config.yaml")
     try:
         repo = git.Repo(search_parent_directories=True)
@@ -127,8 +136,8 @@ def train_regression(cfg: DictConfig) -> None:
                             strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
                             #log
                             log_every_n_steps=cfg.train.log_every_n_steps,
-                            # limit_train_batches=6,   # DELETE !!!!!!!!!!!!!!!!!!!!!!!
-                            # limit_val_batches=6,
+                            limit_train_batches=5000,   # ~56 min/epoch with num_workers=0
+                            limit_val_batches=1000,     # ~11 min validation
                             # gradient_clip_val=1, # Чтобы не было ошибки inf в mlflow 
                             logger=mlflow_logger, # wandb_logger
                             #misc

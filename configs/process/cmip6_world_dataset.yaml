@@ -1,0 +1,36 @@
+data_dir: data/cmip6_world/                     # processed data for training
+prepared_target_data_name: target.parquet
+
+make_climate_data: true
+make_elevation_data: false
+make_normalization: true
+make_cleaned_weather_data: true
+make_target: true
+
+load_normalization: false
+saved_normalized: true                          # float16 + normalized
+precision: 16
+
+spatial_crop: false
+coords:
+  lat_min: -47.0
+  lat_max: 80.0
+  lon_min: -180.0
+  lon_max: 180.0
+
+min_height: -10
+max_height: 800
+
+variables:
+- sfcWindmax
+- pr
+- tasmax
+- tasmin
+
+time_limits:
+- '2000-01-01'
+- '2024-12-31'
+start_of_test: '2023-01-01'                     # train 2000-2020, val 2021-2022, test 2023-2024
+
+target_column:
+- 'max_speed'
