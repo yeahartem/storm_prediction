@@ -32,11 +32,11 @@ import timm
 #         return X
 
 class GhostWindNet27(nn.Module):
-    def __init__(self) -> None:        
+    def __init__(self, in_chans=4) -> None:
         super(GhostWindNet27, self).__init__()
         self.embed = 70
         self.time_window = 27
-        self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False, in_chans=4)
+        self.ghostnetv2 = timm.create_model('ghostnetv2_160', num_classes=self.embed, pretrained=False, in_chans=in_chans)
         
         # --- Мы разбираем head1 на отдельные слои для отладки ---
         self.head_dropout = nn.Dropout(0.4)
