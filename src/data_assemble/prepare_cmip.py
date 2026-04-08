@@ -188,56 +188,83 @@ def climate_to_npy(files: list, var: str, cfg, save: bool = True):
     return mean, std
 
 def elevation_to_npy(file: str, cfg, save: bool = True):
-    """Convert elevation data to nc files."""
-    var = 'topo'
-    assert (cfg.process.precision == 16 and cfg.process.saved_normalized) or (cfg.process.precision == 32 and not cfg.process.saved_normalized), \
-    ''' 16 bit precision works only normalized,
-        32 bit precision should be used with saved_normalized=False.'''
-    train_coords = cfg.process.coords
-    rect_coords = list(train_coords.values()) #rect_coords = [min_lat, max_lat, min_lon, max_lon]    
+    """Regrid ETOPO1 elevation to the CMIP6 lat/lon grid and save as npy.
+
+    ETOPO1 is ~1 arc-minute resolution; we use scipy RegularGridInterpolator
+    to resample to the CMIP6 grid that was already saved as lat.npy / lon.npy.
+    """
+    from scipy.interpolate import RegularGridInterpolator
+
+    assert (cfg.process.precision == 16 and cfg.process.saved_normalized) or \
+           (cfg.process.precision == 32 and not cfg.process.saved_normalized), \
+        '16 bit precision works only normalized, 32 bit should be used with saved_normalized=False.'
+
+    # --- Load raw elevation file ---
+    logging.info(f"Opening elevation file: {file}")
     try:
-        data_arr = xr.open_mfdataset(file, preprocess=process_coords, parallel=True, engine='scipy')
-    except TypeError:
-        data_arr = xr.open_mfdataset(file, preprocess=process_coords, parallel=True)
-    data_arr = data_arr.rename({"X": 'lon', "Y": 'lat'})
-    data_arr = data_arr.fillna(0)
-    if cfg.process.spatial_crop:
-        data_arr = data_arr.sel(lat=slice(rect_coords[0], rect_coords[1]), lon=slice(rect_coords[2], rect_coords[3]))
+        ds = xr.open_dataset(file, engine='netcdf4')
+    except Exception:
+        ds = xr.open_dataset(file, engine='scipy')
+
+    # Detect lat/lon coordinate names (ETOPO1 uses y/x, ensaio uses latitude/longitude)
+    lat_names = ['lat', 'latitude', 'y', 'Y']
+    lon_names = ['lon', 'longitude', 'x', 'X']
+    lat_key = next((k for k in lat_names if k in ds.coords), None)
+    lon_key = next((k for k in lon_names if k in ds.coords), None)
+    if lat_key is None or lon_key is None:
+        raise ValueError(f"Cannot find lat/lon coords in elevation file. Available: {list(ds.coords)}")
+
+    # Detect elevation variable name (z, topo, topography, elevation, ...)
+    data_vars = [v for v in ds.data_vars]
+    elev_var = data_vars[0]  # take first data variable
+    logging.info(f"Using elevation variable '{elev_var}', lat='{lat_key}', lon='{lon_key}'")
+
+    elev_lat = ds[lat_key].values.astype(np.float64)
+    elev_lon = ds[lon_key].values.astype(np.float64)
+    elev_data = ds[elev_var].values.astype(np.float32)
+    ds.close()
+
+    # Ensure lat ascending for interpolator
+    if elev_lat[0] > elev_lat[-1]:
+        elev_lat = elev_lat[::-1]
+        elev_data = elev_data[::-1, :]
+
+    # --- Load target CMIP6 grid ---
+    cmip_lat = np.load(os.path.join(cfg.process.data_dir, 'lat.npy'))
+    cmip_lon = np.load(os.path.join(cfg.process.data_dir, 'lon.npy'))
+
+    # --- Interpolate to CMIP6 grid ---
+    logging.info(f"Regridding elevation {elev_data.shape} → CMIP6 grid ({len(cmip_lat)}, {len(cmip_lon)})")
+    interp = RegularGridInterpolator(
+        (elev_lat, elev_lon), elev_data,
+        method='linear', bounds_error=False, fill_value=0.0
+    )
+    lon_grid, lat_grid = np.meshgrid(cmip_lon, cmip_lat)
+    points = np.stack([lat_grid.ravel(), lon_grid.ravel()], axis=-1)
+    elev_regridded = interp(points).reshape(len(cmip_lat), len(cmip_lon))
+
+    mean = float(elev_regridded.mean())
+    std = float(elev_regridded.std())
+
     if cfg.process.precision == 16:
         dtype = np.float16
     elif cfg.process.precision == 32:
         dtype = np.float32
     else:
         raise NotImplementedError
-    #Calculate mean and std
-    std = data_arr[var].std().compute()
-    mean = data_arr[var].mean().compute()
 
     if save:
-        logging.info(f"Saving: {var}")
+        logging.info(f"Saving elevation, shape {elev_regridded.shape}, mean={mean:.1f}, std={std:.1f}")
         if cfg.process.saved_normalized:
-            data = data_arr[var].data
-            data = np.divide((data - data.mean()), data.std())
-            np.save(os.path.join(cfg.process.data_dir, f"elev_{cfg.process.precision}.npy"), data.astype(dtype))
+            data = (elev_regridded - mean) / std
+            np.save(os.path.join(cfg.process.data_dir, f'elev_{cfg.process.precision}.npy'), data.astype(dtype))
         else:
-            np.save(os.path.join(cfg.process.data_dir, f"elev_{cfg.process.precision}.npy"), data_arr[var].data.astype(dtype))
-        # Retrieve elevation coords robustly and log safely
-        try:
-            lat = data_arr[var]["lat"].to_numpy()
-        except Exception:
-            lat = np.asarray(data_arr.coords.get("lat", np.array([])))
-        try:
-            lon = data_arr[var]["lon"].to_numpy()
-        except Exception:
-            lon = np.asarray(data_arr.coords.get("lon", np.array([])))
-        np.save(os.path.join(cfg.process.data_dir, "elev_lat.npy"), lat)
-        np.save(os.path.join(cfg.process.data_dir, "elev_lon.npy"), lon)
-        lat_str = "EMPTY" if lat.size == 0 else f"{lat.min()}-{lat.max()}"
-        lon_str = "EMPTY" if lon.size == 0 else f"{lon.min()}-{lon.max()}"
-        lat_step = "N/A" if lat.size < 2 else f"{lat[1] - lat[0]}"
-        lon_step = "N/A" if lon.size < 2 else f"{lon[1] - lon[0]}"
+            np.save(os.path.join(cfg.process.data_dir, f'elev_{cfg.process.precision}.npy'), elev_regridded.astype(dtype))
+        np.save(os.path.join(cfg.process.data_dir, 'elev_lat.npy'), cmip_lat)
+        np.save(os.path.join(cfg.process.data_dir, 'elev_lon.npy'), cmip_lon)
         logging.info(
-            f"Coords saved: lat {lat_str} step {lat_step}, lon {lon_str}  step {lon_step} "
+            f"Elevation saved: lat {cmip_lat.min():.2f}-{cmip_lat.max():.2f} ({len(cmip_lat)} pts), "
+            f"lon {cmip_lon.min():.2f}-{cmip_lon.max():.2f} ({len(cmip_lon)} pts)"
         )
     return mean, std
 
