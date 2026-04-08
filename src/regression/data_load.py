@@ -37,6 +37,11 @@ class DataPreLoader:
         self.dataset_torch = self.load_climate_data() # понять зачем в float32 переводят? Если в обучении будет падать из-за памяти, перевести в 16
         self.dataset_torch = self.time_crop(self.dataset_torch)
 
+        if self.cfg.train.use_elevation:
+            self.load_elevation_data()
+
+        self.station_threshold_lookup = self.load_station_thresholds()
+
         clean_start() # ограничивает выполнение функции только “нулевым” процессом в распределённом запуске и удаляет временные файлы по маске
 
         if self.cfg.train.make_tmp_target_file:
@@ -162,6 +167,40 @@ class DataPreLoader:
         return var_data
     
 
+    def load_elevation_data(self):
+        """Load regridded elevation (same CMIP6 grid) and apply same padding as climate data."""
+        elev = np.load(os.path.join(self.cfg.train.data_dir, f'elev_{self.cfg.process.precision}.npy')).astype(np.float32)
+        # elev shape: (lat, lon) – same grid as CMIP6 lat.npy / lon.npy
+        pad = self.cfg.half_side_size
+        elev_padded = np.pad(elev, ((pad, pad), (pad, pad)), mode='edge')
+        self.elevation_torch = torch.from_numpy(elev_padded).type(torch.float32)
+        logging.info(f"Elevation loaded: raw {elev.shape}, padded {elev_padded.shape}")
+
+    def load_station_thresholds(self):
+        """Load per-station p95 thresholds and build lookup (lat_idx, lon_idx) -> effective_threshold.
+        effective_threshold = max(p95_station, abs_threshold) so the condition becomes:
+            positive = (y >= effective_threshold)
+        Falls back to cfg.train.target_threshold if file not found.
+        """
+        thresh_path = os.path.join(self.cfg.train.data_dir, 'station_thresholds.parquet')
+        abs_thresh = float(self.cfg.train.get('abs_wind_threshold', 15.0))
+        if not os.path.exists(thresh_path):
+            logging.info(f"station_thresholds.parquet not found, using global threshold {abs_thresh}")
+            return {}
+        df = polars.read_parquet(thresh_path)
+        # Map lat/lon degrees to grid indices (same as stations_to_data_grid)
+        lats = df['lat'].to_numpy()
+        lons = df['lon'].to_numpy()
+        p95s = df['p95'].to_numpy()
+        lat_idxs = round_to_closest_indices(lats, self.lat_coords)
+        lon_idxs = round_to_closest_indices(lons, self.lon_coords)
+        lookup = {}
+        for lat_idx, lon_idx, p95 in zip(lat_idxs, lon_idxs, p95s):
+            effective = float(max(p95, abs_thresh))
+            lookup[(int(lat_idx), int(lon_idx))] = effective
+        logging.info(f"Loaded {len(lookup)} per-station thresholds (abs_threshold={abs_thresh} m/s)")
+        return lookup
+
     #### Target prep
     def time_to_data_grid(self, target_df):
         """перевести реальные временные метки станционных наблюдений в индексы ближайших узлов временной сетки модели"""
@@ -250,7 +289,12 @@ class DataPreLoader:
                 else:
                     drop_dict[res] += 1
                 continue
-            targets_list.append(self.pixel_aggregation(lat, lon, dates, y))
+            # Look up per-station effective threshold (before shift is applied to lat/lon)
+            eff_thresh = self.station_threshold_lookup.get(
+                (int(lat), int(lon)),
+                float(self.cfg.train.get('abs_wind_threshold', self.cfg.train.target_threshold))
+            )
+            targets_list.append(self.pixel_aggregation(lat, lon, dates, y, eff_thresh))
             total += 1
         logging.info(f"Pixel loop took {time.process_time() - start_time} seconds, droped {drop_dict}")
         logging.info(f"Stations finally: {total}")
@@ -296,41 +340,40 @@ class DataPreLoader:
         return True
 
 
-    def pixel_aggregation(self, lat, lon, dates, y):
+    def pixel_aggregation(self, lat, lon, dates, y, effective_threshold=None):
         # aggregate target with given time_agg_window 
         time_positions_m = np.array([d.astype(object).month for d in self.time_coords[dates]])
         time_positions_days =  np.array([d.astype(object).day for d in self.time_coords[dates]])
         time_positions = (time_positions_m * 30.5 + time_positions_days)/365
         time_positions_m = time_positions_m/12
         assert len(time_positions) == len(dates)
-        y_agg_quantlies = np.quantile(sliding_window_view(y, window_shape=self.cfg.train.time_agg_window), 
-                        q=[0.96, 0.85, 0.70, 0.50, 0.25, 0.15, 0.05],
-                        axis = 1,
-                        method='weibull')
+        # y_max: max wind speed over the 28-day sliding window
+        # "was there at least one stormy day in this period?" → clean, interpretable for a paper
+        y_max = np.max(sliding_window_view(y, window_shape=self.cfg.train.time_agg_window), axis=1)
         i = 1 if self.cfg.train.time_agg_window % 2 == 0 else 0
         if self.cfg.time_window > self.cfg.train.time_agg_window:
             # clip dates according to time_window
-            dates = dates[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i] 
-            time_positions = time_positions[self.cfg.time_window//2: len(time_positions)-self.cfg.time_window//2 + i] 
-            time_positions_m = time_positions_m[self.cfg.time_window//2: len(time_positions_m)-self.cfg.time_window//2 + i] 
-
-            y_agg_quantlies = y_agg_quantlies[self.cfg.time_window-self.cfg.train.time_agg_window:
-                                              len(y_agg_quantlies) + self.cfg.train.time_agg_window - self.cfg.time_window - 1]
+            dates = dates[self.cfg.time_window//2: len(dates)-self.cfg.time_window//2 + i]
+            time_positions = time_positions[self.cfg.time_window//2: len(time_positions)-self.cfg.time_window//2 + i]
+            time_positions_m = time_positions_m[self.cfg.time_window//2: len(time_positions_m)-self.cfg.time_window//2 + i]
+            y_max = y_max[self.cfg.time_window-self.cfg.train.time_agg_window:
+                          len(y_max) + self.cfg.train.time_agg_window - self.cfg.time_window - 1]
         else:
-            dates = dates[self.cfg.train.time_agg_window//2: len(dates)-self.cfg.train.time_agg_window//2 + i] 
-            time_positions = time_positions[self.cfg.train.time_agg_window//2: len(time_positions)-self.cfg.train.time_agg_window//2 + i] 
-            time_positions_m = time_positions_m[self.cfg.train.time_agg_window//2: len(time_positions_m)-self.cfg.train.time_agg_window//2 + i] 
-             # y_agg_quantlies not changed
+            dates = dates[self.cfg.train.time_agg_window//2: len(dates)-self.cfg.train.time_agg_window//2 + i]
+            time_positions = time_positions[self.cfg.train.time_agg_window//2: len(time_positions)-self.cfg.train.time_agg_window//2 + i]
+            time_positions_m = time_positions_m[self.cfg.train.time_agg_window//2: len(time_positions_m)-self.cfg.train.time_agg_window//2 + i]
+            # y_max not changed
 
         assert len(time_positions) == len(dates)
         mask = dates > self.cfg.time_window//2+1
         dates = dates[mask]
         time_positions = time_positions[mask]
         time_positions_m = time_positions_m[mask]
-        y_agg_quantlies = y_agg_quantlies[:, mask]
+        y_max = y_max[mask]
 
         lat_position = self.lat_coords[lat]/90
         lon_position = self.lon_coords[lon]/180
+        # Rows 0-6: indices and positional encoding; Row 7: max wind over window; Row 8: effective threshold
         target_array = np.stack([np.full(len(dates), lat),
                                  np.full(len(dates), lon),
                                  dates,
@@ -338,9 +381,15 @@ class DataPreLoader:
                                  time_positions_m,
                                  np.full(len(dates), lat_position),
                                  np.full(len(dates), lon_position),
+                                 y_max,
                                  ])
-        
-        target_array = np.concatenate((target_array, y_agg_quantlies), axis=0)
+        # Row 8: per-station effective threshold (constant for all time steps of this station)
+        if effective_threshold is None:
+            effective_threshold = float(self.cfg.train.target_threshold)
+        target_array = np.concatenate(
+            (target_array, np.full((1, target_array.shape[1]), effective_threshold, dtype=np.float32)),
+            axis=0
+        )
         return target_array
     
     ### Utils for preload

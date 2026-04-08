@@ -1,19 +1,20 @@
 make_tmp_target_file: False
 
-use_elevation: false
-normalize: false      # precision 16 is already normalized
+use_elevation: true
+in_chans: 5               # 4 CMIP6 vars + 1 elevation channel
+normalize: false          # precision 16 is already normalized
 
-time_agg_window: 28   # range in days, used to calculate maximum for every day of target
-time_freq: 14         # get sample from target every {time_freq} days
-target_threshold: 15.0  # fallback global threshold (m/s), used when station_thresholds.parquet unavailable
-abs_wind_threshold: 15.0  # absolute minimum for positive class (Beaufort 7, near gale)
+time_agg_window: 28
+time_freq: 14
+target_threshold: 15.0
+abs_wind_threshold: 15.0
 
 data_dir: data/cmip6_world/
 target_data_file: target.parquet
 
 start_time: '2000-01-01'
 end_time: '2024-12-31'
-start_of_test: '2023-01-01'   # train 2000-2020, val 2021-2022, test 2023-2024
+start_of_test: '2023-01-01'
 
 variables:
 - sfcWindmax
@@ -42,8 +43,8 @@ distributed: false
 num_nodes: 1
 strategy: 'ddp'
 
-limit_train_batches: 5000   # ~56 min/epoch, 8-9 epochs overnight
-limit_val_batches: 1000     # ~11 min validation
+limit_train_batches: 5000
+limit_val_batches: 1000
 
 log_every_n_steps: 10
 

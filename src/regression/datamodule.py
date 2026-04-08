@@ -28,8 +28,7 @@ class WindDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
         if self.cfg.train.use_elevation:
             logging.info("Using elevation data")
-            # DatasetClass = XarrayDatasetElev
-            raise NotImplementedError
+            DatasetClass = XarrayDatasetElev
         else:
             logging.info("Not using elevation data")
             DatasetClass = XarrayDataset
@@ -123,6 +122,8 @@ class XarrayDataset(Dataset):
     def __getitem__(self, idx):
         lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = self.data_idxs[:8, idx]
         # lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, *y = self.data_idxs[:, idx] # Quantile regression
+        # Row 14: per-station effective threshold (max(p95_station, abs_threshold))
+        station_threshold = float(self.data_idxs[8, idx]) if self.data_idxs.shape[0] > 8 else float(self.cfg.train.target_threshold)
 
         lat_index = int(lat_index)
         lon_index = int(lon_index)
@@ -153,35 +154,45 @@ class XarrayDataset(Dataset):
             # Если не используем DenseWeight, создаем тензор-пустышку
             weights_tensor = torch.tensor([1.0], dtype=self.dtype) # Просто чтобы что-то вернуть
 
-        return [X, pos], y, weights_tensor
-    
-# class XarrayDatasetElev(XarrayDataset): # Я добавил 02.02.26 из ветки elevation_integration в гите makboard
-#     def __init__(self, DPL, test=False, dtype=torch.float16, ):
-#         super(XarrayDatasetElev, self).__init__(DPL, test=test, dtype=dtype,)
-#         self.elevation_torch = DPL.elevation_torch
-#         self.elev_hss = DPL.elev_hss
-#         self.r_lat = DPL.r_lat
-#         self.r_lon = DPL.r_lon
-#         self.shift_clim = DPL.shift
-#         self.shift_elev = DPL.shift_elev
+        return [X, pos], y, weights_tensor, torch.tensor(station_threshold, dtype=self.dtype)
 
-#     def __getitem__(self, idx):
-#         lat_index, lon_index, time_index, y = self.data_idxs[:, idx]
-#         X = self.dataset_torch[:,
-#                                slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
-#                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
-#                                slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
-#                                ]
-#         # print([time_index, lat_index, lon_index])
-#         lat_index_elev = int((lat_index - self.shift_clim[0]) * self.r_lat) + self.shift_elev[0]
-#         lon_index_elev = int((lon_index - self.shift_clim[1]) * self.r_lon) + self.shift_elev[1]
-#         X_elev = self.elevation_torch[
-#                                     slice(lat_index_elev - self.elev_hss, lat_index_elev + self.elev_hss + 1),
-#                                     slice(lon_index_elev - self.elev_hss, lon_index_elev + self.elev_hss + 1),
-#                                     ]
-#         X_elev = X_elev.view(1, X_elev.shape[-2], X_elev.shape[-1])
-#         y = torch.tensor(y, dtype=self.dtype)
-#         return (X, X_elev), y    
+class XarrayDatasetElev(XarrayDataset):
+    """Same as XarrayDataset but appends elevation as a 5th channel.
+
+    Elevation is regridded to the CMIP6 grid, so indices are identical.
+    DPL.elevation_torch shape: (lat_padded, lon_padded) – no time dim.
+    Output X shape: (5, time_window, patch_h, patch_w)
+    """
+    def __init__(self, DPL, test=False, dtype=torch.float32):
+        super().__init__(DPL, test=test, dtype=dtype)
+        self.elevation_torch = DPL.elevation_torch  # (lat_padded, lon_padded)
+
+    def __getitem__(self, idx):
+        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = self.data_idxs[:8, idx]
+        station_threshold = float(self.data_idxs[8, idx]) if self.data_idxs.shape[0] > 8 else float(self.cfg.train.target_threshold)
+        lat_index = int(lat_index)
+        lon_index = int(lon_index)
+        time_index = int(time_index)
+
+        X = self.dataset_torch[:,
+                               slice(time_index - self.cfg.time_window//2, time_index + self.cfg.time_window//2 + 1),
+                               slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
+                               slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
+                               ]  # (4, time_window, patch_h, patch_w)
+
+        X_elev = self.elevation_torch[
+                               slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
+                               slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
+                               ]  # (patch_h, patch_w)
+        # broadcast elevation across time window → (1, time_window, patch_h, patch_w)
+        X_elev = X_elev.unsqueeze(0).unsqueeze(0).expand(1, X.shape[1], -1, -1)
+        X = torch.cat([X, X_elev], dim=0)  # (5, time_window, patch_h, patch_w)
+
+        pos = torch.tensor([time_pos, time_pos_m, lat_pos, lon_pos], dtype=self.dtype)
+        pos = pos.expand(self.cfg.time_window, 4)
+        y = torch.tensor(y, dtype=self.dtype)
+        weights_tensor = torch.tensor([1.0], dtype=self.dtype)
+        return [X, pos], y, weights_tensor, torch.tensor(station_threshold, dtype=self.dtype)
     
 if __name__ == '__main__':
     pass

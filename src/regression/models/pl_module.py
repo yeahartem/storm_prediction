@@ -33,7 +33,8 @@ class WindNetPL(pl.LightningModule):
         elif cfg.model_name=="BaselineQW":
             self.net = BaselineQW()
         elif cfg.model_name=="GhostWindNet27":
-            self.net = GhostWindNet27()
+            in_chans = cfg.train.get('in_chans', 4)
+            self.net = GhostWindNet27(in_chans=in_chans)
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
         logging.info(f'Using {cfg.model_name} model')
@@ -71,6 +72,7 @@ class WindNetPL(pl.LightningModule):
         self.val_AP = torchmetrics.AveragePrecision(num_classes=1, task='binary')
         self.test_AP = torchmetrics.AveragePrecision(num_classes=1, task='binary')
 
+        self.val_auroc = torchmetrics.AUROC(task="binary")
         self.test_auroc = torchmetrics.AUROC(task="binary")
 
         self.train_MAE = torchmetrics.MeanAbsoluteError()
@@ -186,29 +188,33 @@ class WindNetPL(pl.LightningModule):
         if self.cfg.model_name=="GhostWindNet27":
             self.net.trainer = self.trainer
         if self.cfg.train.loss_name == 'BCELoss':
-            targets = self.trainer.datamodule.DPL.train_data_idxs[7, :]
-            threshold = self.cfg.train.target_threshold
-            positive_samples = np.sum(targets > threshold)
+            train_idxs = self.trainer.datamodule.DPL.train_data_idxs
+            targets = train_idxs[7, :]
+            # Use per-station thresholds if available (row 14), else fall back to global threshold
+            if train_idxs.shape[0] > 8:
+                thresholds = train_idxs[8, :]
+                positive_samples = np.sum(targets >= thresholds)
+            else:
+                positive_samples = np.sum(targets >= self.cfg.train.target_threshold)
             negative_samples = len(targets) - positive_samples
-            pos_weight = torch.tensor(negative_samples / positive_samples, device=self.device)
+            pos_weight = torch.tensor(negative_samples / max(positive_samples, 1), device=self.device)
             self.criterion.pos_weight = pos_weight
             logging.info(f"BCELoss pos_weight={pos_weight:.2f} (pos={positive_samples}, neg={negative_samples})")
             
     def model_step(self, batch):
-        objs, target, dense_weights = batch
+        objs, target, dense_weights, station_thresholds = batch
         predictions = self(objs).float()
-        # print(objs[0].shape)
-        # print(objs[1].shape)
         if self.cfg.train.loss_name == 'BCELoss':
-            loss_target = float_to_binary(target, thresh=self.cfg.train.target_threshold).float()
+            # Per-sample threshold: positive if y >= station_threshold (= max(p95_station, 15 m/s))
+            loss_target = (target >= station_thresholds).float()
         else:
-            loss_target = target.float()        
+            loss_target = target.float()
         loss = self.loss(predictions, loss_target, dense_weights)
-        return loss, predictions, target    
+        return loss, predictions, target, station_thresholds
     
     def training_step(self, batch, batch_idx):
         # 1. Получаем предсказания модели
-        loss, predictions, target = self.model_step(batch)
+        loss, predictions, target, station_thresholds = self.model_step(batch)
         
         # <-- ДОБАВЬ ЭТУ ПРОВЕРКУ -->
         if torch.isinf(loss) or torch.isnan(loss):
@@ -236,8 +242,8 @@ class WindNetPL(pl.LightningModule):
         target_squeezed = target
         self.train_MAE(preds_squeezed, target_squeezed) 
         self.train_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
-        self.train_AP(self._score(preds_squeezed),
-                    float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))        
+        binary_target_train = (target_squeezed >= station_thresholds).int()
+        self.train_AP(self._score(preds_squeezed), binary_target_train)
         
         # =========================== QUANTILE REGRESSION  =======================================
         # self.train_MAE(predictions[:, 0], target[:, 0]) # MAE для основного предсказания
@@ -272,7 +278,7 @@ class WindNetPL(pl.LightningModule):
             
 
     def validation_step(self, batch, batch_idx):
-        loss, predictions, target = self.model_step(batch)
+        loss, predictions, target, station_thresholds = self.model_step(batch)
 
         self.val_loss(loss)
         
@@ -280,33 +286,20 @@ class WindNetPL(pl.LightningModule):
         preds_squeezed = predictions.squeeze()
         target_squeezed = target
         self.val_MAE(preds_squeezed, target_squeezed)
-        self.val_AP(self._score(preds_squeezed),
-                    float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
-        self.val_precision(self._score(preds_squeezed),
-                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
-        self.val_recall(self._score(preds_squeezed),
-                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold))
-        self.val_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed , thresh=self.cfg.train.target_threshold))
-        
-        # =========================== QUANTILE REGRESSION ===========================
-        # self.val_MAE(predictions[:, 0], target[:, 0])
-        # self.val_MAE_full(predictions, target) # QUANTILE REGRESSION
-        # self.val_AP(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
-        # self.val_precision(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))
-        # self.val_recall(float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold),
-        #                     float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold))        
-        # self.val_MAE_OS(*get_outliers_s(predictions[:, 0], target[:, 0], thresh=self.cfg.train.target_threshold))
-        # =========================== QUANTILE REGRESSION ===========================
-        self.val_confusion_matrix(self._score(preds_squeezed),
-                            float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)) 
-        
+        binary_target_val = (target_squeezed >= station_thresholds).int()
+        self.val_AP(self._score(preds_squeezed), binary_target_val)
+        self.val_auroc(self._score(preds_squeezed), binary_target_val)
+        self.val_precision(self._score(preds_squeezed), binary_target_val)
+        self.val_recall(self._score(preds_squeezed), binary_target_val)
+        self.val_MAE_OS(*get_outliers_s(preds_squeezed, target_squeezed, thresh=self.cfg.train.target_threshold))
+        self.val_confusion_matrix(self._score(preds_squeezed), binary_target_val)
+
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/MAE", self.val_MAE, on_step=True, on_epoch=True, prog_bar=False)
         # self.log("val/MAE_full", self.val_MAE_full, on_step=True, on_epoch=True, prog_bar=False) # QUANTILE REGRESSION
         self.log("val/MAE_OS", self.val_MAE_OS, on_step=False, on_epoch=True, prog_bar=False)
         self.log("val/AP", self.val_AP, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/AUROC", self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/precision", self.val_precision, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/recall", self.val_recall, on_step=False, on_epoch=True, prog_bar=True)
 
@@ -323,6 +316,7 @@ class WindNetPL(pl.LightningModule):
                 "loss": loss,
                 "preds": predictions,
                 "target": target,
+                "station_thresholds": station_thresholds,
             }
         )
         self.validation_step_outputs.append(output)
@@ -339,9 +333,10 @@ class WindNetPL(pl.LightningModule):
 
         # <<< НАЧАЛО БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
 
-        # Собираем все предсказания и таргеты из каждого validation_step
+        # Собираем все предсказания, таргеты и per-station пороги
         preds = torch.cat([x['preds'] for x in outputs]).cpu()
         targets = torch.cat([x['target'] for x in outputs]).cpu()
+        all_station_thresholds = torch.cat([x['station_thresholds'] for x in outputs]).cpu()
         
         print(f"В on_validation_epoch_end() -> preds.shape: {preds.shape}, target.shape: {targets.shape}")
         preds = preds.squeeze() # Comment for Quantile Regression квантильная регрессия
@@ -399,7 +394,8 @@ class WindNetPL(pl.LightningModule):
         self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=figure_path)
         plt.close(fig)
 
-        precision, recall, thresholds = precision_recall_curve(float_to_binary(targets, thresh=self.cfg.train.target_threshold),
+        binary_targets_val_epoch = (targets >= all_station_thresholds).int().numpy()
+        precision, recall, thresholds = precision_recall_curve(binary_targets_val_epoch,
                                                             self._score(preds)
                     )
         fig_pr, ax_pr = plt.subplots()
@@ -503,12 +499,12 @@ class WindNetPL(pl.LightningModule):
 
         
     def test_step(self, batch, batch_idx):
-        loss, predictions, target = self.model_step(batch)
+        loss, predictions, target, station_thresholds = self.model_step(batch)
         self.test_loss(loss)
         # =========================== QUANTILE REGRESSION (comment 5 lines below and uncomment those that are lower) =======================================
         preds_squeezed = predictions.squeeze()
         target_squeezed = target
-        binary_target = float_to_binary(target_squeezed, thresh=self.cfg.train.target_threshold)
+        binary_target = (target_squeezed >= station_thresholds).int()
         score_preds = self._score(preds_squeezed)
         binary_preds = self._binary_pred(preds_squeezed)
         self.test_MAE(preds_squeezed, target_squeezed)

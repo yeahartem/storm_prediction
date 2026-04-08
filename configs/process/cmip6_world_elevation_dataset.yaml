@@ -1,0 +1,36 @@
+data_dir: data/cmip6_world/                     # processed data for training
+prepared_target_data_name: target.parquet
+
+make_climate_data: false      # CMIP data already processed, skip
+make_elevation_data: true     # regrid ETOPO1 to CMIP6 grid and save
+make_normalization: false
+make_cleaned_weather_data: false
+make_target: false
+
+load_normalization: false
+saved_normalized: true                          # float16 + normalized
+precision: 16
+
+spatial_crop: false
+coords:
+  lat_min: -47.0
+  lat_max: 80.0
+  lon_min: -180.0
+  lon_max: 180.0
+
+min_height: -10
+max_height: 800
+
+variables:
+- sfcWindmax
+- pr
+- tasmax
+- tasmin
+
+time_limits:
+- '2000-01-01'
+- '2024-12-31'
+start_of_test: '2023-01-01'
+
+target_column:
+- 'max_speed'

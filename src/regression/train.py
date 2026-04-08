@@ -136,8 +136,8 @@ def train_regression(cfg: DictConfig) -> None:
                             strategy=cfg.train.strategy if cfg.train.distributed else 'auto',
                             #log
                             log_every_n_steps=cfg.train.log_every_n_steps,
-                            limit_train_batches=5000,   # ~56 min/epoch with num_workers=0
-                            limit_val_batches=1000,     # ~11 min validation
+                            limit_train_batches=cfg.train.get('limit_train_batches', 1.0),
+                            limit_val_batches=cfg.train.get('limit_val_batches', 1.0),
                             # gradient_clip_val=1, # Чтобы не было ошибки inf в mlflow 
                             logger=mlflow_logger, # wandb_logger
                             #misc
