@@ -499,51 +499,35 @@ class WindNetPL(pl.LightningModule):
 
         
     def test_step(self, batch, batch_idx):
+        objs, target, dense_weights, station_thresholds = batch
         loss, predictions, target, station_thresholds = self.model_step(batch)
         self.test_loss(loss)
-        # =========================== QUANTILE REGRESSION (comment 5 lines below and uncomment those that are lower) =======================================
         preds_squeezed = predictions.squeeze()
         target_squeezed = target
         binary_target = (target_squeezed >= station_thresholds).int()
         score_preds = self._score(preds_squeezed)
         binary_preds = self._binary_pred(preds_squeezed)
         self.test_MAE(preds_squeezed, target_squeezed)
-        self.test_MAE_OS(*get_outliers_s(preds_squeezed, target, thresh=self.cfg.train.target_threshold))                 
-                
-        # =========================== QUANTILE REGRESSION ============================                
-        # binary_target = float_to_binary(target[:, 0], thresh=self.cfg.train.target_threshold)
-        # score_preds = float_to_score(predictions[:, 0], thresh=self.cfg.train.target_threshold)
-        # binary_preds = float_to_binary(predictions[:, 0], thresh=self.cfg.train.target_threshold)
-        # self.test_MAE(predictions[:, 0], target[:, 0])
-        # self.test_MAE_full(predictions, target) # QUANTILE REGRESSION
-        # self.test_MAE_OS(*get_outliers_s(predictions[:, 0], target, thresh=self.cfg.train.target_threshold)) # Strange, why tagret, not target[:, 0]? 13.09.25 
-        # =========================== QUANTILE REGRESSION ============================        
+        self.test_MAE_OS(*get_outliers_s(preds_squeezed, target, thresh=self.cfg.train.target_threshold))
+
         self.test_AP(score_preds, binary_target)
-        self.test_precision(binary_preds,binary_target)
+        self.test_precision(binary_preds, binary_target)
         self.test_recall(binary_preds, binary_target)
         self.test_auroc(score_preds, binary_target)
-        
+
         self.log("test/loss", self.test_loss, prog_bar=True)
         self.log("test/MAE", self.test_MAE, on_step=True, on_epoch=True, prog_bar=True)
-        # self.log("test/MAE_full", self.test_MAE_full, on_step=True, on_epoch=True, prog_bar=False) # QUANTILE REGRESSION
-
         self.log("test/MAE_OS", self.test_MAE_OS, on_step=True, on_epoch=True, prog_bar=False)
         self.log("test/AP", self.test_AP, on_step=False, on_epoch=True, prog_bar=True)
         self.log("test/precision", self.test_precision, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/recall", self.test_recall, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/AUROC", self.test_auroc, on_epoch=True)
 
-        # if batch_idx%100==0:
-        #     self.log("test/target_96", target[:, 0])
-        #     self.log("test/prediction_96", predictions[:, 0])
-        #     self.log("test/target_50", target[:, 3])
-        #     self.log("test/prediction_50", predictions[:, 3])
-        #     self.log("test/target_05", target[:, 6])
-        #     self.log("test/prediction_05", predictions[:, 6])
-            # self.logger.experiment.log({"test/target_96": target[:, 0], "test/prediction_96": predictions[:, 0]})
-            # self.logger.experiment.log({"test/target_50": target[:, 3], "test/prediction_50": predictions[:, 3]})
-            # self.logger.experiment.log({"test/target_05": target[:, 6], "test/prediction_05": predictions[:, 6]})
-        
+        # Extract lat/lon from pos: shape (batch, time_window, 4) = [time, time_m, lat/90, lon/180]
+        pos = objs[1]
+        lat = (pos[:, 0, 2] * 90).cpu()
+        lon = (pos[:, 0, 3] * 180).cpu()
+
         output = OrderedDict(
             {
                 "loss": loss,
@@ -552,6 +536,8 @@ class WindNetPL(pl.LightningModule):
                 "float_preds": predictions,
                 "float_target": target,
                 "binary_target": binary_target,
+                "lat": lat,
+                "lon": lon,
             }
         )
         self.test_outputs.append(output)
@@ -562,13 +548,27 @@ class WindNetPL(pl.LightningModule):
         print(f'Plots will be saved to {self.run_dir}')
         self.test_outputs = []
 
+    REGIONS = {
+        "russia_europe":       ((45, 65),  (19,  60)),
+        "russia_west_siberia": ((50, 70),  (60,  90)),
+        "russia_east_siberia": ((55, 72),  (90,  140)),
+        "russia_far_east":     ((42, 60),  (130, 170)),
+        "africa_equatorial":   ((-5,  5),  (10,  35)),
+        "africa_south":        ((-35,-20), (15,  35)),
+        "africa_north_east":   ((20, 35),  (0,   35)),
+        "africa_sahel_east":   ((10, 20),  (0,   35)),
+    }
+
     def on_test_epoch_end(self):
-        preds = torch.stack([x["binary_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
-        target = torch.stack([x["binary_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu().flatten()
-        preds_float = torch.stack([x["float_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
-        target_float = torch.stack([x["float_target"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
+        preds = torch.cat([x["binary_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu()
+        target = torch.cat([x["binary_target"] for x in self.test_outputs]).to(dtype=torch.int32).cpu()
+        preds_float = torch.cat([x["float_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu()
+        target_float = torch.cat([x["float_target"] for x in self.test_outputs]).to(dtype=torch.float32).cpu()
+        score_all = torch.cat([x["score_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu()
+        lats = torch.cat([x["lat"] for x in self.test_outputs]).cpu().numpy()
+        lons = torch.cat([x["lon"] for x in self.test_outputs]).cpu().numpy()
         print(f"В on_test_epoch_end() -> preds_float.shape: {preds_float.shape}, target_float.shape: {target_float.shape}")
-        preds_float = preds_float.squeeze() # Comment for Quantile Regression квантильная регрессия
+        preds_float = preds_float.squeeze()
         # <<< НАЧАЛО БЛОКА ДЛЯ СЧЕТЧИКА >>>
 
         # 1. Берем порог из конфига
@@ -621,8 +621,7 @@ class WindNetPL(pl.LightningModule):
         self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=os.path.join(self.run_dir, 'RMSE_vs_target.png'))
         plt.close(fig)
 
-        score_preds_for_pr = torch.stack([x["score_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu().flatten()
-        precision, recall, thresholds = precision_recall_curve(target, score_preds_for_pr)
+        precision, recall, thresholds = precision_recall_curve(target.numpy(), score_all.numpy())
         fig_pr, ax = plt.subplots()
         ax.plot(recall, precision, color='purple')
         ax.set_title('Precision-Recall Curve')
@@ -656,14 +655,54 @@ class WindNetPL(pl.LightningModule):
         ax_hist.set_title('Распределение ошибок')
         self.logger.experiment.log_figure(self.logger.run_id, fig_hist, "test_error_distribution.png")
 
-        # 3. Сохранение сырых предсказаний для дальнейшего анализа
-        # Это КРАЙНЕ ВАЖНО для воспроизводимости и статистических тестов
+        # 3. Сохранение сырых предсказаний с lat/lon для регионального анализа
         results_df = pd.DataFrame({
             'prediction': preds_float.numpy(),
-            'target': target_float.numpy()
+            'target': target_float.numpy(),
+            'score': score_all.numpy(),
+            'binary_pred': preds.numpy().astype(int),
+            'binary_target': target.numpy().astype(int),
+            'lat': lats,
+            'lon': lons,
         })
-        results_df.to_csv(os.path.join(self.run_dir, 'test_predictions.csv'), index=False)
-        self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=os.path.join(self.run_dir, 'test_predictions.csv'))  
+        csv_path = os.path.join(self.run_dir, 'test_predictions.csv')
+        results_df.to_csv(csv_path, index=False)
+        self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=csv_path)
+
+        # 4. Региональный анализ
+        from sklearn.metrics import roc_auc_score, average_precision_score, f1_score as f1
+        print("
+--- Региональные метрики ---")
+        regional_rows = []
+        for region_name, ((lat_min, lat_max), (lon_min, lon_max)) in self.REGIONS.items():
+            mask = (lats >= lat_min) & (lats <= lat_max) & (lons >= lon_min) & (lons <= lon_max)
+            n = mask.sum()
+            if n < 50:
+                print(f"{region_name}: недостаточно данных ({n} samples)")
+                continue
+            y_true = target.numpy()[mask]
+            y_score = score_all.numpy()[mask]
+            y_pred = preds.numpy()[mask]
+            if y_true.sum() == 0 or y_true.sum() == n:
+                print(f"{region_name}: только один класс, пропускаем")
+                continue
+            auroc = roc_auc_score(y_true, y_score)
+            ap = average_precision_score(y_true, y_score)
+            f1_val = f1(y_true, y_pred)
+            pos_rate = y_true.mean()
+            print(f"{region_name}: AUROC={auroc:.3f} AP={ap:.3f} F1={f1_val:.3f} pos_rate={pos_rate:.2%} n={n}")
+            mlflow.log_metrics({f"test_region/{region_name}/AUROC": auroc,
+                                f"test_region/{region_name}/AP": ap,
+                                f"test_region/{region_name}/F1": f1_val})
+            regional_rows.append({"region": region_name, "AUROC": auroc, "AP": ap, "F1": f1_val,
+                                  "pos_rate": pos_rate, "n_samples": n})
+        if regional_rows:
+            reg_df = pd.DataFrame(regional_rows)
+            reg_path = os.path.join(self.run_dir, 'regional_metrics.csv')
+            reg_df.to_csv(reg_path, index=False)
+            self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=reg_path)
+            print(reg_df.to_string(index=False))
+        print("------------------------------")
 
 
     def configure_optimizers(self):
