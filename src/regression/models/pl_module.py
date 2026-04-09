@@ -528,10 +528,11 @@ class WindNetPL(pl.LightningModule):
         self.log("test/recall", self.test_recall, on_step=True, on_epoch=True, prog_bar=True)
         self.log("test/AUROC", self.test_auroc, on_epoch=True)
 
-        # Extract lat/lon from pos: shape (batch, time_window, 4) = [time, time_m, lat/90, lon/180]
+        # Extract lat/lon/month from pos: shape (batch, time_window, 4) = [time, time_m, lat/90, lon/180]
         pos = objs[1]
         lat = (pos[:, 0, 2] * 90).cpu()
         lon = (pos[:, 0, 3] * 180).cpu()
+        month = (pos[:, 0, 1] * 12).round().clamp(1, 12).int().cpu()  # time_pos_m = month/12
 
         output = OrderedDict(
             {
@@ -543,6 +544,7 @@ class WindNetPL(pl.LightningModule):
                 "binary_target": binary_target,
                 "lat": lat,
                 "lon": lon,
+                "month": month,
             }
         )
         self.test_outputs.append(output)
@@ -572,6 +574,7 @@ class WindNetPL(pl.LightningModule):
         score_all = torch.cat([x["score_preds"] for x in self.test_outputs]).to(dtype=torch.float32).cpu()
         lats = torch.cat([x["lat"] for x in self.test_outputs]).cpu().numpy()
         lons = torch.cat([x["lon"] for x in self.test_outputs]).cpu().numpy()
+        months = torch.cat([x["month"] for x in self.test_outputs]).cpu().numpy()
         print(f"В on_test_epoch_end() -> preds_float.shape: {preds_float.shape}, target_float.shape: {target_float.shape}")
         preds_float = preds_float.squeeze()
         # <<< НАЧАЛО БЛОКА ДЛЯ СЧЕТЧИКА >>>
@@ -660,7 +663,7 @@ class WindNetPL(pl.LightningModule):
         ax_hist.set_title('Распределение ошибок')
         self.logger.experiment.log_figure(self.logger.run_id, fig_hist, "test_error_distribution.png")
 
-        # 3. Сохранение сырых предсказаний с lat/lon для регионального анализа
+        # 3. Сохранение сырых предсказаний с lat/lon/month для анализа
         results_df = pd.DataFrame({
             'prediction': preds_float.numpy(),
             'target': target_float.numpy(),
@@ -669,6 +672,7 @@ class WindNetPL(pl.LightningModule):
             'binary_target': target.numpy().astype(int),
             'lat': lats,
             'lon': lons,
+            'month': months,
         })
         csv_path = os.path.join(self.run_dir, 'test_predictions.csv')
         results_df.to_csv(csv_path, index=False)
@@ -707,6 +711,60 @@ class WindNetPL(pl.LightningModule):
             self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=reg_path)
             print(reg_df.to_string(index=False))
         print("------------------------------")
+
+        # 5. Seasonal metrics
+        SEASONS = {"DJF": [12, 1, 2], "MAM": [3, 4, 5], "JJA": [6, 7, 8], "SON": [9, 10, 11]}
+        print("
+--- Сезонные метрики ---")
+        season_rows = []
+        for season_name, season_months in SEASONS.items():
+            mask = np.isin(months, season_months)
+            n = mask.sum()
+            if n < 50:
+                continue
+            y_true = target.numpy()[mask]
+            y_score = score_all.numpy()[mask]
+            y_pred = preds.numpy()[mask]
+            if y_true.sum() == 0 or y_true.sum() == n:
+                continue
+            auroc = roc_auc_score(y_true, y_score)
+            ap = average_precision_score(y_true, y_score)
+            f1_val = f1(y_true, y_pred)
+            pos_rate = y_true.mean()
+            print(f"{season_name}: AUROC={auroc:.3f} AP={ap:.3f} F1={f1_val:.3f} pos_rate={pos_rate:.2%} n={n}")
+            mlflow.log_metrics({f"test_season/{season_name}/AUROC": auroc,
+                                f"test_season/{season_name}/AP": ap,
+                                f"test_season/{season_name}/F1": f1_val})
+            season_rows.append({"season": season_name, "AUROC": auroc, "AP": ap, "F1": f1_val,
+                                 "pos_rate": pos_rate, "n_samples": n})
+        if season_rows:
+            seas_df = pd.DataFrame(season_rows)
+            seas_path = os.path.join(self.run_dir, 'seasonal_metrics.csv')
+            seas_df.to_csv(seas_path, index=False)
+            self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=seas_path)
+            print(seas_df.to_string(index=False))
+
+        # 6. Confusion matrix
+        from sklearn.metrics import confusion_matrix
+        cm = confusion_matrix(target.numpy(), preds.numpy().astype(int))
+        tn, fp, fn, tp = cm.ravel()
+        print(f"
+--- Матрица ошибок (тест) ---")
+        print(f"TN={tn}  FP={fp}")
+        print(f"FN={fn}  TP={tp}")
+        fig_cm, ax_cm = plt.subplots(figsize=(5, 4))
+        im = ax_cm.imshow(cm, cmap='Blues')
+        ax_cm.set_xticks([0, 1]); ax_cm.set_yticks([0, 1])
+        ax_cm.set_xticklabels(['Pred No Storm', 'Pred Storm'])
+        ax_cm.set_yticklabels(['No Storm', 'Storm'])
+        for i in range(2):
+            for j in range(2):
+                ax_cm.text(j, i, cm[i, j], ha="center", va="center",
+                           color="white" if cm[i, j] > cm.max() / 2 else "black")
+        ax_cm.set_title('Confusion Matrix (Test Set)')
+        fig_cm.tight_layout()
+        self.logger.experiment.log_figure(self.logger.run_id, fig_cm, "test_confusion_matrix.png")
+        plt.close(fig_cm)
 
 
     def configure_optimizers(self):
