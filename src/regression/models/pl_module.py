@@ -815,31 +815,6 @@ class WindNetPL(pl.LightningModule):
         else:
             return optimizer
         
-    def on_after_backward(self):
-        # Проверяем градиенты только на первых двух шагах обучения
-        if self.trainer.global_step % 100 == 0:
-            print("\n" + "#"*50)
-            print(f"--- ДЕБАГ ГРАДИЕНТОВ (ПОСЛЕ ШАГА {self.trainer.global_step}) ---")
-
-            # Градиенты для весов первого Linear слоя в "голове"
-            grad_lin1 = self.net.head_lin1.weight.grad
-            if grad_lin1 is not None:
-                print("\nГрадиенты для Linear_1 (до активации):")
-                print(f"  Среднее абсолютное значение градиента: {grad_lin1.abs().mean():.6f}")
-                print(f"  Максимальное абсолютное значение: {grad_lin1.abs().max():.6f}")
-            else:
-                print("\nГрадиенты для Linear_1 отсутствуют (None)!")
-
-            # Градиенты для весов второго, финального Linear слоя
-            grad_lin2 = self.net.head_lin2.weight.grad
-            if grad_lin2 is not None:
-                print("\nГрадиенты для Linear_2 (финальный слой):")
-                print(f"  Среднее абс. знач. градиента grad_lin2: {grad_lin2.abs().mean():.6f}")
-                print(f"  Максимальное абсолютное значение: {grad_lin2.abs().max():.6f}")
-            else:
-                print("\nГрадиенты для Linear_2 отсутствуют (None)!")
-            
-            print("#"*50 + "\n")
             
 def analyze_performance_by_bins(y_pred: np.ndarray, y_true: np.ndarray, n_bins: int = 5):
     """

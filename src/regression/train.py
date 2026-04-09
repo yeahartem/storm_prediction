@@ -125,7 +125,7 @@ def train_regression(cfg: DictConfig) -> None:
                             callbacks=[lr_monitor, checkpoint_callback],
                             #performance
                             accelerator="gpu",
-                            precision="32", # 32 - взяли 16-mixed чтобы не было ошибки из-за недостатка памяти
+                            precision="16-mixed", # fp16 mixed precision: ~1.5-2x speedup on Ampere (A5000)
                             benchmark=True,
                             #validation
                             check_val_every_n_epoch=1,
