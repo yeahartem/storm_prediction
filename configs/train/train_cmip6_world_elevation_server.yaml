@@ -48,8 +48,8 @@ limit_val_batches: 1000
 
 log_every_n_steps: 10
 
-test_only: false
-ckpt_path: null
+test_only: true
+ckpt_path: 'mlruns/998550305229781623/e7f5f53dd4734a05af33a085f96b82de/artifacts/model/checkpoints/epoch=18-step=95000/epoch=18-step=95000.ckpt'
 
 cache:
   use_cached_padding: false
