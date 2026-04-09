@@ -182,6 +182,10 @@ class WindNetPL(pl.LightningModule):
             return per_sample_loss
             # return self.criterion(y_hat, y) # для Quantile Regression квантильная регрессия
         
+    def on_load_checkpoint(self, checkpoint):
+        # pos_weight is set dynamically in on_train_start - remove from checkpoint to avoid mismatch
+        checkpoint.get("state_dict", {}).pop("criterion.pos_weight", None)
+
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)
         self.val_MAE_best.reset()
