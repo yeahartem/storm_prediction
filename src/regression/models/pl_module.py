@@ -675,8 +675,7 @@ class WindNetPL(pl.LightningModule):
 
         # 4. Региональный анализ
         from sklearn.metrics import roc_auc_score, average_precision_score, f1_score as f1
-        print("
---- Региональные метрики ---")
+        print("\n--- Региональные метрики ---")
         regional_rows = []
         for region_name, ((lat_min, lat_max), (lon_min, lon_max)) in self.REGIONS.items():
             mask = (lats >= lat_min) & (lats <= lat_max) & (lons >= lon_min) & (lons <= lon_max)
