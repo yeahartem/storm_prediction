@@ -45,6 +45,7 @@ class WindDataModule(pl.LightningDataModule):
                           batch_size=self.cfg.train.batch_size,
                           num_workers=self.cfg.train.num_workers,
                           pin_memory=True,
+                          shuffle=True,
                           drop_last=True)   # Чтобы не было ошибки ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 70])
 
     def val_dataloader(self):
