@@ -53,6 +53,7 @@ class WindDataModule(pl.LightningDataModule):
                           batch_size=self.cfg.train.batch_size,
                           num_workers=self.cfg.train.num_workers,
                           pin_memory=True,
+                          shuffle=True,  # needed with limit_val_batches to sample globally
                           drop_last=True)
 
     def test_dataloader(self):
@@ -81,13 +82,6 @@ class XarrayDataset(Dataset):
             if self.cfg.train.loss_name=='MSELoss_Dense' or self.cfg.train.loss_name=='L1Loss_Dense':
                 y_denseweight = self.data_idxs[7, :]
                 # y_denseweight = self.data_idxs[7:, :].flatten() # для Quantile Regression квантильная регрессия
-                # --- ОТЛАДОЧНЫЙ ПРИНТ №1 ---
-                print("\n--- DEBUG: Data for DenseWeight.fit() ---")
-                print(f"Shape of targets: {y_denseweight.shape}")
-                print(f"Min: {y_denseweight.min()}, Max: {y_denseweight.max()}")
-                print(f"Sample 10 targets: {y_denseweight[:10]}")
-                print("----------------------------------------\n")
-                # --- КОНЕЦ ПРИНТА ---
                 dw = DenseWeight(alpha=1.0)
                 dw.fit(y_denseweight)
                 self.dense_weighter = dw
@@ -144,13 +138,6 @@ class XarrayDataset(Dataset):
             # Получаем веса для таргета текущего примера
             weights = self.dense_weighter(y.cpu().numpy())
             weights_tensor = torch.tensor(weights, dtype=self.dtype)
-            # --- ОТЛАДОЧНЫЙ ПРИНТ №2 ---
-            if idx < 5: # Печатаем только для первых 5 примеров
-                print(f"\n--- DEBUG: __getitem__ idx={idx} ---")
-                print(f"Target values (shape {y.shape}): {np.round(y.numpy(), 2)}")
-                print(f"Calculated weights (shape {weights_tensor.shape}): {np.round(weights_tensor.numpy(), 2)}")
-                print("----------------------------------")
-            # --- КОНЕЦ ПРИНТА ---
         else:
             # Если не используем DenseWeight, создаем тензор-пустышку
             weights_tensor = torch.tensor([1.0], dtype=self.dtype) # Просто чтобы что-то вернуть

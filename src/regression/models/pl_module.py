@@ -130,17 +130,6 @@ class WindNetPL(pl.LightningModule):
             
             # --- КОНЕЦ ИСПРАВЛЕНИЙ ---
             
-            # --- ОТЛАДОЧНЫЙ ПРИНТ (оставляем как есть, он полезен) ---
-            if self.trainer.global_step % 100 == 0:
-                print("\n" + "v"*50)
-                print(f"--- ВЗВЕШЕННЫЙ LOSS (ШАГ {self.trainer.global_step}) ---")
-                print(f"Истинные значения y (первые 5):   {y[:5].cpu().numpy().round(2)}")
-                print(f"Предсказания y_hat (первые 5):   {y_hat_squeezed[:5].cpu().detach().numpy().round(2)}")
-                print(f"Веса dense_weights (первые 5):  {dense_weights_squeezed[:5].cpu().detach().numpy().round(2)}")
-                print(f"Взвешенный Loss (первые 5):    {weighted_loss[:5].cpu().detach().numpy().round(2)}")
-                print(f"Loss per sample ():     {per_sample_loss}")
-                print("^"*50 + "\n")
-
             # 3. Усредняем взвешенные ошибки.
             return torch.mean(weighted_loss)            
             # # 1. Считаем ошибку для каждого примера отдельно. 
@@ -171,15 +160,6 @@ class WindNetPL(pl.LightningModule):
         else:
             # для любой кроме DenseWeight
             per_sample_loss = self.criterion(y_hat.squeeze(), y)
-            if self.trainer.global_step % 100 == 0:
-                print(f"\n--- DEBUG: loss() step={self.trainer.global_step} ---")
-                print(f"y_hat shape: {y_hat.shape}, y shape: {y.shape}")
-                # y и y_hat здесь должны быть НОРМАЛИЗОВАННЫМИ
-                print(f"Target y (norm, first 5):      {y[:5].cpu().numpy().round(2)}")
-                print(f"Prediction y_hat (norm, first 5): {y_hat.squeeze()[:5].cpu().detach().numpy().round(2)}")
-                print(f"Loss per sample ():     {per_sample_loss}")
-                print("---------------------------------\n")                
-                
             return per_sample_loss
             # return self.criterion(y_hat, y) # для Quantile Regression квантильная регрессия
         
@@ -222,19 +202,6 @@ class WindNetPL(pl.LightningModule):
             logging.warning("!!! Loss is INF or NaN, skipping batch !!!")
         # <-- КОНЕЦ ПРОВЕРКИ -->
 
-        # --- НАЧАЛО БЛОКА ДЛЯ ОТЛОВА СКАЧКОВ MAE ---
-        if self.cfg.train.loss_name != 'BCELoss':
-            with torch.no_grad():
-                batch_mae = torch.nn.functional.l1_loss(predictions.squeeze(), target)
-            MAE_THRESHOLD = 15.0
-            if batch_mae > MAE_THRESHOLD:
-                print("\n" + "!"*60)
-                print(f"ОБНАРУЖЕН СКАЧОК MAE НА ШАГЕ {self.trainer.global_step}! MAE = {batch_mae:.2f}")
-                print(f"  Истинные значения y: {target.cpu().numpy().round(1)}")
-                print(f"  Предсказания y_hat: {predictions.squeeze().cpu().detach().numpy().round(1)}")
-                print("!"*60 + "\n")
-        # --- КОНЕЦ БЛОКА ---
-        
         # 2. Обновляем метрики новыми данными
         self.train_loss(loss)
         
@@ -339,34 +306,8 @@ class WindNetPL(pl.LightningModule):
         targets = torch.cat([x['target'] for x in outputs]).cpu()
         all_station_thresholds = torch.cat([x['station_thresholds'] for x in outputs]).cpu()
         
-        print(f"В on_validation_epoch_end() -> preds.shape: {preds.shape}, target.shape: {targets.shape}")
         preds = preds.squeeze() # Comment for Quantile Regression квантильная регрессия
 
-        print("\n--- DEBUG: De-normalization on Epoch End ---")
-        print(f"Собранные таргеты (уже реальные): {targets[:5].numpy().round(2)}")
-        print(f"Собранные предсказания (): {preds[:5].numpy().round(2)}")
-        # print(f"Используемый y_mean: {y_mean:.2f}, y_std: {y_std:.2f}")
-        # print(f"Предсказания после де-нормализации (реальные): {preds_real.squeeze()[:5].numpy().round(2)}")
-        print("--------------------------------------------\n")
-                        
-        # Блок для счетчика
-        threshold = self.cfg.train.target_threshold
-        outlier_count = torch.sum(targets > threshold).item()
-        total_samples = targets.numel()
-        print(f"\n--- Статистика по выбросам (валидация, скорость > {threshold} м/с) ---")
-        print(f"Количество случаев: {outlier_count} из {total_samples} ({outlier_count / total_samples:.2%})")
-        
-        print("\n--- Анализ результатов по бинам (валидационный набор) ---")
-        # Вызываем вашу функцию
-        binned_results_df = analyze_performance_by_bins(
-            y_pred=preds.numpy().flatten(), 
-            y_true=targets.numpy().flatten(),
-            n_bins=5
-        )
-        # Выводим таблицу в консоль в конце каждой эпохи валидации
-        print(binned_results_df)
-        print("------------------------------------------------------")
-        
         # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
         
         preds_float = preds
@@ -445,12 +386,7 @@ class WindNetPL(pl.LightningModule):
         results_df.to_csv(csv_path)
         self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=csv_path)
         
-        print("\n--- Матрица ошибок (валидация) ---")
         cm = self.val_confusion_matrix.compute().cpu().numpy()
-        print(f"               Предсказано 'Слабый' | Предсказано 'Сильный'")
-        print(f"Реально 'Слабый' | {cm[0][0]:<20} | {cm[0][1]:<20} ")
-        print(f"Реально 'Сильный'| {cm[1][0]:<20} | {cm[1][1]:<20} ")
-        print("------------------------------------")
         # <<< НАЧАЛО БЛОКА ДЛЯ ЛОГИРОВАНИЯ МАТРИЦЫ ОШИБОК >>>
         fig_cm, ax_cm = plt.subplots()
         # Используем imshow для отрисовки матрицы как картинки, cmap='Blues' задает синюю цветовую схему
@@ -548,7 +484,7 @@ class WindNetPL(pl.LightningModule):
         return output
     
     def on_test_start(self):
-        print(f'Plots will be saved to {self.run_dir}')
+        logging.info(f'Plots will be saved to {self.run_dir}')
         self.test_outputs = []
 
     REGIONS = {
@@ -571,35 +507,13 @@ class WindNetPL(pl.LightningModule):
         lats = torch.cat([x["lat"] for x in self.test_outputs]).cpu().numpy()
         lons = torch.cat([x["lon"] for x in self.test_outputs]).cpu().numpy()
         months = torch.cat([x["month"] for x in self.test_outputs]).cpu().numpy()
-        print(f"В on_test_epoch_end() -> preds_float.shape: {preds_float.shape}, target_float.shape: {target_float.shape}")
         preds_float = preds_float.squeeze()
-        # <<< НАЧАЛО БЛОКА ДЛЯ СЧЕТЧИКА >>>
 
-        # 1. Берем порог из конфига
-        threshold = self.cfg.train.target_threshold
-
-        # 2. Считаем, сколько значений в target_float больше этого порога
-        outlier_count = torch.sum(target_float > threshold).item()
-        total_samples = len(target_float)
-
-        # 3. Выводим информацию в консоль
-        print(f"\n--- Статистика по выбросам (скорость > {threshold} м/с) ---")
-        print(f"Количество случаев: {outlier_count} из {total_samples} ({outlier_count / total_samples:.2%})")
-        print("--------------------------------------------------")
-
-        # <<< КОНЕЦ БЛОКА ДЛЯ СЧЕТЧИКА >>>
-
-        # <<< НАЧАЛО БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
-
-        print("\n--- Анализ результатов по бинам (тестовый набор) ---")
-        # Вызываем вашу функцию с предсказаниями и реальными значениями
         binned_results_df = analyze_performance_by_bins(
-            y_pred=preds_float.numpy(), 
+            y_pred=preds_float.numpy(),
             y_true=target_float.numpy(),
             n_bins=5
         )
-        print(binned_results_df)
-        print("--------------------------------------------------")
 
         # (Очень рекомендуется) Сохраняем эту таблицу в CSV и логируем в MLflow как артефакт
         binned_results_path = os.path.join(self.run_dir, 'binned_test_results.csv')
@@ -675,25 +589,21 @@ class WindNetPL(pl.LightningModule):
 
         # 4. Региональный анализ
         from sklearn.metrics import roc_auc_score, average_precision_score, f1_score as f1
-        print("\n--- Региональные метрики ---")
         regional_rows = []
         for region_name, ((lat_min, lat_max), (lon_min, lon_max)) in self.REGIONS.items():
             mask = (lats >= lat_min) & (lats <= lat_max) & (lons >= lon_min) & (lons <= lon_max)
             n = mask.sum()
             if n < 50:
-                print(f"{region_name}: недостаточно данных ({n} samples)")
                 continue
             y_true = target.numpy()[mask]
             y_score = score_all.numpy()[mask]
             y_pred = preds.numpy()[mask]
             if y_true.sum() == 0 or y_true.sum() == n:
-                print(f"{region_name}: только один класс, пропускаем")
                 continue
             auroc = roc_auc_score(y_true, y_score)
             ap = average_precision_score(y_true, y_score)
             f1_val = f1(y_true, y_pred)
             pos_rate = y_true.mean()
-            print(f"{region_name}: AUROC={auroc:.3f} AP={ap:.3f} F1={f1_val:.3f} pos_rate={pos_rate:.2%} n={n}")
             mlflow.log_metrics({f"test_region/{region_name}/AUROC": auroc,
                                 f"test_region/{region_name}/AP": ap,
                                 f"test_region/{region_name}/F1": f1_val})
@@ -704,8 +614,7 @@ class WindNetPL(pl.LightningModule):
             reg_path = os.path.join(self.run_dir, 'regional_metrics.csv')
             reg_df.to_csv(reg_path, index=False)
             self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=reg_path)
-            print(reg_df.to_string(index=False))
-        print("------------------------------")
+            logging.info("Regional metrics:\n" + reg_df.to_string(index=False))
 
         # 5. Seasonal metrics (DJF/MAM/JJA/SON)
         SEASONS = {
@@ -714,25 +623,21 @@ class WindNetPL(pl.LightningModule):
             "JJA": [6, 7, 8],
             "SON": [9, 10, 11],
         }
-        print("\n--- Сезонные метрики ---")
         seasonal_rows = []
         for season_name, season_months in SEASONS.items():
             mask = np.isin(months, season_months)
             n = mask.sum()
             if n < 50:
-                print(f"{season_name}: недостаточно данных ({n} samples)")
                 continue
             y_true = target.numpy()[mask]
             y_score = score_all.numpy()[mask]
             y_pred = preds.numpy()[mask]
             if y_true.sum() == 0 or y_true.sum() == n:
-                print(f"{season_name}: только один класс, пропускаем")
                 continue
             auroc = roc_auc_score(y_true, y_score)
             ap = average_precision_score(y_true, y_score)
             f1_val = f1(y_true, y_pred)
             pos_rate = y_true.mean()
-            print(f"{season_name}: AUROC={auroc:.3f} AP={ap:.3f} F1={f1_val:.3f} pos_rate={pos_rate:.2%} n={n}")
             mlflow.log_metrics({f"test_season/{season_name}/AUROC": auroc,
                                 f"test_season/{season_name}/AP": ap,
                                 f"test_season/{season_name}/F1": f1_val})
@@ -743,8 +648,7 @@ class WindNetPL(pl.LightningModule):
             seas_path = os.path.join(self.run_dir, 'seasonal_metrics.csv')
             seas_df.to_csv(seas_path, index=False)
             self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=seas_path)
-            print(seas_df.to_string(index=False))
-        print("------------------------------")
+            logging.info("Seasonal metrics:\n" + seas_df.to_string(index=False))
 
         # 6. Confusion matrix
         from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
@@ -752,9 +656,7 @@ class WindNetPL(pl.LightningModule):
         y_pred_np = preds.numpy().astype(int)
         cm = confusion_matrix(y_true_np, y_pred_np)
         tn, fp, fn, tp = cm.ravel()
-        print(f"\n--- Confusion matrix ---")
-        print(f"TN={tn}  FP={fp}")
-        print(f"FN={fn}  TP={tp}")
+        logging.info(f"Confusion matrix: TN={tn} FP={fp} FN={fn} TP={tp}")
         mlflow.log_metrics({"test/TP": int(tp), "test/FP": int(fp),
                             "test/TN": int(tn), "test/FN": int(fn)})
         fig_cm, ax_cm = plt.subplots(figsize=(5, 5))
@@ -763,7 +665,6 @@ class WindNetPL(pl.LightningModule):
         ax_cm.set_title("Confusion Matrix (test set)")
         self.logger.experiment.log_figure(self.logger.run_id, fig_cm, "test_confusion_matrix.png")
         plt.close(fig_cm)
-        print("------------------------------")
 
 
     def configure_optimizers(self):
@@ -851,10 +752,6 @@ def analyze_performance_by_bins(y_pred: np.ndarray, y_true: np.ndarray, n_bins: 
     # Фильтруем DataFrame, чтобы получить только строки, относящиеся к этому бину
     rarest_samples_df = df[df['bin'] == rarest_bin_name]
 
-    print(f"\n--- Детальный разбор самого редкого бина: '{rarest_bin_name}' ---")
-    # Округляем значения для наглядности и печатаем
-    print(rarest_samples_df.round(2))
-    
     # <<< КОНЕЦ БЛОКА ДЛЯ ПЕЧАТИ РЕДКИХ СЛУЧАЕВ >>>
 
     # 5. Считаем метрики для каждого бина
