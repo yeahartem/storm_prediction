@@ -164,9 +164,18 @@ class WindNetPL(pl.LightningModule):
             # return self.criterion(y_hat, y) # для Quantile Regression квантильная регрессия
         
     def on_load_checkpoint(self, checkpoint):
-        # Old checkpoints stored pos_weight as a buffer inside criterion.
-        # Strip it so load_state_dict(strict=True) doesn't crash.
-        checkpoint["state_dict"].pop("criterion.pos_weight", None)
+        # Synchronize checkpoint state_dict with current model to survive
+        # cross-version mismatches (e.g. criterion.pos_weight present/absent).
+        own_state = self.state_dict()
+        ckpt_state = checkpoint["state_dict"]
+        # Drop keys the checkpoint has but the model doesn't
+        for key in list(ckpt_state.keys()):
+            if key not in own_state:
+                ckpt_state.pop(key)
+        # Fill keys the model has but the checkpoint doesn't (keep current values)
+        for key, val in own_state.items():
+            if key not in ckpt_state:
+                ckpt_state[key] = val
 
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)
