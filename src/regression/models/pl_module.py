@@ -534,6 +534,17 @@ class WindNetPL(pl.LightningModule):
         binned_results_df.to_csv(binned_results_path)
         self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=binned_results_path)
 
+        # Brier Score and Brier Skill Score
+        from sklearn.metrics import brier_score_loss
+        y_true_np = target.numpy().astype(int)
+        y_prob_np = score_all.numpy()
+        bs = brier_score_loss(y_true_np, y_prob_np)
+        p_clim = y_true_np.mean()
+        bs_clim = p_clim * (1.0 - p_clim)
+        bss = 1.0 - bs / bs_clim
+        mlflow.log_metrics({"test/BS": float(bs), "test/BSS": float(bss)})
+        logging.info(f"Brier Score: {bs:.4f}  BSS: {bss:.4f}  (clim_rate={p_clim:.3f})")
+
         # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
         thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
         rmses = []
