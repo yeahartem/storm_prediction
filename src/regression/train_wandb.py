@@ -86,6 +86,8 @@ def train_regression(cfg: DictConfig) -> None:
                          #log
                          log_every_n_steps=cfg.train.log_every_n_steps,
                          logger=wandb_logger,
+                         #regularization
+                         gradient_clip_val=cfg.train.get('gradient_clip_val', 1.0),
                          #misc
                          profiler='simple',
                          )

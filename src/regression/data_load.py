@@ -308,9 +308,28 @@ class DataPreLoader:
         else:
             target_array[0, :] += self.shift[0] #lat
             target_array[1, :] += self.shift[1] #lon
-        self.train_data_idxs = target_array[:, target_array[2, :] < split_index]
+        train_array = target_array[:, target_array[2, :] < split_index]
         self.test_data_idxs = target_array[:, target_array[2, :] > split_index]
         self.test_data_idxs = self.test_data_idxs[:, self.test_data_idxs[2, :] < len(self.time_coords)]
+
+        # Undersampling: keep all positives, randomly drop negatives
+        neg_ratio = float(self.cfg.train.get('neg_subsample_ratio', 1.0))
+        if neg_ratio < 1.0 or (neg_ratio == 1.0 and self.cfg.train.get('neg_subsample_ratio') is not None):
+            y_vals = train_array[7, :]
+            thresh_vals = train_array[8, :] if train_array.shape[0] > 8 else np.full(y_vals.shape, self.cfg.train.target_threshold)
+            pos_mask = y_vals >= thresh_vals
+            neg_mask = ~pos_mask
+            neg_idxs = np.where(neg_mask)[0]
+            n_pos = pos_mask.sum()
+            n_neg_keep = int(n_pos * neg_ratio)
+            rng = np.random.default_rng(42)
+            neg_keep = rng.choice(neg_idxs, size=min(n_neg_keep, len(neg_idxs)), replace=False)
+            keep = np.concatenate([np.where(pos_mask)[0], neg_keep])
+            keep.sort()
+            train_array = train_array[:, keep]
+            logging.info(f"Undersampling: pos={n_pos}, neg_keep={len(neg_keep)}, total={train_array.shape[1]} (ratio neg:pos={neg_ratio:.1f})")
+
+        self.train_data_idxs = train_array
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
         logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
         

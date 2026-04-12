@@ -192,9 +192,13 @@ class WindNetPL(pl.LightningModule):
             else:
                 positive_samples = np.sum(targets >= self.cfg.train.target_threshold)
             negative_samples = len(targets) - positive_samples
-            pos_weight = torch.tensor(negative_samples / max(positive_samples, 1), device=self.device)
-            self.criterion.pos_weight = pos_weight
-            logging.info(f"BCELoss pos_weight={pos_weight:.2f} (pos={positive_samples}, neg={negative_samples})")
+            use_pos_weight = self.cfg.train.get('use_pos_weight', True)
+            if use_pos_weight:
+                pos_weight = torch.tensor(negative_samples / max(positive_samples, 1), device=self.device)
+                self.criterion.pos_weight = pos_weight
+                logging.info(f"BCELoss pos_weight={pos_weight:.2f} (pos={positive_samples}, neg={negative_samples})")
+            else:
+                logging.info(f"BCELoss pos_weight disabled (pos={positive_samples}, neg={negative_samples})")
             
     def model_step(self, batch):
         objs, target, dense_weights, station_thresholds = batch
@@ -202,6 +206,10 @@ class WindNetPL(pl.LightningModule):
         if self.cfg.train.loss_name == 'BCELoss':
             # Per-sample threshold: positive if y >= station_threshold (= max(p95_station, 15 m/s))
             loss_target = (target >= station_thresholds).float()
+            # Label smoothing
+            ls = float(self.cfg.train.get('label_smoothing', 0.0))
+            if ls > 0.0:
+                loss_target = loss_target * (1.0 - ls) + 0.5 * ls
         else:
             loss_target = target.float()
         loss = self.loss(predictions, loss_target, dense_weights)
