@@ -177,6 +177,13 @@ class WindNetPL(pl.LightningModule):
             if key not in ckpt_state:
                 ckpt_state[key] = val
 
+    def on_train_epoch_start(self):
+        """Resample negatives at the start of each epoch for per-epoch diversity."""
+        if hasattr(self, 'trainer') and self.trainer.datamodule is not None:
+            dpl = self.trainer.datamodule.DPL
+            if hasattr(dpl, 'resample_for_epoch'):
+                dpl.resample_for_epoch(self.current_epoch)
+
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)
         self.val_MAE_best.reset()
@@ -735,14 +742,28 @@ class WindNetPL(pl.LightningModule):
                 }
             elif self.scheduler_name == "LinearLR":
                 scheduler = torch.optim.lr_scheduler.LinearLR(optimizer,
-                                                            start_factor=1.0, end_factor=0.2, 
+                                                            start_factor=1.0, end_factor=0.2,
                                                             total_iters=self.trainer.estimated_stepping_batches)
                 return {
                     'optimizer': optimizer,
                     'lr_scheduler': {
                         'name': 'train/lr',
                         'scheduler': scheduler,
-                        'interval': 'step', 
+                        'interval': 'step',
+                        'frequency': 1,
+                    }
+                }
+            elif self.scheduler_name == "CosineAnnealingLR":
+                t_max = self.cfg.train.max_epoch
+                eta_min = self.cfg.train.learning_rate / 100.0
+                scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                    optimizer, T_max=t_max, eta_min=eta_min)
+                return {
+                    'optimizer': optimizer,
+                    'lr_scheduler': {
+                        'name': 'train/lr',
+                        'scheduler': scheduler,
+                        'interval': 'epoch',
                         'frequency': 1,
                     }
                 }

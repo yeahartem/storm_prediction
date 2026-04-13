@@ -75,8 +75,10 @@ class XarrayDataset(Dataset):
         if test:
             self.data_idxs = DPL.test_data_idxs
             self.dense_weighter = None # Для тестового набора нам это не нужно
+            self._DPL = None
             logging.info("Test dataloader init")
         else:
+            self._DPL = DPL  # keep reference for per-epoch resampling
             self.data_idxs = DPL.train_data_idxs
             # np.save("data_idxs_for_debug.npy", self.data_idxs)
             if self.cfg.train.loss_name=='MSELoss_Dense' or self.cfg.train.loss_name=='L1Loss_Dense':
@@ -111,14 +113,22 @@ class XarrayDataset(Dataset):
                                ]
         return X.shape
 
+    @property
+    def _active_idxs(self):
+        """Return current data_idxs, dynamically updated each epoch if resampling."""
+        if self._DPL is not None:
+            return self._DPL.train_data_idxs
+        return self.data_idxs
+
     def __len__(self):
-        return self.data_idxs.shape[1] # у должны быть равны длине вот этого
+        return self._active_idxs.shape[1]
 
     def __getitem__(self, idx):
-        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = self.data_idxs[:8, idx]
+        data_idxs = self._active_idxs
+        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = data_idxs[:8, idx]
         # lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, *y = self.data_idxs[:, idx] # Quantile regression
         # Row 14: per-station effective threshold (max(p95_station, abs_threshold))
-        station_threshold = float(self.data_idxs[8, idx]) if self.data_idxs.shape[0] > 8 else float(self.cfg.train.target_threshold)
+        station_threshold = float(data_idxs[8, idx]) if data_idxs.shape[0] > 8 else float(self.cfg.train.target_threshold)
 
         lat_index = int(lat_index)
         lon_index = int(lon_index)
@@ -156,8 +166,9 @@ class XarrayDatasetElev(XarrayDataset):
         self.elevation_torch = DPL.elevation_torch  # (lat_padded, lon_padded)
 
     def __getitem__(self, idx):
-        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = self.data_idxs[:8, idx]
-        station_threshold = float(self.data_idxs[8, idx]) if self.data_idxs.shape[0] > 8 else float(self.cfg.train.target_threshold)
+        data_idxs = self._active_idxs
+        lat_index, lon_index, time_index, time_pos, time_pos_m, lat_pos, lon_pos, y = data_idxs[:8, idx]
+        station_threshold = float(data_idxs[8, idx]) if data_idxs.shape[0] > 8 else float(self.cfg.train.target_threshold)
         lat_index = int(lat_index)
         lon_index = int(lon_index)
         time_index = int(time_index)

@@ -1,7 +1,7 @@
 make_tmp_target_file: False
 
 use_elevation: true
-in_chans: 5               # 4 CMIP6 vars + 1 elevation channel
+in_chans: 6               # 5 CMIP6 vars + 1 elevation channel
 normalize: false          # precision 16 is already normalized
 
 time_agg_window: 28
@@ -21,6 +21,7 @@ variables:
 - pr
 - tasmax
 - tasmin
+- psl
 
 spatial_crop: false
 lat_min: 30
@@ -30,11 +31,11 @@ lon_max: 40
 
 batch_size: 32            # 2x vs local (24GB VRAM x2)
 learning_rate: 0.0001
-weight_decay: 0.001
+weight_decay: 0.01
 max_epoch: 100
 
 optimizer_name: 'AdamW'
-scheduler_name: 'LinearLR'
+scheduler_name: 'CosineAnnealingLR'
 loss_name: 'BCELoss'
 label_smoothing: 0.05
 neg_subsample_ratio: 1.0  # keep negatives:positives = 1:1

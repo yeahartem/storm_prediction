@@ -1,7 +1,7 @@
 make_tmp_target_file: False
 
 use_elevation: true
-in_chans: 4               # sfcWindmax + tasmax + tasmin + elevation (no pr)
+in_chans: 5               # sfcWindmax + tasmax + tasmin + psl + elevation (no pr)
 normalize: false
 
 time_agg_window: 28
@@ -20,6 +20,7 @@ variables:
 - sfcWindmax
 - tasmax
 - tasmin
+- psl
 
 spatial_crop: false
 lat_min: 30
@@ -29,11 +30,11 @@ lon_max: 40
 
 batch_size: 32
 learning_rate: 0.0001
-weight_decay: 0.001
+weight_decay: 0.01
 max_epoch: 100
 
 optimizer_name: 'AdamW'
-scheduler_name: 'LinearLR'
+scheduler_name: 'CosineAnnealingLR'
 loss_name: 'BCELoss'
 label_smoothing: 0.05
 neg_subsample_ratio: 1.0
