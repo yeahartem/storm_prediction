@@ -754,7 +754,7 @@ class WindNetPL(pl.LightningModule):
                     }
                 }
             elif self.scheduler_name == "CosineAnnealingLR":
-                t_max = self.cfg.train.max_epoch
+                t_max = int(self.cfg.train.get('cosine_t_max', self.cfg.train.max_epoch))
                 eta_min = self.cfg.train.learning_rate / 100.0
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                     optimizer, T_max=t_max, eta_min=eta_min)
