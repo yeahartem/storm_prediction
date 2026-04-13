@@ -14,7 +14,7 @@ from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.loggers import WandbLogger
 import wandb
 import time
-from pytorch_lightning.callbacks import LearningRateMonitor, StochasticWeightAveraging, ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, StochasticWeightAveraging, ModelCheckpoint, EarlyStopping
 from pytorch_lightning.utilities import rank_zero_only
 
 # torch.backends.cudnn.benchmark = False
@@ -64,14 +64,15 @@ def train_regression(cfg: DictConfig) -> None:
 
     default_root_dir = run_dir
     checkpoint_loc = run_dir
-    checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
+    checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=3, monitor="val/AP", mode="max")
+    early_stop = EarlyStopping(monitor="val/AP", patience=cfg.train.get('early_stop_patience', 15), mode="max", verbose=True)
     # SWA = StochasticWeightAveraging(swa_lrs=0.004, swa_epoch_start=0.8, annealing_epochs=6)
 
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
 
     trainer = pl.Trainer(max_epochs=cfg.train.max_epoch,
                          default_root_dir=default_root_dir,
-                         callbacks=[lr_monitor, checkpoint_callback],
+                         callbacks=[lr_monitor, checkpoint_callback, early_stop],
                          #performance
                          accelerator="gpu",
                          precision="16-mixed", # 32 - взяли 16-mixed чтобы не было ошибки из-за недостатка памяти
