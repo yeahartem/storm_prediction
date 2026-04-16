@@ -1,0 +1,13 @@
+import numpy as np
+time = np.load('data/cmip6_world/time.npy', allow_pickle=True)
+lat = np.load('data/cmip6_world/lat.npy')
+lon = np.load('data/cmip6_world/lon.npy')
+print('time:', time[0], '->', time[-1], '  len:', len(time))
+print('lat:', lat[0], '->', lat[-1], '  shape:', lat.shape)
+print('lon:', lon[0], '->', lon[-1], '  shape:', lon.shape)
+sfcW = np.load('data/cmip6_world/sfcWindmax_16.npy', mmap_mode='r')
+print('sfcWindmax shape:', sfcW.shape, 'dtype:', sfcW.dtype)
+mean = np.load('data/cmip6_world/mean_32.npy')
+std = np.load('data/cmip6_world/std_32.npy')
+print('means:', mean)
+print('stds:', std)

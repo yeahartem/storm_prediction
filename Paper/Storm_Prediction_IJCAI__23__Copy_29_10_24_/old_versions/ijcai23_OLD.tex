@@ -1,0 +1,544 @@
+%%%% ijcai23.tex
+
+\typeout{IJCAI--23 Instructions for Authors}
+
+% These are the instructions for authors for IJCAI-23.
+
+\documentclass{article}
+\pdfpagewidth=8.5in
+\pdfpageheight=11in
+
+% The file ijcai23.sty is a copy from ijcai22.sty
+% The file ijcai22.sty is NOT the same as previous years'
+\usepackage{ijcai23}
+
+% Use the postscript times font!
+\usepackage{times}
+\usepackage{soul}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+\usepackage[utf8]{inputenc}
+\usepackage[small]{caption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage[switch]{lineno}
+% \usepackage{jmlr2e}
+\usepackage{xcolor}
+% \usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amssymb}
+\usepackage{multirow}
+% \usepackage{tabularx}
+% \usepackage{printlen}
+\usepackage[T1]{fontenc}
+\usepackage{dblfloatfix}
+\usepackage{array,booktabs,ragged2e}
+
+\newcolumntype{R}[1]{>{\RaggedLeft\arraybackslash}p{#1}}
+\newsavebox{\imagebox}
+
+% Comment out this line in the camera-ready submission
+\linenumbers
+
+\urlstyle{same}
+
+% the following package is optional:
+%\usepackage{latexsym}
+
+% See https://www.overleaf.com/learn/latex/theorems_and_proofs
+% for a nice explanation of how to define new theorems, but keep
+% in mind that the amsthm package is already included in this
+% template and that you must *not* alter the styling.
+\newtheorem{example}{Example}
+\newtheorem{theorem}{Theorem}
+\newtheorem{definition}{Definition}[section]
+% Following comment is from ijcai97-submit.tex:
+% The preparation of these files was supported by Schlumberger Palo Alto
+% Research, AT\&T Bell Laboratories, and Morgan Kaufmann Publishers.
+% Shirley Jowell, of Morgan Kaufmann Publishers, and Peter F.
+% Patel-Schneider, of AT\&T Bell Laboratories collaborated on their
+% preparation.
+
+% These instructions can be modified and used in other conferences as long
+% as credit to the authors and supporting agencies is retained, this notice
+% is not changed, and further modification or reuse is not restricted.
+% Neither Shirley Jowell nor Peter F. Patel-Schneider can be listed as
+% contacts for providing assistance without their prior permission.
+
+% To use for other conferences, change references to files and the
+% conference appropriate and use other authors, contacts, publishers, and
+% organizations.
+% Also change the deadline and address for returning papers and the length and
+% page charge instructions.
+% Put where the files are available in the appropriate places.
+
+
+% PDF Info Is REQUIRED.
+% Please **do not** include Title and Author information
+\pdfinfo{
+/TemplateVersion (IJCAI.2023.0)
+}
+
+\title{Assessing Future Geo-spatial Distribution of High Winds Risk with Deep Learning}
+
+
+% Single author syntax
+\author{
+    Anonymous
+}
+
+% % Multiple author syntax (remove the single-author syntax above and the \iffalse ... \fi here)
+% \iffalse
+% \author{
+% First Author$^1$
+% \and
+% Second Author$^2$\and
+% Third Author$^{2,3}$\And
+% Fourth Author$^4$
+% \affiliations
+% $^1$First Affiliation\\
+% $^2$Second Affiliation\\
+% $^3$Third Affiliation\\
+% $^4$Fourth Affiliation
+% \emails
+% \{first, second\}@example.com,
+% third@other.example.com,
+% fourth@example.com
+% }
+% \fi
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This paper presents a novel approach to the modeling of geospatial distribution of high wind speed. The key challenge is estimating high wind distribution (tail probability), as such winds often lead to severe economic and social consequences. Unfortunately, climate models predict a time- and space-averaged wind distribution that does not allow us to determine the probability of a rare event limited in time and space. To this end, we use Convolutional Neural Network (CNN) over the fifth phase of the Coupled Model Intercomparison Project (CMIP5) combined with real historical meteorological data. Our approach demonstrates superior performance over the state-of-the-art methods and allows predicting extreme winds on a uniform grid with a spatial resolution $0.25 \times 0.25^\circ$.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+% – Россия — не узкий полигон: широкий градиент климатов (морской/континентальный/субарктика), сложный рельеф, низкая плотность станций в части территорий. Это объясняет почему метод релевантен вне РФ (по структуре задач).
+% – В Limitations честно фиксируем: данные станции РФ; «глобальный» кейс — будущая работа.
+%
+\textcolor{brown}{Increased greenhouse gas emissions stimulate rapid growth in the number and severity of extreme weather events such as wind storms, flash floods, and severe droughts with severe economic and social consequences.} Over 20 natural disasters with a total economic impact of over 1 billion dollars were registered in the U.S. \textcolor{brown}{in 2021}. 
+
+\textcolor{brown}{Overall, more than 332 natural disasters with more than \$1 billion damage cost have been registered in the U.S. starting from 1980\footnote{\url{https://www.ncei.noaa.gov/access/billions/}}. In 2021 the overall economic impact of the 20 most significant disasters increased by \$ 150 billion. }
+
+Predicting extreme weather events is immensely challenging from a statistical perspective, as it involves forecasting a rare event. Another difficulty is a non-uniform grid of weather stations that leads to higher uncertainty in uncovered areas. 
+
+The number of impactful extreme events is insufficient to build reliable statistics and often has poor coverage in space and time due to the discrete nature of the observations and the low probability of climate extremes. Figure~\ref{fig:stations_coverage} illustrates the typical location of weather stations. Considering the strong wind, several scales have been developed to indicate its severity. The Beaufort scale is used to classify wind speed based on the potential damage risk \cite{wallbrink2009historical}. It indicates that wind speeds above $20$ m/s can significantly damage the environment. \textcolor{brown}{Add more details about the Beaufort scale, and about the density of stations. Somewhere it's more dense, somewhere less, why? Because of the different climate zones. Add details about Russia is a vast climate polygon. It has diverse elevation and etc. Add details about extreme values on stations (check code)}
+%Detailed surface coverage of extreme weather events can be helpful for different industrial and financial applications, e.g., in the assessment of hazardous climate risks for a potential customer or an investor and the reassessment of existing assets' robustness against risks. {\color{blue} I do not understand -- remove}
+
+%Meteorological stations have discrete spatial coverage but are rich in extreme values of interest. {\color{blue} I do not understand -- remove} 
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth]{pics/stations_map.png}
+    \caption{Meteostations location in Russia. Overall, the country is covered by slightly more than 2,000 meteostations, e.g., one meteostation on 3,300 square miles.}
+    \label{fig:stations_coverage}
+\end{figure}
+
+\textcolor{brown}{Too fast transition to models, add details} On the other hand, climate models uniformly cover the surface of the Earth.
+%can cover regions more fully, i.e., \emph{climate models}. Among the latter is CMIP5 \cite{volodin2017simulation}. {\color{blue} I do not understand -- remove or rewrite, better remove}.
+However, climate models may not adequately catch extreme values. They are built on a system of Partial Differential Equations (PDEs) corresponding to physical processes. Although PDEs are calibrated on the observations, the resulting climate model provides average behavior of climatic variables.
+%Although sometimes modeled data does not coincide with measured on weather stations. {\color{blue} I do not understand. We say that its averaged -- its clear that averaged is different from extreme. Remove the above} Beaufort scale is used to classify wind speed based on the potential damage risk \cite{wallbrink2009historical}. As one can see, climate models have a wide value domain of wind speed that can be dangerous, therefore, appropriate for our research. {\color{blue} I do not understand -- remove}
+
+
+Therefore, we propose to ''calibrate'' it on data distribution with good spatial coverage (climate model) to compensate blank spaces between stations.
+
+The contribution of this paper is two-fold. 
+\begin{itemize}
+    \item First, we propose an approach to estimate strong wind speed over $20$ m/s on a uniform grid. This approach is based on an AI model trained to identify risk from real weather measurement data. In other words, it allows us to ''calibrate'' a spatially uniform climate model onto extreme events of high wind speed.
+    \item \textcolor{brown}{Second, we provide an analysis of extreme wind speed statistics over the USA under different Representative Concentration Pathway (RCP) scenarios up to the year 2070.} \textcolor{blue}{Arguable, think about it, maybe experiment on Russia? Or explain why it works in USA. Delete RCP or add info in text below? (do we need it?)}
+\end{itemize}
+
+%Firstly, it presents an approach that allows one to obtain a probability of an extreme event based on a given time and geoposition. 
+%The accuracy of geoposition solely depends on the climate model that is being used, as well as the time component. Using CMIP projections, one can obtain extreme wind probability projections for up to the year 2100.
+%Secondly, this approach investigates the calibration of climate models on real measured data, in the case of this paper, it is wind speed. This coupling method can be viewed as a transition from continuous modeled wind speed to a discrete probability distribution of extreme wind speed.
+
+This paper is organized as follows: in Section \ref{sec:rel_work}, we review papers in the field of coupling climate models and actual measurements. Further, in Section \ref{sec:methodology}, we discuss the methodology proposed, including modeling of the earth's surface and models that can conduct the transition. In Section \ref{sec:experiments}, we conduct experiments and discuss the results. Finally, in Section \ref{sec:conclusion}, we draw the conclusion and possible improvements.
+\raggedbottom
+
+\section{Related Work}
+\label{sec:rel_work}
+
+Authors in \cite{lledo2020predicting} study combination The Madden–Julian oscillation phase forecast with weather database \textcolor{brown}{S2S} for wind speed forecasting over Europe-Atlantic \cite{vitart2017subseasonal}. 
+%Paper \cite{quan2013short} proposes quantifying potential uncertainties associated with forecasts via lower-upper bound estimation, nowadays widely known as Uncertainty Quantification. {\color{blue} why do we have it here? what is the idea? Why do we need UQ here?}.
+Paper \cite{SILLMANN201765} provides a high-level review of challenges in severe weather prediction, outlining possible approaches to address them. {\color{brown} and what? Consequences for our work?}
+%Paper \cite{oza2019extreme} proposes using accurate short-term forecasts to predict long-term extreme values with the two-stage deep learning pipeline. Satellite data has been incorporated, the case studies are Mumbai and Chennai floods during the 2017 and 2015 years, respectively. {\color{blue} why do we need floods here? We need wind}
+
+Authors in \cite{shang2021functional} propose fitting the Generalized Extreme Value (GEV) distribution for each day of a year to estimate the tail probability and a mean extreme value.
+In \cite{liu2019long}, the authors discuss the long-term correlations in wind speed time series and propose to estimate extreme wind speed probability based on return period value. Paper \cite{liu2016application} suggests training convolutional neural networks (CNN) to detect tropical cyclones and extreme events based on the fifth generation of the European ReAnalysis (ERA5) climate model. Authors in \cite{xiao2006probability} analyze the applicability of different GEV distributions (Weibull, Gumbel, Frechet) for approximating extreme wind speed probability in Hong Kong. 
+% - TRASH - The book \cite{bommier2014peaks} provides an overview of peak-over-threshold modeling for environmental data. {\color{blue} how does it help us?} 
+%In \cite{frame2022deep}, the authors propose to use physics-informed recurrent neural networks, constrained on mass conservation law, to predict extreme rainfall-runoff events {\color{blue} is it related to wind? how?}.
+%Paper \cite{tetzner2019validation} provides validation of the ERA5 climate model on the southern Antarctic Peninsula and Ellsworth Land, Antarctica, with 13 automated weather stations. The authors found that the climate model accurately represents the average variability of regimes in near-surface temperature and wind speed.  {\color{blue} why do we have in a paper on extremes?} - TRASH -
+In \cite{gonzalez2020calibration}, the authors calibrated the ERA5 climate model wind speed and direction using installed weather sensors on top of a set of buildings using quantile matching and random forest methods. Calibration allowed a more coherent correlation between measurements and model data. 
+%Paper \cite{van2016pixel} discusses pixel-to-pixel neural networks that model discrete probability for each pixel. {\color{blue} I do not understand. Why do we have it here?}
+
+
+\section{Approach}
+\label{sec:methodology}
+
+This section outlines our approach, including problem setup, data collection and processing, algorithmic model,  training and classification.
+
+\paragraph {Objective function.} The study focuses on assessing high wind risk and its consequences. To this end, according to the Beaufort wind damage scale, we focus on predicting the wind exceeding 20 meters per second as it is considered dangerous. 
+
+\paragraph {Classifier.} As the wind distribution is known to have a high spatial correlation, we use deep Convolutional Neural Networks (CNNs) as \textcolor{brown}{the latter} can capture such dependencies. We will present the problem-specific CNN architecture below in this section. 
+
+\begin{table*}[t]
+    \centering
+    \begin{tabular}{p{3cm}|p{4.7cm}|R{2.1cm}|R{2cm}|p{1.7cm}|p{1.6cm}} %  {c|c|c|c|c}
+        \toprule
+        Dataset Name & Bands cover & Time coverage & Spatial resolution, degree & Temporal resolution & Type  \\
+        \midrule
+        CMIP5 \cite{SeijiYukimoto20122012-A02} & Temperature, air pressure, precipitation, wind speed, soil, solar radiation, drought index. Depends on particular experiment instance & $1880 - 2100$ & $1.0 - 1.5$ &  Day & Model \\
+        \midrule
+        Weather stations &  Temperature, air pressure, precipitation, wind speed, soil, solar radiation, drought index, cloudiness, extremes & $1965 - 2022$ & Discrete &  3 hours & Measured\\
+        \midrule
+        NOAA NGDC GLOBE \cite{hastings1998development} &  Elevation & - & $0.008$ &  - & 
+        Digital Elevation Model (DEM) \\
+        \bottomrule
+    \end{tabular}
+    \caption{Datasets used for modeling%{\color{red} in two column formatting that must be over both columns}
+    }
+    \label{tab:datasets}
+\end{table*}
+
+% \multirow[t]{3}{*}{Model}  \\
+% \cmidrule{1-5}
+
+\subsection{Data Collection and Preprocessing}
+\label{sec:data_collection_preprocessing}
+
+\paragraph {Data.} 
+To assemble a training dataset, one needs climate models and measured data. We use the historical part of Coupled Model Intercomparison Project Phase 5 (CMIP5) MRI-CGCM3 \cite{SeijiYukimoto20122012-A02} as a climate model. Despite the availability of the more recent Phase 6 (CMIP6), our selection is justified by several key factors derived from the analysis of recent scientific literature.
+% \textcolor{brown}{CMIP5 MRI-ESM2-0} 
+
+First and most importantly for our research, the CMIP6 ensemble as a whole does not demonstrate significant improvements in the simulation of surface wind. In a detailed analysis that included surface wind stress, \textbf{Li et al. (2020)} concluded that the overall improvement of this parameter in CMIP6 compared to CMIP5 is "very little". This is visually confirmed in their Taylor diagram, where the performance metrics for zonal and meridional winds for both ensembles are nearly identical.
+
+This trend extends to wind-related extreme hydrometeorological events. Comparative studies indicate that the performance of CMIP6 in simulating extreme precipitation, often associated with storm conditions, is ambiguous. For instance, \textbf{Chen et al. (2020)} note that when modeling "maximum 5-day precipitation" (RX5day), CMIP6 models exhibit higher biases compared to CMIP5. Similar conclusions were reached by \textbf{Li et al. (2021)}, who found that the simulation of "very wet days (R95pTOT)"—a key indicator of extreme precipitation—was "slightly worse" in CMIP6 models than in CMIP5.
+
+Finally, our choice is also guided by methodological considerations. CMIP6 models often feature higher spatial resolution; however, our approach, which trains a single global model on data from various sources, requires the harmonization of all input climate data to a unified grid. This would necessitate the downscaling of most CMIP6 models, an additional preprocessing step that can introduce its own artifacts and lead to information loss. Using the CMIP5 ensemble, whose models have more comparable resolutions, allows for the creation of a more homogeneous input dataset with minimal additional processing, thereby ensuring greater experimental integrity. Furthermore, over its more than a decade of existence, the systematic biases of CMIP5 have been thoroughly documented in extensive scientific literature. This deep understanding of known model artifacts allows for a more confident interpretation of the results, distinguishing the effects introduced by our method from the inherent shortcomings of the climate models themselves. Considering all the above, the use of the well-vetted CMIP5 ensemble appears to be the most reliable and methodologically sound decision for this study.
+
+
+Moreover, it is crucial to incorporate Digital Elevation Model (DEM). We use \cite{hastings1998development} to take into account the landscape \textcolor{brown}{why so old?}.
+For wind speed measurements, we use RIHMI-WDC \cite{Roshydromet} weather station data. Spatial coverage of the weather stations is addressed in Figure \ref{fig:stations_coverage}. \textcolor{brown}{second mention}
+%Data collection and preprocessing consist of several steps. First is obtaining the required climatic variable model of a region of interest, such as a state.{\color{blue} I do not understand. Which state?} The second is obtaining the real measurements for weather stations. 
+The climate model consists of a set of pixels that uniformly cover the planet's surface. Pixel itself is a rectangle projected on a surface. Its size may vary from one climate model to another. In CMIP5 models, it is typically of size $1^\circ \times 1.5^\circ$ which is equivalent to $~111.1 \textup{ km} \times 166.5 \textup{ km}$.
+
+%The following step matches the climate model pixels with the locations of weather stations both spatially and temporarily. {\color{blue} Please rewrite this. Unclear}
+
+Table \ref{tab:datasets} summarizes the description of real (observed) and synthetic (climate models-based) datasets used in this study. Synthetic datasets cover each region uniformly, while the real ones often cover the most populated areas only. Future projections of the synthetic datasets are based on various CO${}_2$ emission scenarios, critically reviewed in \cite{eyring2016overview}.
+
+
+\begin{figure}[!b]
+     \centering
+     \captionsetup{justification=centering}
+     \begin{subfigure}[b]{0.49\linewidth}
+         \centering
+         \includegraphics[height=3.3cm, width=\linewidth]{pics/cmip_temperature.png}
+         \caption{CMIP 5 temperature, K}
+         \label{fig:violins_data_era5_t}
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[b]{0.49\linewidth}
+         \centering
+         \includegraphics[height=3.3cm, width=\linewidth]{pics/cmip5_wind.png}
+         \caption{CMIP 5 wind speed, m/s}
+         \label{fig:violins_data_era5_ws}
+     \end{subfigure}
+     \hfill
+     \\
+     \begin{subfigure}[b]{0.49\linewidth}
+         \centering
+         \includegraphics[height=3.3cm, width=\linewidth]{pics/stations_temperature2.png}
+         \caption{Stations temperature, K}
+         \label{fig:violins_data_ws_t}
+     \end{subfigure}
+     \begin{subfigure}[b]{0.49\linewidth}
+         \centering
+         \includegraphics[height=3.3cm, width=\linewidth]{pics/stations_wind2.png}
+         \caption{Stations wind speed, m/s}
+         \label{fig:violins_data_ws_ws}
+     \end{subfigure}
+        \caption{Violins plots of temperatures and wind speeds from climate model and the ones measured on weather stations}
+        \label{fig:violins_data}
+\end{figure}
+
+Figure \ref{fig:violins_data} measured and modeled (CMIP5) histograms for the ambient temperature and wind speed. \textcolor{brown}{Rephrase} The represented data was collected in Russia from 2006 to 2015. As violin plots show, data sources coincide in the median of the data, the interquartile range, and the shape. That allows one to suggest that considered data is appropriate for high wind prediction. 
+
+\begin{table}[!b]
+    \centering
+    \begin{tabular}{p{0.7cm}|p{4.1cm}|p{2.5cm}}%{c|c|c|c|c}
+        \toprule
+        Letter & Name & Domain  \\
+        \midrule
+        \multicolumn{3}{c}{Geophysical variables in a pixel} 
+        \\
+        \midrule
+        $\mathcal{T}_{max}$ & Maximum temperature & $\mathbb{R}^3$   \\
+        \midrule
+        $\mathcal{T}_{min}$ & Minimum temperature & $\mathbb{R}^3$   \\
+        \midrule
+        $\mathcal{E}$ & Average elevation & $\mathbb{R}^2$   \\
+        \midrule
+        $\mathcal{P}$ & Total precipitation & $\mathbb{R}^3$   \\
+        \midrule
+        $\mathcal{WS}$ & Average wind speed & $\mathbb{R}^3$   \\
+        \midrule
+        \multicolumn{3}{c}{Miscellaneous}
+        \\
+        \midrule
+        $\mathcal{S}$ & Set of weather stations & -
+        \\
+        \midrule
+        $\tau$ & Wind speed threshold for target variable definition & $\mathbb{R}$ \\
+        \midrule
+        $w$ & Half of a pixel vicinity & $\mathbb{N}$
+        \\
+        \midrule
+        $\mathcal{D}$ & Dataset of matched pixels of climatic variables $X$ and target values $Y$ &  
+        $X\in\mathbb{R}^{C \times 2w \times 2w}$,
+        $Y \in \{0, 1\}$
+        \\
+        \bottomrule
+    \end{tabular}
+    \caption{Notation}
+    \label{tab:table_of_notations}
+\end{table}
+
+We use calligraphic letters to denote tensors of pixels that form the climate model. The notation is summarized in Table \ref{tab:table_of_notations} under the Geophysical tensors section. In domain specification, the first dimension stands for the temporal axis, the second for latitude, and the third for longitude.  \textcolor{brown}{Why not to use max wind speed? Explain it. Also, add these details about temporal, lat, lon axis closer to example 1} 
+
+The next crucial step is a resolution matching for geophysical tensors. Different datasets typically have different spatial and temporal resolutions outlined in Table \ref{tab:datasets}. To match the resolutions, we aggregate DEM data spatially to match the resolution of climate models. After aggregation, we keep the average, minimum, maximum, and standard deviation of the aggregated elevation levels. \textcolor{brown}{How is it used later?}
+
+\textcolor{brown}{what is the $r_s$? Rephrase it or explain.} For spatial components, we choose target resolution $r_s$ and change the resolutions of each tensor to it. If the current resolution of a tensor is higher, then we average pixels' values. Otherwise, we apply $2d$ cubic interpolation implemented in SciPy \cite{2020SciPy-NMeth}. 
+We take maximal values for the temporal component over the target temporal frequency, e.g., day. Aggregation via maximum is motivated by the goal of this study. It is essential for the approach to align tensors of different climate variables in space and time. \textcolor{brown}{add more clarification in this paragraph}
+
+
+\begin{example}
+\label{example:O}
+Suppose one has a set of samples of climatic tensors that cover the same region: $\mathcal{T}_{max} \in \mathbb{R}^{T_1 \times N_1\times M_1}, \mathcal{T}_{min} \in \mathbb{R}^{T_2\times N_2\times M_2}, \mathcal{WS} \in \mathbb{R}^{T_3\times N_3\times M_3}, \mathcal{E} \in \mathbb{R}^{N_4\times M_4}, \mathcal{P} \in \mathbb{R}^{T_5\times N_5\times M_5}$. After preprocessing, the dimensionalities of each tensor become equal to $T \times N \times M$.
+It is convenient to stack them into $4^{\textup{th}}$ dimension to form geophysical representation  $\mathcal{O} \in \mathbb{R}^{C \times T \times N \times M}$. In this example, $C = 5$.
+\end{example}
+
+As in Example \ref{example:O}, we have $4d$ tensor $\cal{O}$ that describes some region. We assume that this region contains weather stations $\mathcal{S}$. We assume that each station $s \in \mathcal{S}$ is located in some pixel $(i_s, j_s), ~ i_s \in {0, \dots, N}, ~ j_s \in {0, \dots, M}$. 
+
+Since we aim to locally estimate the probability of observing extreme wind speed, i.e., in each spatial pixel, we need to obtain a local spatial representation of each pixel. Thus, for each $i \in [0, \dots N], j \in [0, \dots M]$ we consider spatial proximity of this pixel: \textcolor{brown}{should we add a reference for definition 3.1, 3.2?}
+
+\begin{definition}
+\label{def:spatial_vicinity}
+Let $\mathcal{O} \in \mathbb{R}^{C \times T \times N \times M}$ describe a region of interest. For each spatial position $i,\ j$ we define spatial proximity as $\mathcal{O}^w_{ij} = \mathcal{O}_{[:, :, i - w : i + w, j - w:j + w]}$, where $w < \min \{N, M\}$. 
+\end{definition}
+
+Spatial proximity allows one to consider neighboring pixels for a pixel $i, j$ for each timestamp over all geophysical variables, e.g., modeled temperatures, precipitations, etc. \textcolor{brown}{add more details about proximities, why it is needed}
+
+\subsection{Definition of Target}
+
+Having bound weather stations with existing pixels in a region of interest, we define the target variable for each tensor.
+\begin{definition}
+\label{def:target_variable}
+Let $\mathcal{O} \in \mathbb{R}^{C \times T \times N \times M}$ describe a region of interest. For each spatial position $i$,$j$ that contains a weather station $s \in \mathcal{S}$, we define target variable $y_{ij} \in {0, 1}^{T}$, i.e., vector of zeros and ones of length $T$ according to the exceedance of the measured wind speed some threshold $\tau$. \textcolor{brown}{0,1 T is it right? Also rephrase}
+\end{definition}
+
+Thus, the target variables $y_{ij}$ are defined only for pixels that contain at least one weather station $s \in \mathcal{S}$. If a pixel contains several weather stations, a maximum over measurements of several stations is picked.
+
+\subsection{Deep Neural Network Model}
+
+\textcolor{brown}{rephrase} In this work, we use a deep Convolutional Neural Network (CNN) to model the probability of exceedance of the measured wind speed threshold inside a pixel. The architecture is visualized in Figure \ref{fig:CNN_fig}. % and layers layout is summarized in Table \ref{tab:CNN_arch}.
+\textcolor{brown}{rephrase} Such an architecture leverages spatial dependencies that can form exceedance of wind speed threshold together with interconnections with other climatic variables and elevation over sea level. Mathematically speaking, this CNN models conditional probability: 
+\begin{equation}
+    \mathbb{P}\left\{ (y_{ij})_t | (\mathcal{O}^w_{ij})_t \right\}.
+    \label{eq:cnn_prob}
+\end{equation}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[height=14cm, width=0.48\linewidth]{pics/model.png}
+    \caption{Visualized Architecture of CNN}
+    \label{fig:CNN_fig}
+\end{figure}
+
+\textcolor{brown}{rephrase i.e. twice} Eq.~\ref{eq:cnn_prob} represents CNN as a classifier of a local climatic map around pixel $i, j$ at timestamp $t$. It models the probability of observing wind speed over $\tau$ m/s in such a pixel. Moreover, one can take a step back and view the whole pipeline as a pixel-to-pixel model \cite{van2016pixel}, i.e., CNN builds a spatiotemporal distribution of extreme wind speed over the pixels provided. A visualisation of prediction for a vicinity of a pixel $i,\  j$ at timestamp $t$, i.e. $(\mathcal{O}^w_{ij})_t$ is presented in Figure \ref{fig:example_CNN_pred}. Alternatively, from the computer vision point of view, one can treat the model as a mapper from modeled multichannel climatic image to a single channel of probabilities. Further, one can transform such probabilities into integer values indicating extreme wind speed occurrence. \textcolor{brown}{what does it mean?}
+ 
+\begin{figure}[h!]
+    \centering
+    \captionsetup{justification=centering}
+    \includegraphics[width=\linewidth]{pics/pixtopix.png}
+    \caption{An example of CNN prediction for $(\mathcal{O}^w_{ij})_t$. Here central pixel $i, j$ is in red, neighboring pixels of $(\mathcal{O}^w_{ij})_t$ are in blue, and output probability on the resulting map is in purple}
+    \label{fig:example_CNN_pred}
+\end{figure}
+
+\subsubsection{Model Training}
+\label{sec:training_val}
+
+\textcolor{brown}{restructure this section, add more subsections (data preprocessing etc.)}
+
+In this subsection, we describe training for the proposed CNN model. First, we address the assembling dataset, and next, we split the latter into train and test datasets. Finally, we outline classification metrics used for model quality control.
+
+To construct a dataset, as the paper briefly discussed in Section \ref{sec:data_collection_preprocessing}, we match pixels of the climatic model with existing weather stations by geoposition and temporal axis. Thus, we obtain the dataset $\mathcal{D} =\left\{\mathbb{R}^{C \times 2w \times 2w}, \{0, 1\}
+\right\}_{n=1}^{N_{\mathcal{D}}}$ with the number of samples $N_{\mathcal{D}} = T \cdot |\mathcal{S}_{\mathcal{D}}|$, where $\mathcal{S}_{\mathcal{D}}$ is the number of weather station uniquely located in pixels, $T$ is the number of timestamps that are left after temporal alignment. 
+
+The next step is to split $\mathcal{D}$ into a train $\mathcal{D}_{\texttt{train}}$ and a test $\mathcal{D}_{\texttt{test}}$ datasets, i.e., training and test respectively. The model is trained and tested on all considered meteostations. \textcolor{brown}{should we add val?}
+
+Note that one should not shuffle data inside pixels. The latter would lead to a loss of temporal correlations specific for climate variables time series \cite{liu2019long}.
+
+\textcolor{blue}{add metrics for imbalanced classification} We use standard binary classification metrics to assess the method quality: accuracy, precision, recall, and ROC-AUC. Accuracy is the fraction of correctly predicted extreme wind speeds; precision is more representative as it is the tendency not to predict false alarms that are crucial for imbalanced datasets. So is recall as the tendency not to miss extreme wind speed. Also, we used ROC-AUC, which shows whether positives are ranked higher than negatives. Table \ref{tab:metrics} summarizes the metrics mentioned.
+
+\begin{table}[t]
+    \centering
+    \captionsetup{justification=centering}
+    \begin{tabular}{c|c|c|c}
+         \toprule
+         Metric & Formula   & Train & Test\\
+         \midrule
+         Accuracy & \resizebox{.38\linewidth}{!}{$\frac{TP + TN}{TP + TN + FP + FN}$}  &  0.93  &  0.86 \\
+         \midrule
+             Precision & \resizebox{.18\linewidth}{!}{$\frac{TP}{TP + FP}$}  &  0.90  &  0.67  \\
+         \midrule
+         Recall & \resizebox{.18\linewidth}{!}{$\frac{TP}{TP + FN}$}   &  0.54  &  0.28 \\
+         \midrule
+         ROC-AUC & $\int_{-\infty}^{+\infty} TPR(t) FPR(t) dt$   &  0.95  &  0.77  \\
+         \bottomrule
+    \end{tabular}
+    \caption{Binary classification metrics. Here, $TP$, $TN$, $FP$, and $FN$ are the number of True Positively, True Negatively, False Positively, and False Negatively classified samples, respectively. $TPR(t)$ and $FPR(t)$ are the True Positive Rate and False Positive Rate obtained using the threshold $\tau$.}
+    \label{tab:metrics}
+\end{table}
+
+
+\section{Numerical Experiments}
+\label{sec:experiments}
+\subsection{Hardware}
+\textcolor{brown}{Extend this section, add details about reproducibility maybe or smth}
+
+We perform experiments on a machine equipped with an Intel Core i5-8600K CPU at 3.60 GHz, 64 GB RAM, and a GeForce GTX 1080 Ti with 12 GB of GPU memory.
+\subsection{Case Study}
+\textcolor{brown}{Rethink of it, or add more details, why we trained on Russia (diverse climate etc.). So now this subsection is not Case Study} We have conducted a case study on Russia as a region of interest. Weather stations are taken from the RIHMI-WDC weather center \textcolor{brown}{what is RIHMI-WDC}, climatic models are taken from the Meteorological Research Institute, CMIP5 \cite{SeijiYukimoto20122012-A02}, and variables are chosen as in Section \ref{sec:data_collection_preprocessing}. The model was trained and tested on data from 520 weather stations with the division in time. The training dataset covers the period from 2006-01-01 to 2011-12-31, while test one contains data from 2012-01-01 to 2016-11-14. The class balance for such an experiment is $0.138$ and $0.161$ for train and test datasets, respectively.
+
+For training CNN, we used Adam optimizer \cite{https://doi.org/10.48550/arxiv.1412.6980}, the model has been implemented in PyTorch library for Python \cite{paszke2019pytorch}.
+
+Table \ref{tab:metrics} represents classification metrics on both train and test datasets. A relatively low recall is explained by the specificity of the problem in the form of utterly imbalanced data. Predicting such exceptionally rare events is difficult for the model, which gives the confidence to suggest that the current metric is satisfying. \textcolor{blue}{add baseline for comparison}
+
+\subsection{Storm Prediction}
+
+\textcolor{brown}{Explain why it works well outside of Russia's borders. Think about how to do it. Maybe explain higher metrics by aggregation?}
+
+After the model was trained and metrics were recorded, knowing the predictive abilities, it was tested on several infamous devastating hurricanes. This subsection contains the description of two of them: Ian and Amphan.
+
+% \raggedbottom
+
+
+
+% 
+
+
+From September 23rd through October 2nd of 2022, Florida suffered from category 4 major hurricane Ian. The experiment was carried out on the prediction of this disaster, which caused more than 160 deaths and damage of 113.1 billion dollars \cite{oxford2022hurricane}. In Figure \ref{fig:pred} there are results for three different timestamps. Two weeks before the cataclysm peak, the model alarmed on the south (a) - exactly where the hurricane came from. Pictures b and d represent the day with the strongest wind speeds as the model had seen it and how it looked like from the satellite, respectively \cite{real_storm}. The conspicuous similarity tells about the great performance of the developed model in this particular case. Figure \ref{fig:pred3} demonstrates that two weeks after the maximum wind speed, it is relatively calm with a couple of insignificant yellow clusters. They can be explained as a slight model confusion because of a recent powerful storm.
+
+\begin{figure}[t]
+     \centering
+     \captionsetup{justification=centering}
+     \begin{subfigure}[t]{0.49\linewidth}
+         \centering
+         \includegraphics[width=\linewidth]{pics/Ian 14-09-2022.png}
+         \caption{14-09-2022}
+         \label{fig:pred1}
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[t]{0.49\linewidth}
+         \centering
+         \includegraphics[width=\linewidth]{pics/Ian 28-09-2022.png}
+         \caption{28-09-2022 (model)}
+         \label{fig:pred2}
+     \end{subfigure}
+     \hfill
+     \\
+     \begin{subfigure}[t]{0.49\linewidth}
+     \vskip 0pt
+         \centering
+         \includegraphics[width=\linewidth]{pics/Ian 12-10-2022.png}
+         \caption{12-10-2022}
+         \label{fig:pred3}
+     \end{subfigure}
+     \begin{subfigure}[t]{0.49\linewidth}
+     \vskip 0pt
+         \centering
+         \includegraphics[width=\linewidth]{pics/Ian_Real8.png}
+         \vskip9pt
+         \caption{28-09-2022 (real)}
+         \label{fig:pred4}
+     \end{subfigure}
+        \caption{Prediction of trained model for hurricane Ian on 3 different timestamps (a-c, colorbar means probability of strong wind) and comparison with real picture (d, red means category 4)}
+        \label{fig:pred}
+\end{figure}
+
+%
+
+\begin{figure}[!h]
+     \centering
+     \captionsetup{justification=centering}
+     \begin{subfigure}[t]{0.49\linewidth}
+         \centering
+         \includegraphics[width=\linewidth]{pics/Amphan 11-05-2020.png}
+         \caption{11-05-2020}
+         \label{fig:pred1_Amphan}
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[t]{0.49\linewidth}
+         \centering
+         \includegraphics[width=\linewidth]{pics/Amphan 18-05-2020.png}
+         \caption{18-05-2020 (model)}
+         \label{fig:pred2_Amphan}
+     \end{subfigure}
+     \hfill
+     \\
+     \begin{subfigure}[t]{0.49\linewidth}
+     \vskip 0pt
+         \centering
+         \includegraphics[width=\linewidth]{pics/Amphan 25-05-2020.png}
+         \caption{25-05-2020}
+         \label{fig:pred3_Amphan}
+     \end{subfigure}
+     % \savebox{\imagebox}{\includegraphics[width=0.49\linewidth,height=110pt]{pics/Amphan_real.png}}%
+     \begin{subfigure}[t]{0.49\linewidth}
+         \vskip 0pt
+         \centering
+         \includegraphics[width=\linewidth]{pics/Amphan_real.png}
+         \vskip9pt
+         \caption{18-05-2020 (real)}
+         \label{fig:pred4_Amphan}
+     \end{subfigure}
+        \caption{Prediction of trained model for storm Amphan on 3 different timestamps (a-c, colorbar means probability of strong wind) and comparison with real picture (d, red means category 4)}
+        \label{fig:pred_Amphan}
+\end{figure}
+
+In addition, we want to demonstrate the model's successful work on a diametrically opposite side of the globe by discussing the category 5 tropical cyclone Amphan in Eastern India, which formed on May 16th and dissipated on May 21st of 2020 (Figure \ref{fig:pred_Amphan}). As a result, 128 people were killed, and it caused damage of 13.7 billion dollars \cite{kumar2021assessing}. A week before the strongest wind speed the model was slightly tense as one can see in Figure \ref{fig:pred1_Amphan}. It is crucial to remind that pictures represent a day-to-day prediction, which means if on May 11th there was no hurricane, the model will not show it too. Figures \ref{fig:pred2_Amphan} and \ref{fig:pred4_Amphan} again demonstrate the congruence of prediction with a real situation. Three days after the Super Cyclonic Storm dissipated the model shows it as a yellow island on the north with calmness on the rest of the map (Figure \ref{fig:pred3_Amphan}). \textcolor{brown}{Maybe not day-to-day prediction but aggregation? Elaborate more on figures}
+
+% \begin{figure}[b]
+%     \centering
+%     \includegraphics[width=\linewidth]{pics/rcps.png}
+%     \caption{Average storm probability for USA in accordance with $\mathrm{CO}_{\mathrm{2}}$ concentration scenarios}
+%     \label{fig:rcps}
+% \end{figure}
+
+\section{Conclusion}
+\label{sec:conclusion} 
+\textcolor{brown}{why we mention CMIP6 here? Think how to tell about "up to 2100". Elaborate more on application of this model. Last sentence is not clear, maybe delete}
+
+This study presents a framework and example neural network that models spatial exceedance probability maps for extreme climatic variable values. The developed model demonstrated relatively high classification metrics for the task containing immensely imbalanced data
+% and made a decent forecast on specific cases.
+the study showed that such an approach gives high precision results and provides probability forecasts up to climate model abilities, e.g., for CMIP6 experiments, it is up to the year 2100. This model can be used to reveal possibly fruitful locations for wind farms, reveal which areas should not be used for site construction under different climate projection scenarios.
+
+The spatiotemporal model can be advanced in future work with more complex and efficient architecture, while the preliminary tests do not show a substantial advantage of the latter compared to the architecture used in the paper. 
+% \appendix
+% \section*{Appendix A.}
+
+%% The file named.bst is a bibliography style file for BibTeX 0.99c
+\bibliographystyle{named}
+\bibliography{ijcai23}
+
+\end{document}
+
