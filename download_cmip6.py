@@ -4,7 +4,25 @@ Download CMIP6 MRI-ESM2-0 data for wind prediction project.
 Downloads historical (2000-2014) + ssp245 (2015-2064) for:
   sfcWindmax, pr, tasmax, tasmin, psl
 
-Usage: python download_cmip6.py --out data/cmip6_world_orig
+Usage:
+  python download_cmip6.py --out data/cmip6_world_orig          # all variables
+  python download_cmip6.py --out data/cmip6_world_orig --var psl  # single variable
+
+STATUS (as of 2026-04-14, files on server at data/cmip6_world_orig/):
+  sfcWindmax  historical 2000  OK
+  sfcWindmax  ssp245     2015  OK
+  pr          historical 2000  OK
+  pr          ssp245     2015  OK
+  tasmax      historical 2000  OK
+  tasmax      ssp245     2015  OK
+  tasmin      historical 2000  OK
+  tasmin      ssp245     2015  OK
+  psl         historical 2000  OK
+  psl         ssp245     2015  OK
+
+KEY FIX (vs earlier version): collect URLs from ALL ESGF mirror docs,
+not just the first one. Each mirror node is a separate doc in the search
+response. Bad hosts (diasjp.net) are ranked last.
 """
 
 import argparse
@@ -17,8 +35,16 @@ from requests.adapters import HTTPAdapter, Retry
 
 ESGF_URL = "https://esgf-node.llnl.gov/esg-search/search"
 
-# Files we need: (experiment, variable, time_start_filter)
-TARGETS = [
+# All variables needed for the project
+ALL_TARGETS = [
+    ("historical", "sfcWindmax", "2000"),
+    ("ssp245",     "sfcWindmax", "2015"),
+    ("historical", "pr",         "2000"),
+    ("ssp245",     "pr",         "2015"),
+    ("historical", "tasmax",     "2000"),
+    ("ssp245",     "tasmax",     "2015"),
+    ("historical", "tasmin",     "2000"),
+    ("ssp245",     "tasmin",     "2015"),
     ("historical", "psl",        "2000"),
     ("ssp245",     "psl",        "2015"),
 ]
@@ -133,7 +159,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default="data/cmip6_world_orig",
                         help="Output directory for downloaded NC files")
+    parser.add_argument("--var", default=None,
+                        help="Download only this variable (e.g. psl). Default: all.")
     args = parser.parse_args()
+
+    TARGETS = [t for t in ALL_TARGETS if args.var is None or t[1] == args.var]
 
     session = make_session()
     out_dir = Path(args.out)
