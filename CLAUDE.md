@@ -4,10 +4,11 @@
 Global wind/storm prediction model for a scientific paper. Binary classification: will wind exceed threshold at a station in the next 25 days over a 6-month season?
 
 ## Environment
-- Python: `c:\Users\Artem\miniconda3\envs\wind\python.exe` (Python 3.10, conda env `wind`)
+- Python: `C:\Users\Amd\miniconda3\envs\wind\python.exe` (Python 3.10, conda env `wind`)
 - GPU: NVIDIA RTX 3070 8GB, CUDA 12.7
-- **Run training:** `/c/Users/Artem/miniconda3/envs/wind/python.exe train.py --config-name=cmip6_world`
+- **Run training:** `C:/Users/Amd/miniconda3/envs/wind/python.exe train.py --config-name=cmip6_world`
 - conda is NOT on PATH in bash — always use the full python path above
+- Miniconda installed at: `C:\Users\Amd\miniconda3`
 
 ## Package constraints (do not change)
 - torch 2.11.0+cu126 — must be CUDA build, not CPU
