@@ -1,7 +1,7 @@
 make_tmp_target_file: False
 
 use_elevation: true
-in_chans: 5               # 4 CMIP6 vars (no sfcWindmax) + 1 elevation channel
+in_chans: 4               # 3 CMIP6 vars (no sfcWindmax, no psl) + 1 elevation channel
 normalize: false          # precision 16 is already normalized
 
 time_agg_window: 28
@@ -20,7 +20,6 @@ variables:
 - pr
 - tasmax
 - tasmin
-- psl
 
 spatial_crop: false
 lat_min: 30
