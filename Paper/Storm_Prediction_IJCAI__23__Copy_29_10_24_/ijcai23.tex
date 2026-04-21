@@ -224,14 +224,14 @@ Table \ref{tab:datasets} summarizes the description of real (observational) and 
      \begin{subfigure}[b]{0.49\linewidth}
          \centering
          \includegraphics[height=3.3cm, width=\linewidth]{pics/cmip_temperature.png}
-         \caption{CMIP 5 temperature, K}
+         \caption{CMIP6 MRI-ESM2-0 temperature, K}
          \label{fig:violins_data_era5_t}
      \end{subfigure}
      \hfill
      \begin{subfigure}[b]{0.49\linewidth}
          \centering
          \includegraphics[height=3.3cm, width=\linewidth]{pics/cmip5_wind.png}
-         \caption{CMIP 5 wind speed, m/s}
+         \caption{CMIP6 MRI-ESM2-0 daily max.\ wind speed, m/s}
          \label{fig:violins_data_era5_ws}
      \end{subfigure}
      \hfill
@@ -248,7 +248,7 @@ Table \ref{tab:datasets} summarizes the description of real (observational) and 
          \caption{Stations wind speed, m/s}
          \label{fig:violins_data_ws_ws}
      \end{subfigure}
-        \caption{Violins plots of temperatures and wind speeds from climate model and the ones measured on weather stations}
+        \caption{Distribution of daily maximum temperature (a,\,c) and daily maximum near-surface wind speed (b,\,d) from the CMIP6 MRI-ESM2-0 climate model and GSOD station measurements, global training period (2000--2020). Boxes show the interquartile range; whiskers extend to the 5th--95th percentile. CMIP6 grid-cell averages capture the bulk distribution well but attenuate the extreme tails relative to point observations---the core bias our model is designed to correct.}
         \label{fig:violins_data}
 \end{figure}
 
@@ -305,7 +305,7 @@ For the temporal dimension, we aggregate data to a daily frequency by taking the
 \begin{example}
 \label{example:O}
 Suppose one has a set of samples of climatic tensors that cover the same region: $\mathcal{T}_{max} \in \mathbb{R}^{T_1 \times N_1\times M_1}, \mathcal{T}_{min} \in \mathbb{R}^{T_2\times N_2\times M_2}, \mathcal{WS} \in \mathbb{R}^{T_3\times N_3\times M_3}, \mathcal{E} \in \mathbb{R}^{N_4\times M_4}, \mathcal{P} \in \mathbb{R}^{T_5\times N_5\times M_5}$. After preprocessing, the dimensionalities of each tensor become equal to $T \times N \times M$.
-It is convenient to stack them into $4^{\textup{th}}$ dimension to form geophysical representation  $\mathcal{O} \in \mathbb{R}^{C \times T \times N \times M}$. In this example, $C = 5$.
+It is convenient to stack them into $4^{\textup{th}}$ dimension to form geophysical representation  $\mathcal{O} \in \mathbb{R}^{C \times T \times N \times M}$. In this example, $C = 4$ for the proposed model (pr, tasmax, tasmin, elevation); $C = 5$ when sfcWindmax is added as an ablation.
 \end{example}
 
 As in Example \ref{example:O}, we have $4d$ tensor $\cal{O}$ that describes some region. We assume that this region contains weather stations $\mathcal{S}$. We assume that each station $s \in \mathcal{S}$ is located in some pixel $(i_s, j_s), ~ i_s \in {0, \dots, N}, ~ j_s \in {0, \dots, M}$. 
@@ -344,45 +344,23 @@ Two design choices in Eq.~\ref{eq:target} deserve explicit motivation.
 \end{equation}
 where $\hat{q}_{0.95}(s)$ is the empirical 95th percentile of all recorded daily maximum wind speeds at station $s$, and $\tau_{\min} = 15$~m/s is an absolute lower bound that prevents the threshold from dropping below a physically meaningful level of potential structural damage~\cite{wallbrink2009historical}. This formulation ensures that the positive class represents a genuinely \emph{rare and locally extreme} event at every station, while the hard floor maintains physical interpretability.
 
-If a pixel contains more than one weather station, the maximum wind speed across all co-located stations is used when evaluating the condition in Eq.~\ref{eq:target}. With these definitions, the fraction of positive labels in the global dataset is approximately 36\%, reflecting the combination of the 28-day aggregation window and the station-adaptive threshold.
+If a pixel contains more than one weather station, the maximum wind speed across all co-located stations is used when evaluating the condition in Eq.~\ref{eq:target}. With these definitions, the fraction of positive labels is approximately 24.5\% in the training period (2000--2020), 12.7\% in the validation period (2021--2022), and 12.1\% in the held-out test period (2023--2024). The decline across splits reflects the increasing density of GSOD coverage in earlier decades; the 28-day aggregation window and station-adaptive threshold jointly govern the overall exceedance rate.
 
 \subsection{Baselines}
 \label{sec:Baseline}
-%Baseline Definition and Motivation
-As a physically interpretable reference, we consider a simple baseline derived directly from CMIP daily maximum near-surface wind speed (sfcWindmax).
-For each weather station, the corresponding CMIP value is extracted from the nearest grid cell for the same calendar day. A binary storm indicator is then obtained by thresholding this value.
 
-%Threshold Calibration
-Due to the spatial averaging inherent to gridded climate model outputs, extreme wind speeds in CMIP are systematically lower than point-wise station observations. Therefore, the storm detection threshold in CMIP space is not expected to coincide with the observational threshold of 20 m/s.
-Instead, the threshold is calibrated on an independent validation period (2017–2018) by maximizing the F1-score over a range of high quantiles of the CMIP wind speed distribution.
+We compare GhostWindNet27 against two interpretable baselines that exploit only the raw CMIP6 near-surface wind field without any learned spatial feature extraction.
 
-%Baseline Performance
-The optimal threshold obtained on the validation set corresponds to a CMIP daily maximum wind speed of approximately 9.5 m/s.
-When applied to the held-out test period (2019–2020), this baseline achieves a precision of 0.15, recall of 0.26, and an F1-score of 0.19.
+\paragraph{CMIP6 threshold baseline.}
+For each weather station the daily maximum wind speed from the nearest CMIP6 grid cell is compared directly against the station-adaptive threshold $\tau_s$ (Eq.~\ref{eq:threshold}). Because CMIP6 grid-cell averages systematically attenuate local wind extremes~\cite{shenCMIP6Wind2022}, the effective exceedance rate at $\tau_s$ is very low. The optimal detection threshold in CMIP6 space is calibrated on the validation period (2021--2022) by maximising the F1-score over a grid of high quantiles of the CMIP6 wind distribution. This baseline represents the performance achievable from raw climate model output without learning, and motivates the need for a trained calibration layer.
 
-%Interpretation
-Although the absolute performance of this baseline is limited, it represents a meaningful lower bound for storm detection based solely on coarse-resolution climate model output without any learning or post-processing.
-The relatively low precision reflects the intrinsic smoothing of extremes in gridded datasets, while the moderate recall indicates that CMIP still captures a non-negligible fraction of observed extreme wind events.
+\paragraph{Logistic regression baseline.}
+We additionally evaluate a logistic regression model trained on three features per station-day: the CMIP6 daily maximum wind speed at the co-located grid cell, $\sin(2\pi m/12)$, and $\cos(2\pi m/12)$ (annual harmonic, $m$ = calendar month). The model is trained on 2000--2020 station-days; the decision threshold is tuned on the validation period (2021--2022) by maximising F1-score. This baseline represents the performance ceiling of simple, interpretable models that use only local CMIP6 wind and seasonality, isolating the contribution of the CNN's spatial context and nonlinear feature extraction.
 
-%Role in the Study
-This baseline serves as a physically grounded reference against which the proposed convolutional neural network is evaluated.
-Any improvement over this baseline, therefore, demonstrates the added value of data-driven spatial feature extraction beyond simple thresholding of climate model fields.
-
-%Logistic Regression Baseline
-In addition to the threshold-based CMIP baseline, we considered a slightly stronger yet still interpretable model: a logistic regression classifier using the CMIP daily maximum wind speed ($cmip_wind$) together with a simple seasonal component. Seasonality was encoded via the first annual harmonic, i.e., sin(2πm/12) and cos(2πm/12), where m denotes the calendar month. The model was trained on the training period (2000–2016), while the operating threshold was selected on the validation period (2017–2018) by maximizing the F1-score.
-
-%Calibration and Test Performance
-The optimal probability threshold obtained on the validation set was 0.64, resulting in a validation F1-score of 0.193. When evaluated on the independent test period (2019–2020), the logistic regression achieved a precision of 0.145, recall of 0.267, and F1-score of 0.188. Notably, this performance is very close to the threshold-only CMIP baseline, indicating that the additional flexibility provided by logistic regression and the explicit seasonal terms does not yield a substantial improvement for this task.
-
-%Interpretation of Coefficients and Implications
-The fitted coefficients are physically consistent: the $cmip_wind$ coefficient is positive, confirming that larger CMIP daily maximum wind speeds correspond to higher storm likelihood. The seasonal harmonics also contribute with positive weights, suggesting a pronounced annual modulation of storm occurrence in the observational record. However, the marginal gain over simple thresholding implies that the dominant source of error is not the decision boundary itself, but rather the limited separability of storm and non-storm cases when relying solely on coarse-resolution CMIP wind maxima. This is consistent with the known attenuation of local extremes in gridded datasets due to spatial averaging and the mismatch between point observations and model grid-cell representations.
-
-%Role as a Reference Model
-Overall, the logistic regression baseline serves as an upper bound for “simple, interpretable” models based on CMIP daily maxima and basic seasonality. Its limited improvement motivates the use of models capable of exploiting richer spatial context and nonlinear feature interactions (e.g., convolutional architectures), which are expected to better capture synoptic-scale patterns associated with extreme wind events and thus improve generalization across heterogeneous climatic regimes.
 \subsection{Deep Neural Network Model}
 \label{sec:Deep_CNN}
 
-The core of our approach is a deep Convolutional Neural Network (CNN), the architecture of which is visualized in Figure~\ref{fig:CNN_fig}. This architecture is specifically chosen for its ability to effectively learn complex spatial patterns from gridded data. It models the non-linear relationships between various climate variables (e.g., temperature, pressure) and topography (elevation) that collectively contribute to the formation of high-wind events. Mathematically, the CNN estimates the conditional probability of a high-wind event occurring at a specific pixel $(i, j)$ and time $t$, given the local geophysical state around that pixel:
+The core of our approach is \textbf{GhostWindNet27}, a deep Convolutional Neural Network (CNN) built on the GhostNetV2 backbone~\cite{tang2022ghostnetv2} (11.3M parameters), the architecture of which is visualized in Figure~\ref{fig:CNN_fig}. GhostNetV2 generates rich feature representations from a compact set of learned filters supplemented by cheap linear operations, making it well-suited for large spatiotemporal climate grids where memory and training time are constrained. The model captures non-linear relationships between climate variables and topography that collectively drive high-wind events. Mathematically, the CNN estimates the conditional probability of a high-wind event occurring at a specific pixel $(i, j)$ and time $t$, given the local geophysical state around that pixel:
 
 \begin{equation}
     \mathbb{P}\left\{ (y_{ij})_t | (\mathcal{O}^w_{ij})_t \right\}.
@@ -416,10 +394,10 @@ Following Section~\ref{sec:data_collection_preprocessing}, each training sample 
 \begin{equation}
     \mathcal{D} = \left\{ \left(\mathcal{O}^w_{ij}\right)_t,\; (y_{ij})_t \right\}_{n=1}^{N_{\mathcal{D}}},
 \end{equation}
-where $N_{\mathcal{D}} = |\mathcal{S}_{\mathcal{D}}| \times T$ with $|\mathcal{S}_{\mathcal{D}}|$ the number of station-occupied pixels and $T$ the number of valid time steps after alignment. Each input patch has shape $C \times \Delta_t \times (2w{+}1) \times (2w{+}1)$, with $C=5$ channels (four CMIP6 variables plus static elevation), temporal window $\Delta_t = 27$ days, and spatial half-width $w = 47$ pixels ($95 \times 95$ grid cells, covering roughly $106^\circ \times 106^\circ$ at the equator).
+where $N_{\mathcal{D}} = |\mathcal{S}_{\mathcal{D}}| \times T$ with $|\mathcal{S}_{\mathcal{D}}|$ the number of station-occupied pixels and $T$ the number of valid time steps after alignment. Each input patch has shape $C \times \Delta_t \times (2w{+}1) \times (2w{+}1)$, with $C=4$ channels (three CMIP6 variables: precipitation \texttt{pr}, maximum temperature \texttt{tasmax}, minimum temperature \texttt{tasmin}; plus static elevation---see ablation study in Section~\ref{sec:experiments}), temporal window $\Delta_t = 27$ days, and spatial half-width $w = 47$ pixels ($95 \times 95$ grid cells, covering roughly $106^\circ \times 106^\circ$ at the equator).
 
 \paragraph{Train / validation / test split.}
-The dataset is divided chronologically to prevent temporal leakage: \textbf{training} covers 2000-01-01 to 2020-12-31, \textbf{validation} 2021-01-01 to 2022-12-31, and \textbf{test} 2023-01-01 to 2024-12-31. All stations are present in every split; only the time axis differs. The validation set is used exclusively for early stopping (monitoring Average Precision with patience of 15 epochs); no hyperparameter search is performed on it. This strict temporal separation ensures that the model is evaluated on conditions genuinely unseen during training.
+The dataset is divided chronologically to prevent temporal leakage: \textbf{training} covers 2000-01-01 to 2020-12-31, \textbf{validation} 2021-01-01 to 2022-12-31, and \textbf{test} 2023-01-01 to 2024-12-31. All stations are present in every split; only the time axis differs. The validation set is used exclusively for early stopping (monitoring validation loss with patience of 10 epochs); no hyperparameter search is performed on it. Empirically, validation loss and Average Precision are well-correlated across epochs, so the best checkpoint by validation loss also yields near-optimal AP. This strict temporal separation ensures that the model is evaluated on conditions genuinely unseen during training.
 
 \paragraph{Training protocol.}
 The network is trained with the AdamW optimiser~\cite{https://doi.org/10.48550/arxiv.1412.6980} (learning rate $\eta = 10^{-4}$, weight decay $\lambda = 10^{-2}$) under a cosine annealing schedule that decays $\eta$ to $\eta/100$ over $T_{\max} = 20$ epochs. The loss is binary cross-entropy with logits and label smoothing $\varepsilon = 0.05$, which replaces hard targets $\{0,1\}$ with soft targets $\{0.05,\, 0.95\}$ and acts as a calibration regulariser~\cite{muller2019does}.
@@ -466,140 +444,15 @@ The model is trained on 6{,}045 GSOD stations worldwide over the period 2000--20
          \toprule
          Method & AUROC & AP & F1 & BSS \\
          \midrule
-         CMIP threshold baseline  & 0.537 & 0.376 & --- & $-$0.476 \\
-         Logistic regression baseline & 0.590 & 0.435 & --- & $+$0.023 \\
+         CMIP threshold baseline  & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} & --- & 	extcolor{brown}{TBD} \
+         Logistic regression & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} & --- & 	extcolor{brown}{TBD} \
          \midrule
-         \textbf{CNN (full)} & \textbf{0.849} & \textbf{0.753} & \textbf{0.700} & \textbf{0.324} \\
+         	extbf{CNN (pr+tasmax+tasmin+elev)} & 	extbf{0.851} & 	extbf{0.757} & 	extbf{	extcolor{brown}{TBD}} & 	extbf{0.320} \
          \midrule
-         \multicolumn{5}{l}{\textit{Ablation study}} \\
+         \multicolumn{5}{l}{	extit{Ablation study}} \
          \midrule
-         CNN w/o elevation & 0.843 & 0.745 & 0.697 & TBD \\
-         CNN w/o precipitation & 0.846 & 0.748 & 0.699 & TBD \\
-         CNN w/o temperature & TBD & TBD & TBD & TBD \\
-         \bottomrule
-    \end{tabular}
-    \caption{Global test-set performance (2023--2024). The full model uses sfcWindmax, precipitation, tasmax, tasmin, and elevation. Ablation rows remove one input at a time. BSS\,=\,Brier Skill Score relative to climatological frequency; higher is better, $>0$ means better than climatology. F1 at threshold 0.5; baseline F1 omitted (threshold not tuned). TBD entries await final test runs.}
-    \label{tab:metrics}
-\end{table}
-
-\subsection{Case Study: Qualitative Evaluation on Named Storms}
-% NOTE: Ian (Sep 2022) falls within the validation period (2021-2022); Amphan (May 2020) is in the training period.
-% Neither is in the held-out test period (2023-2024). These are qualitative illustrations only.
-
-To qualitatively assess whether the model captures the spatial signature of named storms, we visualise its output during two well-documented extreme wind events. Hurricane Ian (September 2022) falls within the validation period used for early stopping; Cyclone Amphan (May 2020) falls within the training period. Both therefore serve as qualitative illustrations of spatial prediction patterns only; rigorous quantitative evaluation on genuinely unseen data is reported in Table~\ref{tab:metrics}.
-
-After the model was trained and metrics were recorded, it was applied to two notable storms: Hurricane Ian and Cyclone Amphan.
-
-% \raggedbottom
-
-
-
-% 
-
-
-From September 23rd through October 2nd of 2022, Florida suffered from category 4 major hurricane Ian, which caused more than 160 deaths and damage of 113.1 billion dollars \cite{oxford2022hurricane}. Ian falls within the validation period (2021--2022) and was not used to update model weights, though it contributed to early-stopping decisions; the following visualisation is therefore qualitative in nature. In Figure \ref{fig:pred} there are results for three different timestamps. Two weeks before the cataclysm peak, the model raised elevated risk scores over the southern Gulf of Mexico (a)---exactly where the hurricane originated. Figure (b) shows the model output on the day of peak wind speed, alongside the corresponding satellite image (d) \cite{real_storm}. The broad spatial agreement between predicted risk and observed storm footprint illustrates the model's ability to associate large-scale CMIP6 circulation patterns with local extreme wind risk. Figure \ref{fig:pred3} shows that two weeks after the peak the predicted risk returns to near-background levels, with only minor residual elevation consistent with the lingering post-storm circulation.
-
-\begin{figure}[t]
-     \centering
-     \captionsetup{justification=centering}
-     \begin{subfigure}[t]{0.49\linewidth}
-         \centering
-         \includegraphics[width=\linewidth]{pics/Ian 14-09-2022.png}
-         \caption{14-09-2022}
-         \label{fig:pred1}
-     \end{subfigure}
-     \hfill
-     \begin{subfigure}[t]{0.49\linewidth}
-         \centering
-         \includegraphics[width=\linewidth]{pics/Ian 28-09-2022.png}
-         \caption{28-09-2022 (model)}
-         \label{fig:pred2}
-     \end{subfigure}
-     \hfill
-     \\
-     \begin{subfigure}[t]{0.49\linewidth}
-     \vskip 0pt
-         \centering
-         \includegraphics[width=\linewidth]{pics/Ian 12-10-2022.png}
-         \caption{12-10-2022}
-         \label{fig:pred3}
-     \end{subfigure}
-     \begin{subfigure}[t]{0.49\linewidth}
-     \vskip 0pt
-         \centering
-         \includegraphics[width=\linewidth]{pics/Ian_Real8.png}
-         \vskip9pt
-         \caption{28-09-2022 (real)}
-         \label{fig:pred4}
-     \end{subfigure}
-        \caption{Prediction of trained model for hurricane Ian on 3 different timestamps (a-c, colorbar means probability of strong wind) and comparison with real picture (d, red means category 4)}
-        \label{fig:pred}
-\end{figure}
-
-%
-
-\begin{figure}[!h]
-     \centering
-     \captionsetup{justification=centering}
-     \begin{subfigure}[t]{0.49\linewidth}
-         \centering
-         \includegraphics[width=\linewidth]{pics/Amphan 11-05-2020.png}
-         \caption{11-05-2020}
-         \label{fig:pred1_Amphan}
-     \end{subfigure}
-     \hfill
-     \begin{subfigure}[t]{0.49\linewidth}
-         \centering
-         \includegraphics[width=\linewidth]{pics/Amphan 18-05-2020.png}
-         \caption{18-05-2020 (model)}
-         \label{fig:pred2_Amphan}
-     \end{subfigure}
-     \hfill
-     \\
-     \begin{subfigure}[t]{0.49\linewidth}
-     \vskip 0pt
-         \centering
-         \includegraphics[width=\linewidth]{pics/Amphan 25-05-2020.png}
-         \caption{25-05-2020}
-         \label{fig:pred3_Amphan}
-     \end{subfigure}
-     % \savebox{\imagebox}{\includegraphics[width=0.49\linewidth,height=110pt]{pics/Amphan_real.png}}%
-     \begin{subfigure}[t]{0.49\linewidth}
-         \vskip 0pt
-         \centering
-         \includegraphics[width=\linewidth]{pics/Amphan_real.png}
-         \vskip9pt
-         \caption{18-05-2020 (real)}
-         \label{fig:pred4_Amphan}
-     \end{subfigure}
-        \caption{Prediction of trained model for storm Amphan on 3 different timestamps (a-c, colorbar means probability of strong wind) and comparison with real picture (d, red means category 4)}
-        \label{fig:pred_Amphan}
-\end{figure}
-
-In addition, we want to demonstrate the model's successful work on a diametrically opposite side of the globe by discussing the category 5 tropical cyclone Amphan in Eastern India, which formed on May 16th and dissipated on May 21st of 2020 (Figure \ref{fig:pred_Amphan}). As a result, 128 people were killed, and it caused damage of 13.7 billion dollars \cite{kumar2021assessing}. A week before the strongest wind speed the model was slightly tense as one can see in Figure \ref{fig:pred1_Amphan}. It is crucial to remind that pictures represent a day-to-day prediction, which means if on May 11th there was no hurricane, the model will not show it too. Figures \ref{fig:pred2_Amphan} and \ref{fig:pred4_Amphan} again demonstrate the congruence of prediction with a real situation. Three days after the Super Cyclonic Storm dissipated, the model output returns to near-background levels with only a small residual cluster in the north (Figure~\ref{fig:pred3_Amphan}). Note that the model output represents the probability of at least one extreme-wind day within the 28-day aggregation window centred on the given date, rather than an instantaneous forecast.
-
-% \begin{figure}[b]
-%     \centering
-%     \includegraphics[width=\linewidth]{pics/rcps.png}
-%     \caption{Average storm probability for USA in accordance with $\mathrm{CO}_{\mathrm{2}}$ concentration scenarios}
-%     \label{fig:rcps}
-% \end{figure}
-
-\section{Conclusion}
-\label{sec:conclusion}
-
-We presented a deep learning framework for global extreme wind risk assessment that bridges the resolution gap between coarse climate model output and point-scale station observations. A convolutional neural network is trained to predict, for every CMIP6 grid cell, the probability that a locally extreme wind event will occur within a 28-day window, using a station-adaptive threshold that combines a location-specific 95th-percentile criterion with a 15~m/s physical lower bound. Trained on over 6{,}000 GSOD stations worldwide (2000--2020) and evaluated on a held-out 2023--2024 test period, the model achieves a global AUROC of 0.849 and Average Precision of 0.753 (BSS\,=\,0.324), substantially outperforming both the climatological CMIP6 threshold baseline (AUROC\,=\,0.537, BSS\,=\,$-$0.476) and a logistic regression baseline (AUROC\,=\,0.590, BSS\,=\,$+$0.023). Performance is consistent across climatically diverse regions including Russia, sub-Saharan Africa, and South and East Asia, suggesting that the learned spatial features generalise well beyond the station-rich areas that dominate the training signal.
-
-Because the model consumes CMIP6 fields as input, it can be applied directly to any CMIP6 scenario simulation---historical, near-term, or long-range (up to 2100 under SSP2-4.5, SSP3-7.0, and SSP5-8.5)---to produce global storm-risk probability maps at $1.125^\circ$ resolution. Practical applications include identifying high-risk corridors for infrastructure siting, informing wind-farm development under projected climate change, and providing probabilistic hazard layers for national adaptation plans.
-
-\paragraph{Limitations and future work.}
-The current model treats each time window independently and does not explicitly model storm tracks or temporal dynamics beyond the 27-day input window. Future work could incorporate sequence models (e.g., ConvLSTM or Transformer architectures) to capture multi-week storm development. The training labels depend on the density of the GSOD network, so skill in data-sparse regions (central Africa, high Arctic) is inherently limited and should be validated with additional observations as they become available. Finally, extending the framework to other impact-relevant variables---precipitation extremes, compound heat-wind events---is a natural next step.
-% \appendix
-% \section*{Appendix A.}
-
-%% The file named.bst is a bibliography style file for BibTeX 0.99c
-\bibliographystyle{named}
-\bibliography{ijcai23}
-
-\end{document}
-
+         \quad + sfcWindmax & 0.847 & 0.750 & 	extcolor{brown}{TBD} & 0.321 \
+         \quad $-$ elevation & 0.847 & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} \
+         \quad $-$ precipitation & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} \
+         \quad $-$ temperature & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} & 	extcolor{brown}{TBD} \
+         
