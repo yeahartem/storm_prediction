@@ -40,7 +40,11 @@ class DataPreLoader:
         if self.cfg.train.use_elevation:
             self.load_elevation_data()
 
-        self.station_threshold_lookup = self.load_station_thresholds()
+        if self.cfg.train.get('synthetic_labels', False):
+            self._load_sfcwindmax_for_synthetic()
+            self.station_threshold_lookup = {}  # use global synthetic threshold for all cells
+        else:
+            self.station_threshold_lookup = self.load_station_thresholds()
 
         clean_start() # ограничивает выполнение функции только “нулевым” процессом в распределённом запуске и удаляет временные файлы по маске
 
@@ -175,6 +179,24 @@ class DataPreLoader:
         elev_padded = np.pad(elev, ((pad, pad), (pad, pad)), mode='edge')
         self.elevation_torch = torch.from_numpy(elev_padded).type(torch.float32)
         logging.info(f"Elevation loaded: raw {elev.shape}, padded {elev_padded.shape}")
+
+    def _load_sfcwindmax_for_synthetic(self):
+        """Load sfcWindmax separately for CMIP6 pseudo-label generation.
+
+        Used when synthetic_labels=True and sfcWindmax is not in training variables.
+        Applies the same time crop and padding as the main climate data.
+        """
+        orig_time = np.load(os.path.join(self.cfg.train.data_dir, 'time.npy')).astype('datetime64[D]')
+        start_date = datetime.strptime(self.cfg.train.start_time, '%Y-%m-%d').date()
+        end_date = datetime.strptime(self.cfg.train.end_time, '%Y-%m-%d').date()
+        t0 = int(orig_time.searchsorted(start_date))
+        t1 = int(orig_time.searchsorted(end_date))
+        path = os.path.join(self.cfg.train.data_dir, f'sfcWindmax_{self.cfg.process.precision}.npy')
+        data = np.load(path)[t0:t1].astype(np.float32)  # (time, lat, lon)
+        pad = self.cfg.half_side_size
+        data_padded = np.pad(data, ((0, 0), (pad, pad), (pad, pad)), mode='edge')
+        self.sfcwindmax_for_labels = torch.from_numpy(data_padded)
+        logging.info(f"sfcWindmax for synthetic labels loaded: {data_padded.shape}")
 
     def load_station_thresholds(self):
         """Load per-station p95 thresholds and build lookup (lat_idx, lon_idx) -> effective_threshold.
@@ -365,7 +387,11 @@ class DataPreLoader:
 
 
     def pixel_aggregation(self, lat, lon, dates, y, effective_threshold=None):
-        # aggregate target with given time_agg_window 
+        if self.cfg.train.get('synthetic_labels', False):
+            lat_pad = lat + self.shift[0]
+            lon_pad = lon + self.shift[1]
+            y = self.sfcwindmax_for_labels[dates, lat_pad, lon_pad].numpy().astype(np.float32)
+        # aggregate target with given time_agg_window
         time_positions_m = np.array([d.astype(object).month for d in self.time_coords[dates]])
         time_positions_days =  np.array([d.astype(object).day for d in self.time_coords[dates]])
         time_positions = (time_positions_m * 30.5 + time_positions_days)/365

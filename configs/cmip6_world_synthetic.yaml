@@ -1,0 +1,17 @@
+defaults:
+  - raw: cmip6_world_paths
+  - process: cmip6_world_elevation_dataset
+  - train: train_cmip6_world_synthetic
+  - eval: test_GhostWindNet_temp
+
+experiment_name: cmip6_world_GhostWindNet27x47_BCE_synthetic
+project_name: wind-speed-classification-cmip6
+target_type: wind_ms
+cmip_type: CMIP6
+
+model_name: GhostWindNet27
+time_window: 27
+half_side_size: 47
+
+start_date: '2023-01-01'
+end_date: '2024-12-31'
