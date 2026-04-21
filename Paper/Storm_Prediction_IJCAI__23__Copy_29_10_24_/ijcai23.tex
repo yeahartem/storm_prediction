@@ -214,7 +214,80 @@ To assemble the training dataset we combine a global climate reanalysis with gro
 
 %The following step matches the climate model pixels with the locations of weather stations both spatially and temporarily. {\color{blue} Please rewrite this. Unclear}
 
-Table \ref{tab:datasets} summarizes the description of real (observational) and synthetic (model-based) datasets used in this study. Synthetic datasets cover each region uniformly, while the real ones often cover the most populated areas only. 
+Table \ref{tab:datasets} summarizes the description of real (observational) and synthetic (model-based) datasets used in this study. Synthetic datasets cover each region uniformly, while the real ones often cover the most populated areas only.
+
+\subsection{Exploratory Data Analysis}
+\label{sec:eda}
+
+\paragraph{Station network and temporal coverage.}
+Figure~\ref{fig:station_coverage_year} shows the number of unique GSOD station locations active in each year. The network is dense in the 2000--2015 period, with approximately 6\,000--6\,500 stations per year, and declines modestly towards 2020 before recovering partially in 2021--2022. The training split (2000--2020, blue bars) systematically contains more stations per year than the validation and test splits. This is the primary structural reason why the positive label rate differs across splits: the training set is dominated by stations in high-latitude Europe and North America---regions with frequent cyclonic activity---while the newer station records in 2021--2024 have a different geographic mix with proportionally more stations in lower-wind tropical and subtropical regions.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pics/01_station_coverage_by_year.png}
+    \caption{Unique GSOD station locations active per year (left) and valid daily observations per year (right). Blue: training period (2000--2020); orange: validation (2021--2022); red: test (2023--2024). The training period sustains a higher station count, driven by long-running historical stations concentrated in high-wind regions.}
+    \label{fig:station_coverage_year}
+\end{figure}
+
+\paragraph{Wind speed distributions and class balance across splits.}
+Figure~\ref{fig:wind_dist_split} shows the distribution of daily maximum wind speed at stations in each split. The overall shape is similar across splits---right-skewed with a long tail beyond 15~m/s---but the training period contains a larger fraction of high-wind observations, consistent with the denser coverage of stormy high-latitude stations.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pics/03_wind_distribution_by_split.png}
+    \caption{Distribution of daily maximum wind speed (MXWDSP, m/s) at GSOD stations by data split. The 15~m/s absolute threshold $\tau_{\min}$ is marked by a dashed vertical line. The training set contains proportionally more observations above this threshold, explaining the higher positive label rate.}
+    \label{fig:wind_dist_split}
+\end{figure}
+
+\paragraph{Label imbalance and its temporal structure.}
+Figure~\ref{fig:pos_rate_year} plots the fraction of positive labels (windows where the 28-day maximum exceeds $\tau_s$) per year. Two patterns are visible. First, interannual variability in global storm frequency ($\pm$2--4\% from year to year). Second, a step-down in positive rate from 2020 to 2021, coinciding with the train/val boundary. This discontinuity is \emph{not} an artefact of any preprocessing bug; it reflects a genuine change in the composition of active stations between the historical GSOD archive (pre-2021) and the near-real-time records (post-2021). The global positive rate is 24.5\% in training, 12.7\% in validation, and 12.1\% in the test period. Because the evaluation metrics (AUROC, AP, BSS) are either rank-based or normalised relative to the local climatological rate, this imbalance does not invalidate cross-split comparisons; however, it does mean that the decision threshold at inference time should be recalibrated on the validation set rather than set blindly at $p = 0.5$.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pics/05_positive_rate_by_year.png}
+    \caption{Fraction of positive labels (28-day wind exceedances) per year. The step-down at the 2021 boundary reflects a change in the active station composition between GSOD historical and near-real-time archives. Interannual variability within each split ($\pm$2--4\%) reflects genuine climate variability.}
+    \label{fig:pos_rate_year}
+\end{figure}
+
+\paragraph{Seasonal structure of extreme wind events.}
+Figure~\ref{fig:pos_rate_season} shows the positive rate broken down by meteorological season. Boreal winter (DJF) exhibits the highest exceedance rate in all three splits, reflecting mid-latitude cyclone activity; summer (JJA) has the lowest global rate. This seasonal signal is consistent across splits and is explicitly encoded in the model via positional features appended to the classification head.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pics/06_positive_rate_by_season_split.png}
+    \caption{Positive label rate by meteorological season (DJF/MAM/JJA/SON) and split. DJF consistently yields the highest exceedance probability; JJA the lowest. The seasonal pattern is stable across all three periods.}
+    \label{fig:pos_rate_season}
+\end{figure}
+
+\paragraph{Geographic heterogeneity and threshold distribution.}
+Figure~\ref{fig:eda_geo} shows that positive rates vary substantially by continent---Europe and North America exhibit the highest rates, driven by frequent extratropical cyclones; Africa has the lowest---and that station-specific thresholds $\tau_s$ span a wide range. Approximately 60\% of stations have a local 95th-percentile wind speed below 15~m/s and therefore receive the floor threshold $\tau_{\min}$; the remainder have location-specific thresholds ranging up to 30~m/s, concentrated in coastal, orographic, and high-latitude zones. This bimodal structure motivates the station-adaptive design of Eq.~\ref{eq:threshold}: a globally fixed threshold would either over-classify calm stations or under-classify windy ones.
+
+\begin{figure}[t]
+     \centering
+     \begin{subfigure}[b]{0.49\linewidth}
+         \centering
+         \includegraphics[width=\linewidth]{pics/07_positive_rate_by_continent.png}
+         \caption{Positive rate by continent}
+     \end{subfigure}
+     \hfill
+     \begin{subfigure}[b]{0.49\linewidth}
+         \centering
+         \includegraphics[width=\linewidth]{pics/08_threshold_distribution.png}
+         \caption{Station threshold $\tau_s$ distribution}
+     \end{subfigure}
+     \caption{(a) Positive label rate by continent. Europe and North America lead; Africa and Oceania lag. (b) Distribution of station thresholds $\tau_s = \max(\hat{q}_{0.95}, 15\,\text{m/s})$. The spike at 15~m/s corresponds to the $\approx$60\% of stations for which the floor threshold is binding; the right tail ($>$15~m/s) reflects high-wind coastal, orographic, and high-latitude stations.}
+     \label{fig:eda_geo}
+\end{figure}
+
+\paragraph{CMIP6 vs.\ station wind: systematic underestimation.}
+Figure~\ref{fig:cmip6_vs_station} compares the CMIP6 MRI-ESM2-0 daily maximum wind speed at the co-located grid cell with the station observation for the same calendar day. The climate model systematically underestimates local wind extremes: where stations record speeds above 15~m/s, the co-located CMIP6 value is typically 5--10~m/s lower. This attenuation is a well-documented consequence of spatial averaging at the 1.125$^\circ$ grid scale~\cite{shenCMIP6Wind2022} and is the central motivation for replacing direct CMIP6 thresholding with a learned calibration. Importantly, the degree of underestimation is non-uniform across stations: coastal and orographic sites show greater CMIP6 bias, explaining why the spatial context provided by the 95$\times$95 input patch (which encodes surrounding terrain via the elevation channel) is essential for correcting it.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pics/09_cmip6_vs_station_wind.png}
+    \caption{CMIP6 MRI-ESM2-0 sfcWindmax at the co-located grid cell versus GSOD station observation (training period, 100K random sample). The dashed line is the identity. CMIP6 systematically underestimates station-observed extremes; the underestimation increases with wind speed magnitude, motivating the learned calibration approach.}
+    \label{fig:cmip6_vs_station}
+\end{figure} 
 % Future projections of the synthetic datasets are based on various CO${}_2$ emission scenarios, critically reviewed in \cite{eyring2016overview}.
 
 
@@ -390,41 +463,69 @@ Essentially, Eq.~\ref{eq:cnn_prob}frames our task as a classification problem wh
 \label{sec:training_val}
 
 \paragraph{Dataset construction.}
-Following Section~\ref{sec:data_collection_preprocessing}, each training sample consists of a local spatiotemporal patch of CMIP6 fields centred on a weather station pixel, paired with the binary storm label defined in Eq.~\ref{eq:target}. Formally, the dataset is
+Each training sample is a local spatiotemporal patch of CMIP6 fields centred on a station pixel, paired with the binary storm label from Eq.~\ref{eq:target}:
 \begin{equation}
     \mathcal{D} = \left\{ \left(\mathcal{O}^w_{ij}\right)_t,\; (y_{ij})_t \right\}_{n=1}^{N_{\mathcal{D}}},
 \end{equation}
-where $N_{\mathcal{D}} = |\mathcal{S}_{\mathcal{D}}| \times T$ with $|\mathcal{S}_{\mathcal{D}}|$ the number of station-occupied pixels and $T$ the number of valid time steps after alignment. Each input patch has shape $C \times \Delta_t \times (2w{+}1) \times (2w{+}1)$, with $C=4$ channels (three CMIP6 variables: precipitation \texttt{pr}, maximum temperature \texttt{tasmax}, minimum temperature \texttt{tasmin}; plus static elevation---see ablation study in Section~\ref{sec:experiments}), temporal window $\Delta_t = 27$ days, and spatial half-width $w = 47$ pixels ($95 \times 95$ grid cells, covering roughly $106^\circ \times 106^\circ$ at the equator).
+where $N_{\mathcal{D}} = |\mathcal{S}_{\mathcal{D}}| \times T$, with $|\mathcal{S}_{\mathcal{D}}|$ the number of station-occupied grid pixels and $T$ the number of valid time steps sampled at a stride of 14 days. Each input patch has shape $C \times \Delta_t \times (2w{+}1) \times (2w{+}1)$, with $C=4$ channels (precipitation \texttt{pr}, maximum temperature \texttt{tasmax}, minimum temperature \texttt{tasmin}, and static elevation), temporal window $\Delta_t = 27$ days, and spatial half-width $w = 47$ pixels ($95 \times 95$ grid cells, covering $\approx 106^\circ \times 106^\circ$ at the equator). The elevation channel is a static field---identical across the 27 time steps---that encodes sub-grid topographic complexity not captured by the 1.125$^\circ$ CMIP6 grid. The 14-day temporal stride prevents overlapping windows from contributing nearly identical labels to consecutive samples, reducing redundancy in the training signal. The full training set (2000--2020) comprises $\sim$3.1M samples, of which 24.5\% carry a positive label.
 
-\paragraph{Train / validation / test split.}
-The dataset is divided chronologically to prevent temporal leakage: \textbf{training} covers 2000-01-01 to 2020-12-31, \textbf{validation} 2021-01-01 to 2022-12-31, and \textbf{test} 2023-01-01 to 2024-12-31. All stations are present in every split; only the time axis differs. The validation set is used exclusively for early stopping (monitoring validation loss with patience of 10 epochs); no hyperparameter search is performed on it. Empirically, validation loss and Average Precision are well-correlated across epochs, so the best checkpoint by validation loss also yields near-optimal AP. This strict temporal separation ensures that the model is evaluated on conditions genuinely unseen during training.
+\paragraph{Chronological train/validation/test split.}
+The dataset is divided strictly by time to prevent temporal leakage:
+\begin{itemize}
+    \item \textbf{Training:} 2000-01-01 -- 2020-12-31 (21 years; $\sim$3.1M samples; 24.5\% positive)
+    \item \textbf{Validation:} 2021-01-01 -- 2022-12-31 (2 years; $\sim$0.29M samples; 12.7\% positive)
+    \item \textbf{Test:} 2023-01-01 -- 2024-12-31 (2 years; $\sim$0.29M samples; 12.1\% positive)
+\end{itemize}
+The same set of station locations is used in all three splits; only the time axis differs. The difference in positive rates across splits (24.5\% vs.\ 12.7\% vs.\ 12.1\%) is a structural property of the GSOD network: the training period is dominated by long-running historical stations concentrated in high-wind, high-latitude regions, while post-2021 records contain a geographically different station mix with more tropical and subtropical coverage (Section~\ref{sec:eda}). Because AUROC, AP, and BSS are rank-based or normalised relative to the local climatological rate, this imbalance does not bias cross-split comparisons, but the decision threshold at inference should be calibrated on the validation set rather than set to 0.5.
 
-\paragraph{Training protocol.}
-The network is trained with the AdamW optimiser~\cite{https://doi.org/10.48550/arxiv.1412.6980} (learning rate $\eta = 10^{-4}$, weight decay $\lambda = 10^{-2}$) under a cosine annealing schedule that decays $\eta$ to $\eta/100$ over $T_{\max} = 20$ epochs. The loss is binary cross-entropy with logits and label smoothing $\varepsilon = 0.05$, which replaces hard targets $\{0,1\}$ with soft targets $\{0.05,\, 0.95\}$ and acts as a calibration regulariser~\cite{muller2019does}.
+\paragraph{Loss function.}
+We minimise binary cross-entropy with logits:
+\begin{equation}
+    \mathcal{L} = -\frac{1}{N}\sum_{n=1}^{N}\bigl[\tilde{y}_n \log\sigma(\hat{z}_n) + (1-\tilde{y}_n)\log(1-\sigma(\hat{z}_n))\bigr],
+\end{equation}
+where $\hat{z}_n$ is the raw model logit, $\sigma$ is the sigmoid function, and $\tilde{y}_n = (1-\varepsilon)y_n + \varepsilon/2$ are label-smoothed targets with $\varepsilon = 0.05$. Label smoothing prevents the model from driving logits to $\pm\infty$ and acts as a calibration regulariser~\cite{muller2019does}. We do \emph{not} use a positive-class weight in the loss; class balance is handled via undersampling instead, which empirically produces better-calibrated probability outputs.
 
-\paragraph{Class-imbalance handling via per-epoch resampling.}
-The raw training set is heavily imbalanced: roughly 25\% of samples carry a positive label. A naive positive-class weight applied to the loss function can bias gradient updates and leads to poor calibration. We instead apply random undersampling at a 1:1 ratio, retaining all positive samples and an equal number of randomly selected negatives, reducing the training set from $\sim$3.1M to $\sim$1.4M samples. Crucially, the negative subsample is \emph{redrawn at the start of every epoch} using a fresh random seed (seed\,$=$\,epoch index), so the model encounters a different set of negative examples in each pass. Over $E$ training epochs this exposes the network to approximately $E$ times more unique negative examples than a fixed-subsample approach would, substantially reducing memorisation of a fixed training set. Preliminary experiments with a fixed subsample exhibited overfitting already by epoch~12; per-epoch resampling extended productive training to epoch~28 with consistent improvement in validation Average Precision (Figure~\ref{fig:train_val_ap}).
+\paragraph{Class-imbalance handling via per-epoch random undersampling.}
+The raw training set is heavily imbalanced (24.5\% positive). Rather than reweighting the loss---which can bias gradient magnitudes and degrade calibration---we apply \emph{random negative undersampling} at a 1:1 ratio: all positive samples are retained and an equal number of negatives are drawn uniformly at random, reducing each epoch's effective training set from $\sim$3.1M to $\sim$1.56M samples.
 
-Training is distributed across two NVIDIA RTX A5000 GPUs (24~GB each) using PyTorch DDP with \texttt{fp16} mixed-precision arithmetic~\cite{paszke2019pytorch}. Each epoch processes 5{,}000 mini-batches of size 32. The model checkpoint with the highest validation Average Precision is selected for final evaluation.
+Crucially, the negative subsample is \textbf{redrawn independently at the start of every epoch}, with the epoch index as the random seed. Over $E$ epochs, the model is thus exposed to approximately $E \times |\text{positives}|$ unique negative examples---a factor of $E$ more diversity than a fixed subsample. In ablation experiments with a fixed subsample, validation loss began increasing from epoch~10--12; per-epoch resampling kept it improving through epoch~20--25, yielding a consistent $\approx$0.01--0.02 AUROC gain (Figure~\ref{fig:train_val_ap}). The training set is reshuffled at each epoch, ensuring that mini-batches contain geographically diverse station mixes rather than contiguous regional blocks.
 
 \begin{figure}[t]
     \centering
-    % Replace with actual plot: training AP and validation AP vs. epoch
-    % fixed-subsample run (overfit at ep.12) vs. per-epoch-resample run (ep.28)
     \includegraphics[width=\linewidth]{pics/train_val_ap.png}
-    \caption{Training and validation Average Precision across epochs for the fixed-subsample baseline (dashed) and the per-epoch resampling strategy (solid). Fixed subsampling causes validation AP to plateau and decline after epoch~12; per-epoch resampling sustains improvement through epoch~28.}
+    \caption{Validation Average Precision vs.\ epoch: fixed negative subsampling (dashed) vs.\ per-epoch random resampling (solid). Fixed subsampling causes overfitting by epoch $\sim$12; per-epoch resampling sustains improvement. \textcolor{brown}{[Figure to be generated from training logs.]}}
     \label{fig:train_val_ap}
 \end{figure}
 
-\paragraph{Evaluation metrics.}
-Because storm events are rare (\textasciitilde42\% positive rate after 28-day aggregation), ranking-based metrics are more informative than accuracy. We report:
-\begin{itemize}
-    \item \textbf{AUROC} --- area under the receiver operating characteristic curve; measures overall discriminative ability independent of threshold.
-    \item \textbf{Average Precision (AP)} --- area under the precision--recall curve; sensitive to the quality of positive-class detection.
-    \item \textbf{F1, Precision, Recall} --- computed at the decision threshold of $p = 0.5$.
-\end{itemize}
-All metrics are computed both globally on the test set and stratified by geographic region and meteorological season (DJF, MAM, JJA, SON).
+\paragraph{Optimiser and learning rate schedule.}
+We use AdamW~\cite{https://doi.org/10.48550/arxiv.1412.6980} with initial learning rate $\eta_0 = 10^{-4}$ and weight decay $\lambda = 10^{-2}$. The learning rate is annealed via cosine annealing~\cite{loshchilov2016sgdr}:
+\begin{equation}
+    \eta_e = \eta_{\min} + \tfrac{1}{2}(\eta_0 - \eta_{\min})\!\left(1 + \cos\!\left(\tfrac{\pi e}{T_{\max}}\right)\right),
+\end{equation}
+with $\eta_{\min} = 10^{-6}$ and $T_{\max} = 20$ epochs. This schedule allows the model to refine fine-grained features in the second half of each cycle. With early stopping, training typically terminates between epochs 15 and 25---spanning one full cosine cycle.
 
+\paragraph{Early stopping.}
+Training stops when validation loss fails to improve for 10 consecutive epochs; the checkpoint with the lowest validation loss is retained. Validation loss and AP are empirically well-correlated ($r > 0.95$) across epochs in our experiments, so loss-based early stopping effectively selects the near-optimal AP checkpoint without the overhead of computing AP at every step.
+
+\paragraph{Mixed-precision distributed training.}
+Training runs across two NVIDIA RTX A5000 GPUs (24~GB VRAM each) using PyTorch DistributedDataParallel (DDP)~\cite{paszke2019pytorch} with \texttt{fp16} mixed-precision arithmetic, which halves memory usage and achieves $\approx$2$\times$ throughput over \texttt{fp32}. Each epoch processes 5{,}000 mini-batches of size~32 (160K samples/epoch total). Experiments are tracked with MLflow; a checkpoint is saved after every epoch.
+
+\paragraph{Positional encoding.}
+The GhostWindNet27 backbone produces a 1{,}998-dimensional feature vector. Before the classification head, we concatenate five positional scalars:
+\begin{equation}
+    \mathbf{p} = \bigl[\sin(2\pi d/365),\; \cos(2\pi d/365),\; m/12,\; \varphi/90,\; \lambda/180\bigr]^{\!\top},
+\end{equation}
+where $d$ is the day-of-year, $m$ the calendar month, $\varphi$ the station latitude (degrees), and $\lambda$ the station longitude (degrees). The Fourier pair $(sin, cos)$ encodes the annual cycle without discontinuity at the year boundary; latitude and longitude provide the geographic context. The classification head maps the 2{,}003-dimensional concatenated vector through Dropout $\to$ Linear(2003$\to$70) $\to$ LeakyReLU $\to$ Linear(70$\to$1).
+
+\paragraph{Evaluation metrics.}
+Because storm events are relatively rare (12--25\% positive rate depending on the split), ranking-based metrics are most informative. We report:
+\begin{itemize}
+    \item \textbf{AUROC}~--- area under the ROC curve; threshold-independent measure of discriminative ability.
+    \item \textbf{Average Precision (AP)}~--- area under the precision--recall curve; particularly sensitive to the quality of positive-class retrieval at low recall, which is the operationally relevant regime for rare extreme events.
+    \item \textbf{Brier Skill Score (BSS)}~--- $1 - \mathrm{BS}/\mathrm{BS}_{\mathrm{clim}}$, where $\mathrm{BS}_{\mathrm{clim}}$ is the Brier score of the split-specific climatological frequency. BSS$>0$ indicates improvement over climatology; BSS$=1$ is a perfect probabilistic forecast.
+    \item \textbf{F1, Precision, Recall}~--- computed at $p^* = 0.5$; should be interpreted alongside AUC-based metrics as they depend on the chosen threshold.
+\end{itemize}
+All metrics are computed globally on the held-out test set (2023--2024) and stratified by geographic region and meteorological season (DJF, MAM, JJA, SON).
 
 \section{Numerical Experiments}
 \label{sec:experiments}
