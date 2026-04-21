@@ -185,18 +185,23 @@ class DataPreLoader:
 
         Used when synthetic_labels=True and sfcWindmax is not in training variables.
         Applies the same time crop and padding as the main climate data.
+        De-normalizes to physical m/s so that synthetic_threshold stays in interpretable units.
         """
+        from src.utils.norm_values import mean_channels_cmip6, std_channels_cmip6
         orig_time = np.load(os.path.join(self.cfg.train.data_dir, 'time.npy')).astype('datetime64[D]')
         start_date = datetime.strptime(self.cfg.train.start_time, '%Y-%m-%d').date()
         end_date = datetime.strptime(self.cfg.train.end_time, '%Y-%m-%d').date()
         t0 = int(orig_time.searchsorted(start_date))
         t1 = int(orig_time.searchsorted(end_date))
         path = os.path.join(self.cfg.train.data_dir, f'sfcWindmax_{self.cfg.process.precision}.npy')
-        data = np.load(path)[t0:t1].astype(np.float32)  # (time, lat, lon)
+        data = np.load(path)[t0:t1].astype(np.float32)  # (time, lat, lon), z-score normalized
+        sfc_mean = float(mean_channels_cmip6[0])  # 8.934635 m/s
+        sfc_std  = float(std_channels_cmip6[0])   # 4.7078495 m/s
+        data = data * sfc_std + sfc_mean           # de-normalize to physical m/s
         pad = self.cfg.half_side_size
         data_padded = np.pad(data, ((0, 0), (pad, pad), (pad, pad)), mode='edge')
         self.sfcwindmax_for_labels = torch.from_numpy(data_padded)
-        logging.info(f"sfcWindmax for synthetic labels loaded: {data_padded.shape}")
+        logging.info(f"sfcWindmax for synthetic labels loaded: {data_padded.shape}, physical range [{data.min():.2f}, {data.max():.2f}] m/s")
 
     def load_station_thresholds(self):
         """Load per-station p95 thresholds and build lookup (lat_idx, lon_idx) -> effective_threshold.
