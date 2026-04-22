@@ -1,7 +1,7 @@
 make_tmp_target_file: False
 
 use_elevation: true
-in_chans: 3               # tasmax + tasmin + elevation (no pr, no sfcWindmax)
+in_chans: 2               # pr + elevation (no temperature)
 normalize: false
 
 time_agg_window: 28
@@ -17,8 +17,7 @@ end_time: '2024-12-31'
 start_of_test: '2023-01-01'
 
 variables:
-- tasmax
-- tasmin
+- pr
 
 spatial_crop: false
 lat_min: 30
