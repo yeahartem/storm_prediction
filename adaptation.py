@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 
 # ── paths ────────────────────────────────────────────────────────────────────
 SYNTHETIC_CKPT   = 'out/2026-04-21/23-47-36/epoch=22-step=115000.ckpt'
-SUPERVISED_CKPT  = ''   # fill in: path to nosfcwind supervised checkpoint
+SUPERVISED_CKPT  = 'out/2026-04-20/15-54-18/epoch=22-step=115000.ckpt'
 CHANNEL_NAMES    = ['pr', 'tasmax', 'tasmin', 'elevation']
 
 # ── hyper-params ─────────────────────────────────────────────────────────────
