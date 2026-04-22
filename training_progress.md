@@ -271,3 +271,7 @@ TN=63727  FP=18352  FN=10931  TP=34606
 
 ## 2026-04-14 00:03
 - [experiment/no-elevation c97b63a] Fix CosineAnnealingLR T_max: use cosine_t_max=20 instead of max_epoch=100
+
+## 2026-04-16 18:29
+- c04e1f7 Add per-epoch resampling, CosineAnnealingLR, psl variable to all server configs
+- ba07e9a CMIP6 global pipeline: BCELoss, GhostWindNet27, data bug fixes
