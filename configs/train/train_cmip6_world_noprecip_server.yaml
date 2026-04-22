@@ -39,10 +39,11 @@ label_smoothing: 0.05
 neg_subsample_ratio: 1.0
 use_pos_weight: false
 
-num_workers: 4
-gpu_num: 1
-distributed: false
+num_workers: 8
+gpu_num: 2
+distributed: true
 num_nodes: 1
+strategy: 'ddp'
 
 limit_train_batches: 5000
 limit_val_batches: 1000
