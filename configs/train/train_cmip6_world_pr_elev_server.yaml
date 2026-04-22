@@ -1,0 +1,58 @@
+make_tmp_target_file: False
+
+use_elevation: true
+in_chans: 2               # pr + elevation only (no temperature)
+normalize: false
+
+time_agg_window: 28
+time_freq: 14
+target_threshold: 15.0
+abs_wind_threshold: 15.0
+
+data_dir: data/cmip6_world/
+target_data_file: target.parquet
+
+start_time: '2000-01-01'
+end_time: '2024-12-31'
+start_of_test: '2023-01-01'
+
+variables:
+- pr
+
+spatial_crop: false
+lat_min: 30
+lat_max: 50
+lon_min: -30
+lon_max: 40
+
+batch_size: 32
+learning_rate: 0.0001
+weight_decay: 0.01
+max_epoch: 100
+
+optimizer_name: 'AdamW'
+scheduler_name: 'CosineAnnealingLR'
+cosine_t_max: 20
+loss_name: 'BCELoss'
+label_smoothing: 0.05
+neg_subsample_ratio: 1.0
+use_pos_weight: false
+
+num_workers: 8
+gpu_num: 2
+distributed: true
+num_nodes: 1
+strategy: 'ddp'
+
+limit_train_batches: 5000
+limit_val_batches: 1000
+
+log_every_n_steps: 50
+
+test_only: false
+ckpt_path: null
+
+cache:
+  use_cached_padding: false
+  pad_crop_data_path: "data/cache/cmip6_pad_crop_data.npy"
+  shift_data_path: "data/cache/cmip6_shift_data.pkl"
