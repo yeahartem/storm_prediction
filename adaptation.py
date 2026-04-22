@@ -122,43 +122,53 @@ def evaluate(model, loader, alpha: torch.Tensor) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-def adapt(model, train_loader) -> torch.Tensor:
-    """
-    Gradient descent on alpha to minimise real-label BCE.
-    Returns optimised alpha tensor.
-    """
-    alpha = torch.nn.Parameter(torch.ones(len(CHANNEL_NAMES), device=DEVICE))
-    optimizer = torch.optim.Adam([alpha], lr=ADAPT_LR)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=ADAPT_EPOCHS)
-
-    for epoch in range(ADAPT_EPOCHS):
-        epoch_loss, n = 0.0, 0
-        for batch in train_loader:
-            if n >= ADAPT_BATCHES_PER_EPOCH:
+def compute_loss(model, loader, alpha: torch.Tensor, n_batches: int) -> float:
+    """BCE on real GSOD labels for given alpha, no gradients needed."""
+    total, n = 0.0, 0
+    with torch.no_grad():
+        for batch in loader:
+            if n >= n_batches:
                 break
             (X, pos), y, _, station_thresholds = batch
             X, pos = X.to(DEVICE), pos.to(DEVICE)
             y_bin  = (y >= station_thresholds).float().to(DEVICE)
-
-            optimizer.zero_grad()
             logits = scaled_forward(model, X, pos, alpha)
-            loss   = F.binary_cross_entropy_with_logits(logits, y_bin)
-            loss.backward()
-            optimizer.step()
-
-            with torch.no_grad():
-                alpha.clamp_(ALPHA_MIN, ALPHA_MAX)
-
-            epoch_loss += loss.item()
+            total += F.binary_cross_entropy_with_logits(logits, y_bin).item()
             n += 1
+    return total / n
 
-        scheduler.step()
-        a = alpha.detach().cpu().numpy().round(3)
+
+def adapt(model, train_loader) -> torch.Tensor:
+    """
+    Numerical gradient descent on alpha (finite differences).
+    Avoids backprop through the 11M-param model — no OOM risk.
+    Each epoch: 1 base eval + 4 perturbed evals = 5 forward passes.
+    """
+    alpha = torch.ones(len(CHANNEL_NAMES), device=DEVICE)
+    lr    = ADAPT_LR
+    eps   = 0.05   # finite-difference step size
+
+    for epoch in range(ADAPT_EPOCHS):
+        L_base = compute_loss(model, train_loader, alpha, ADAPT_BATCHES_PER_EPOCH)
+        grad   = torch.zeros_like(alpha)
+        for i in range(len(CHANNEL_NAMES)):
+            alpha_pert    = alpha.clone()
+            alpha_pert[i] = alpha_pert[i] + eps
+            L_pert        = compute_loss(model, train_loader, alpha_pert, ADAPT_BATCHES_PER_EPOCH)
+            grad[i]       = (L_pert - L_base) / eps
+
+        alpha = alpha - lr * grad
+        alpha = alpha.clamp(ALPHA_MIN, ALPHA_MAX)
+
+        # cosine LR decay
+        lr = ADAPT_LR * 0.5 * (1 + np.cos(np.pi * epoch / ADAPT_EPOCHS))
+
+        a = alpha.cpu().numpy().round(3)
         logging.info(f"Adapt epoch {epoch+1:3d}/{ADAPT_EPOCHS}: "
-                     f"loss={epoch_loss/n:.4f}  "
+                     f"loss={L_base:.4f}  "
                      f"alpha=[pr={a[0]}, tasmax={a[1]}, tasmin={a[2]}, elev={a[3]}]")
 
-    return alpha.detach()
+    return alpha
 
 
 # ─────────────────────────────────────────────────────────────────────────────
