@@ -538,17 +538,6 @@ class WindNetPL(pl.LightningModule):
         months = torch.cat([x["month"] for x in self.test_outputs]).cpu().numpy()
         preds_float = preds_float.squeeze()
 
-        binned_results_df = analyze_performance_by_bins(
-            y_pred=preds_float.numpy(),
-            y_true=target_float.numpy(),
-            n_bins=5
-        )
-
-        # (Очень рекомендуется) Сохраняем эту таблицу в CSV и логируем в MLflow как артефакт
-        binned_results_path = os.path.join(self.run_dir, 'binned_test_results.csv')
-        binned_results_df.to_csv(binned_results_path)
-        self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=binned_results_path)
-
         # Brier Score and Brier Skill Score
         from sklearn.metrics import brier_score_loss
         y_true_np = target.numpy().astype(int)
@@ -557,8 +546,21 @@ class WindNetPL(pl.LightningModule):
         p_clim = y_true_np.mean()
         bs_clim = p_clim * (1.0 - p_clim)
         bss = 1.0 - bs / bs_clim
-        mlflow.log_metrics({"test/BS": float(bs), "test/BSS": float(bss)})
+        self.log("test/BS", float(bs))
+        self.log("test/BSS", float(bss))
         logging.info(f"Brier Score: {bs:.4f}  BSS: {bss:.4f}  (clim_rate={p_clim:.3f})")
+
+        try:
+            binned_results_df = analyze_performance_by_bins(
+                y_pred=preds_float.numpy(),
+                y_true=target_float.numpy(),
+                n_bins=5
+            )
+            binned_results_path = os.path.join(self.run_dir, 'binned_test_results.csv')
+            binned_results_df.to_csv(binned_results_path)
+            self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=binned_results_path)
+        except Exception as e:
+            logging.info(f"binned_results artifact skipped: {e}")
 
         # <<< КОНЕЦ БЛОКА, КОТОРЫЙ НУЖНО ДОБАВИТЬ >>>
         thrs = [0, 3, 5, 8, 10, 12, 15, 17, 20, 23, 25, 27, 30]
