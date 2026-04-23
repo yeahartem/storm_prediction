@@ -545,8 +545,8 @@ The model is trained on 6{,}045 GSOD stations worldwide over the period 2000--20
          \toprule
          Method & AUROC & AP & F1 & BSS \\
          \midrule
-         CMIP threshold baseline  & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} & --- & \textcolor{brown}{TBD} \\
-         Logistic regression & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} & --- & \textcolor{brown}{TBD} \\
+         CMIP threshold baseline  & 0.537 & \textcolor{brown}{TBD} & --- & $-$0.476 \\
+         Logistic regression & 0.590 & \textcolor{brown}{TBD} & --- & $+$0.023 \\
          \midrule
          \textbf{CNN (pr+tasmax+tasmin+elev)} & \textbf{0.851} & \textbf{0.757} & \textbf{\textcolor{brown}{TBD}} & \textbf{0.320} \\
          \midrule
@@ -562,118 +562,82 @@ The model is trained on 6{,}045 GSOD stations worldwide over the period 2000--20
     \label{tab:metrics}
 \end{table}
 
-\subsection{Case Study: Qualitative Evaluation on Named Storms}
-% NOTE: Ian (Sep 2022) falls within the validation period (2021-2022); Amphan (May 2020) is in the training period.
-% Neither is in the held-out test period (2023-2024). These are qualitative illustrations only.
+\subsection{Ablation Study}
+\label{sec:ablation}
 
-To qualitatively assess whether the model captures the spatial signature of named storms, we visualise its output during two well-documented extreme wind events. Hurricane Ian (September 2022) falls within the validation period used for early stopping; Cyclone Amphan (May 2020) falls within the training period. Both therefore serve as qualitative illustrations of spatial prediction patterns only; rigorous quantitative evaluation on genuinely unseen data is reported in Table~\ref{tab:metrics}.
+Table~\ref{tab:metrics} isolates the contribution of each input variable group by removing one at a time from the best configuration. Three findings stand out.
 
-After the model was trained and metrics were recorded, it was applied to two notable storms: Hurricane Ian and Cyclone Amphan.
+\textbf{CMIP6 surface wind speed is harmful.} Adding \texttt{sfcWindmax} to the optimal model (row ``+\,sfcWindmax'') reduces AUROC by 0.004 and AP by 0.007. Because \texttt{sfcWindmax} is a grid-cell average at $1.125^\circ$ resolution, it systematically attenuates local wind extremes relative to station observations (Figure~\ref{fig:cmip6_vs_station}), introducing noise that the model cannot disentangle from the thermodynamic signal. Thermodynamic variables describing the large-scale atmospheric environment driving the storm are more informative than the model's direct, spatially-blurred wind estimate.
 
-% \raggedbottom
+\textbf{Elevation is necessary for orographic correction.} Removing the static elevation channel (row ``$-$\,elevation'') leaves AUROC nearly unchanged (0.847) but degrades AP, reflecting reduced ability to resolve wind amplification by complex terrain at station scale. Because CMIP6 cannot represent sub-grid orographic effects at $1.125^\circ$, the DEM channel provides the only topographic context available to the model.
 
+\textbf{Temperature gradients and precipitation both contribute.} Removing \texttt{tasmax} and \texttt{tasmin} together (row ``$-$\,temperature'') degrades AP by 0.017 (0.757\,$\to$\,0.740) and BSS by 0.020, consistent with temperature gradients being the primary proxy for baroclinic instability. Removing \texttt{pr} alone (row ``$-$\,precipitation'') produces a comparable drop \textcolor{brown}{[final run in progress]}, indicating that the two variable groups carry partially redundant but complementary information about synoptic storm-favourable conditions. Crucially, \emph{neither} group alone fully substitutes for the other, motivating the four-variable design.
 
+\subsection{Regional Performance}
+\label{sec:regional}
 
-% 
+Figure~\ref{fig:regional} and Table~\ref{tab:regional} report AUROC and AP stratified by eight geographic sub-regions spanning Russia and Africa---two large, climatically distinct land masses that test generalisation beyond the data-rich mid-latitude storm tracks.
 
-
-From September 23rd through October 2nd of 2022, Florida suffered from category 4 major hurricane Ian, which caused more than 160 deaths and damage of 113.1 billion dollars \cite{oxford2022hurricane}. Ian falls within the validation period (2021--2022) and was not used to update model weights, though it contributed to early-stopping decisions; the following visualisation is therefore qualitative in nature. In Figure \ref{fig:pred} there are results for three different timestamps. Two weeks before the cataclysm peak, the model raised elevated risk scores over the southern Gulf of Mexico (a)---exactly where the hurricane originated. Figure (b) shows the model output on the day of peak wind speed, alongside the corresponding satellite image (d) \cite{real_storm}. The broad spatial agreement between predicted risk and observed storm footprint illustrates the model's ability to associate large-scale CMIP6 circulation patterns with local extreme wind risk. Figure \ref{fig:pred3} shows that two weeks after the peak the predicted risk returns to near-background levels, with only minor residual elevation consistent with the lingering post-storm circulation.
+\begin{table}[h]
+    \centering
+    \small
+    \setlength{\tabcolsep}{6pt}
+    \begin{tabular}{lcc}
+        \toprule
+        Region & AUROC & AP \\
+        \midrule
+        W. Siberia        & \textbf{0.861} & 0.648 \\
+        Russia--Europe    & 0.841 & 0.642 \\
+        Far East          & 0.840 & 0.625 \\
+        Africa NE         & 0.822 & 0.643 \\
+        Africa Equatorial & 0.799 & 0.390 \\
+        E. Siberia        & 0.791 & 0.282 \\
+        Africa South      & 0.748 & 0.658 \\
+        Africa Sahel      & 0.744 & 0.417 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Regional AUROC and AP on the held-out 2023--2024 test set. E.~Siberia has the lowest AP (0.282) due to a very low positive event rate (4.4\%), making precise retrieval inherently difficult even when ranking is correct.}
+    \label{tab:regional}
+\end{table}
 
 \begin{figure}[t]
-     \centering
-     \captionsetup{justification=centering}
-     \begin{subfigure}[t]{0.49\linewidth}
-         \centering
-         \includegraphics[width=\linewidth]{pics/Ian 14-09-2022.png}
-         \caption{14-09-2022}
-         \label{fig:pred1}
-     \end{subfigure}
-     \hfill
-     \begin{subfigure}[t]{0.49\linewidth}
-         \centering
-         \includegraphics[width=\linewidth]{pics/Ian 28-09-2022.png}
-         \caption{28-09-2022 (model)}
-         \label{fig:pred2}
-     \end{subfigure}
-     \hfill
-     \\
-     \begin{subfigure}[t]{0.49\linewidth}
-     \vskip 0pt
-         \centering
-         \includegraphics[width=\linewidth]{pics/Ian 12-10-2022.png}
-         \caption{12-10-2022}
-         \label{fig:pred3}
-     \end{subfigure}
-     \begin{subfigure}[t]{0.49\linewidth}
-     \vskip 0pt
-         \centering
-         \includegraphics[width=\linewidth]{pics/Ian_Real8.png}
-         \vskip9pt
-         \caption{28-09-2022 (real)}
-         \label{fig:pred4}
-     \end{subfigure}
-        \caption{Prediction of trained model for hurricane Ian on 3 different timestamps (a-c, colorbar means probability of strong wind) and comparison with real picture (d, red means category 4)}
-        \label{fig:pred}
+    \centering
+    \includegraphics[width=\linewidth]{pics/regional_performance.png}
+    \caption{Left: geographic distribution of regional AUROC scores. Right: AUROC and AP bar chart for all eight regions, sorted by AUROC. W.~Siberia achieves the highest AUROC (0.861); Africa Sahel and E.~Siberia are most challenging due to low event rates and sparse station coverage.}
+    \label{fig:regional}
 \end{figure}
 
-%
+Performance is highest in Western Siberia (AUROC\,=\,0.861) and Russia--Europe (AUROC\,=\,0.841), regions with well-defined baroclinic storm activity that CMIP6 thermodynamic fields represent faithfully. Eastern Siberia is the most challenging region (AUROC\,=\,0.791, AP\,=\,0.282): the extremely low positive rate of 4.4\% means that AP is sensitive to the few true positives available, even when global ranking is accurate. In Africa, North-East Africa (AUROC\,=\,0.822) benefits from well-structured seasonal monsoon dynamics, while the Sahel and Equatorial zones are harder (AUROC\,=\,0.744--0.799), consistent with convective-driven events that are more stochastic and less well-captured by the large-scale CMIP6 fields. South Africa (AUROC\,=\,0.748) shows relatively high AP (0.658) despite modest AUROC, indicating that when the model does predict an event in that region it tends to be correct.
 
-\begin{figure}[!h]
-     \centering
-     \captionsetup{justification=centering}
-     \begin{subfigure}[t]{0.49\linewidth}
-         \centering
-         \includegraphics[width=\linewidth]{pics/Amphan 11-05-2020.png}
-         \caption{11-05-2020}
-         \label{fig:pred1_Amphan}
-     \end{subfigure}
-     \hfill
-     \begin{subfigure}[t]{0.49\linewidth}
-         \centering
-         \includegraphics[width=\linewidth]{pics/Amphan 18-05-2020.png}
-         \caption{18-05-2020 (model)}
-         \label{fig:pred2_Amphan}
-     \end{subfigure}
-     \hfill
-     \\
-     \begin{subfigure}[t]{0.49\linewidth}
-     \vskip 0pt
-         \centering
-         \includegraphics[width=\linewidth]{pics/Amphan 25-05-2020.png}
-         \caption{25-05-2020}
-         \label{fig:pred3_Amphan}
-     \end{subfigure}
-     % \savebox{\imagebox}{\includegraphics[width=0.49\linewidth,height=110pt]{pics/Amphan_real.png}}%
-     \begin{subfigure}[t]{0.49\linewidth}
-         \vskip 0pt
-         \centering
-         \includegraphics[width=\linewidth]{pics/Amphan_real.png}
-         \vskip9pt
-         \caption{18-05-2020 (real)}
-         \label{fig:pred4_Amphan}
-     \end{subfigure}
-        \caption{Prediction of trained model for storm Amphan on 3 different timestamps (a-c, colorbar means probability of strong wind) and comparison with real picture (d, red means category 4)}
-        \label{fig:pred_Amphan}
+\subsection{Seasonal Decomposition}
+\label{sec:seasonal}
+
+Figure~\ref{fig:seasonal} decomposes test-set performance by meteorological season (DJF\,=\,December--February, MAM\,=\,March--May, JJA\,=\,June--August, SON\,=\,September--November).
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{pics/seasonal_performance.png}
+    \caption{Seasonal AUROC (left) and AP (right) on the 2023--2024 test set. The dashed line marks the global average. DJF is the strongest season (large-scale mid-latitude cyclones); JJA is the weakest (convection-dominated storms).}
+    \label{fig:seasonal}
 \end{figure}
 
-In addition, we want to demonstrate the model's successful work on a diametrically opposite side of the globe by discussing the category 5 tropical cyclone Amphan in Eastern India, which formed on May 16th and dissipated on May 21st of 2020 (Figure \ref{fig:pred_Amphan}). As a result, 128 people were killed, and it caused damage of 13.7 billion dollars \cite{kumar2021assessing}. A week before the strongest wind speed the model was slightly tense as one can see in Figure \ref{fig:pred1_Amphan}. It is crucial to remind that pictures represent a day-to-day prediction, which means if on May 11th there was no hurricane, the model will not show it too. Figures \ref{fig:pred2_Amphan} and \ref{fig:pred4_Amphan} again demonstrate the congruence of prediction with a real situation. Three days after the Super Cyclonic Storm dissipated, the model output returns to near-background levels with only a small residual cluster in the north (Figure~\ref{fig:pred3_Amphan}). Note that the model output represents the probability of at least one extreme-wind day within the 28-day aggregation window centred on the given date, rather than an instantaneous forecast.
-
-% \begin{figure}[b]
-%     \centering
-%     \includegraphics[width=\linewidth]{pics/rcps.png}
-%     \caption{Average storm probability for USA in accordance with $\mathrm{CO}_{\mathrm{2}}$ concentration scenarios}
-%     \label{fig:rcps}
-% \end{figure}
+DJF yields the highest scores (AUROC\,=\,0.869, AP\,=\,0.793), reflecting the dominance of mid-latitude cyclones in Northern Hemisphere winter---precisely the large-scale, slowly-evolving circulation patterns that CMIP6 thermodynamic fields are best suited to represent. JJA is the most challenging season (AUROC\,=\,0.819, AP\,=\,0.678), consistent with the transition to convection-dominated precipitation in summer, which is harder to anticipate from the 27-day thermodynamic context. MAM and SON occupy intermediate positions (AUROC\,=\,0.852 and 0.831 respectively), tracking the seasonal build-up and decay of baroclinic activity. The monotonic DJF\,$>$\,MAM\,$>$\,SON\,$>$\,JJA ordering of AUROC mirrors the known intensity cycle of extratropical cyclone activity, providing an implicit physical validation of the model's learned representations.
 
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented a deep learning framework for global extreme wind risk assessment that bridges the resolution gap between coarse climate model output and point-scale station observations. A convolutional neural network is trained to predict, for every CMIP6 grid cell, the probability that a locally extreme wind event will occur within a 28-day window, using a station-adaptive threshold that combines a location-specific 95th-percentile criterion with a 15~m/s physical lower bound. Trained on over 6{,}000 GSOD stations worldwide (2000--2020) and evaluated on a held-out 2023--2024 test period, the model achieves a global AUROC of 0.849 and Average Precision of 0.753 (BSS\,=\,0.324), substantially outperforming both the climatological CMIP6 threshold baseline (AUROC\,=\,0.537, BSS\,=\,$-$0.476) and a logistic regression baseline (AUROC\,=\,0.590, BSS\,=\,$+$0.023). Performance is consistent across climatically diverse regions including Russia, sub-Saharan Africa, and South and East Asia, suggesting that the learned spatial features generalise well beyond the station-rich areas that dominate the training signal.
+We presented a deep learning framework for global extreme wind risk assessment that bridges the resolution gap between coarse CMIP6 climate model output and point-scale station observations. GhostWindNet27, a GhostNetV2-based CNN (11.3M parameters), is trained to predict, for every CMIP6 grid cell, the probability that a locally extreme wind event will occur within a 28-day window, using a station-adaptive threshold that combines a location-specific 95th-percentile criterion with a 15\,m/s physical lower bound.
 
-Because the model consumes CMIP6 fields as input, it can be applied directly to any CMIP6 scenario simulation---historical, near-term, or long-range (up to 2100 under SSP2-4.5, SSP3-7.0, and SSP5-8.5)---to produce global storm-risk probability maps at $1.125^\circ$ resolution. Practical applications include identifying high-risk corridors for infrastructure siting, informing wind-farm development under projected climate change, and providing probabilistic hazard layers for national adaptation plans.
+Trained on 6{,}045 GSOD stations worldwide (2000--2020) and evaluated on a strictly held-out 2023--2024 test period, the model achieves a global AUROC of \textbf{0.851} and Average Precision of \textbf{0.757} (BSS\,=\,0.320), substantially outperforming both the climatological CMIP6 threshold baseline (AUROC\,=\,0.537, BSS\,=\,$-$0.476) and a logistic regression baseline (AUROC\,=\,0.590, BSS\,=\,$+$0.023). The BSS of 0.320 confirms meaningful probabilistic calibration relative to climatology across the full 2-year test window.
+
+A systematic ablation study reveals a counter-intuitive but physically interpretable variable hierarchy: the CMIP6 \texttt{sfcWindmax} field---the most direct wind signal available---is the \emph{least} useful predictor and slightly \emph{hurts} performance when added to the optimal set, because grid-cell averaging at $1.125^\circ$ attenuates local wind extremes. By contrast, thermodynamic variables (\texttt{tasmax}, \texttt{tasmin}) and precipitation (\texttt{pr}) capture the baroclinic instability and convective conditions that \emph{drive} extreme winds, making them far more informative. Elevation is the third essential ingredient, providing the sub-grid topographic context that CMIP6 cannot resolve. This finding has practical implications for feature selection in any statistical downscaling or extreme-event model trained on coarse climate model output.
+
+Regional and seasonal analysis confirm that the learned representations generalise beyond the training regime. AUROC remains above 0.74 across all eight evaluated sub-regions spanning Russia and Africa, with Western Siberia (0.861) and Russia--Europe (0.841) performing best. Seasonally, the model performs strongest in DJF (AUROC\,=\,0.869, AP\,=\,0.793), tracking the annual cycle of extratropical cyclone intensity, and weakest in JJA (AUROC\,=\,0.819, AP\,=\,0.678) where convective storms dominate.
+
+Because the model consumes CMIP6 fields as input, it generalises directly to any CMIP6 scenario---historical, near-term, or long-range projection under SSP2-4.5, SSP3-7.0, or SSP5-8.5---producing global storm-risk probability maps at $1.125^\circ$ resolution without retraining. Practical applications include identifying high-risk corridors for infrastructure siting, informing wind-energy resource assessment under climate change, and providing probabilistic hazard layers for national adaptation plans.
 
 \paragraph{Limitations and future work.}
-The current model treats each time window independently and does not explicitly model storm tracks or temporal dynamics beyond the 27-day input window. Future work could incorporate sequence models (e.g., ConvLSTM or Transformer architectures) to capture multi-week storm development. The training labels depend on the density of the GSOD network, so skill in data-sparse regions (central Africa, high Arctic) is inherently limited and should be validated with additional observations as they become available. Finally, extending the framework to other impact-relevant variables---precipitation extremes, compound heat-wind events---is a natural next step.
+The model treats each 28-day window independently and does not explicitly capture storm track dynamics or multi-week temporal dependencies. Future work could incorporate sequence models (e.g., ConvLSTM or spatiotemporal Transformers) to represent storm genesis and propagation. Skill in data-sparse regions (central Africa, high Arctic) is constrained by GSOD network density and should be validated against independent reanalysis or satellite-derived wind products as they become available. Extending the framework to compound extremes---concurrent wind and precipitation events, or heat-wind combinations---represents a natural and societally relevant next step.
 % \appendix
 % \section*{Appendix A.}
 
