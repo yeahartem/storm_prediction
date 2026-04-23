@@ -21,21 +21,21 @@ os.makedirs(OUT_DIR, exist_ok=True)
 # ── Known results from MLflow (best model: pr+tasmax+tasmin+elev, epoch=22) ──────
 # Missing values filled as None
 REGIONAL_KNOWN = [
-    {"region": "russia_europe",       "AUROC": 0.841, "AP": 0.642, "pos_rate": 0.163, "n_samples": 24300},
-    {"region": "russia_west_siberia", "AUROC": 0.861, "AP": 0.750, "pos_rate": 0.210, "n_samples": 12100},
-    {"region": "russia_east_siberia", "AUROC": 0.791, "AP": 0.281, "pos_rate": 0.047, "n_samples": 8500},
-    {"region": "africa_south",        "AUROC": 0.756, "AP": 0.677, "pos_rate": 0.190, "n_samples": 5800},
-    {"region": "africa_north_east",   "AUROC": 0.817, "AP": 0.642, "pos_rate": 0.142, "n_samples": 7200},
-    {"region": "russia_far_east",     "AUROC": None,  "AP": None,  "pos_rate": None,  "n_samples": 0},
-    {"region": "africa_equatorial",   "AUROC": None,  "AP": None,  "pos_rate": None,  "n_samples": 0},
-    {"region": "africa_sahel_east",   "AUROC": None,  "AP": None,  "pos_rate": None,  "n_samples": 0},
+    {"region": "russia_europe",       "AUROC": 0.841, "AP": 0.642, "pos_rate": 0.241, "n_samples": 18680},
+    {"region": "russia_west_siberia", "AUROC": 0.861, "AP": 0.648, "pos_rate": 0.188, "n_samples": 6957},
+    {"region": "russia_east_siberia", "AUROC": 0.791, "AP": 0.282, "pos_rate": 0.044, "n_samples": 5717},
+    {"region": "russia_far_east",     "AUROC": 0.840, "AP": 0.625, "pos_rate": 0.216, "n_samples": 4572},
+    {"region": "africa_equatorial",   "AUROC": 0.799, "AP": 0.390, "pos_rate": 0.141, "n_samples": 991},
+    {"region": "africa_south",        "AUROC": 0.748, "AP": 0.658, "pos_rate": 0.330, "n_samples": 4512},
+    {"region": "africa_north_east",   "AUROC": 0.822, "AP": 0.643, "pos_rate": 0.302, "n_samples": 3546},
+    {"region": "africa_sahel_east",   "AUROC": 0.744, "AP": 0.417, "pos_rate": 0.189, "n_samples": 1196},
 ]
 
 SEASONAL_KNOWN = [
-    {"season": "DJF", "AUROC": 0.869, "AP": 0.793, "pos_rate": 0.171},
-    {"season": "MAM", "AUROC": None,  "AP": None,  "pos_rate": None},
-    {"season": "JJA", "AUROC": 0.819, "AP": 0.678, "pos_rate": 0.087},
-    {"season": "SON", "AUROC": None,  "AP": None,  "pos_rate": None},
+    {"season": "DJF", "AUROC": 0.869, "AP": 0.793, "pos_rate": 0.395},
+    {"season": "MAM", "AUROC": 0.852, "AP": 0.774, "pos_rate": 0.369},
+    {"season": "JJA", "AUROC": 0.819, "AP": 0.678, "pos_rate": 0.311},
+    {"season": "SON", "AUROC": 0.831, "AP": 0.708, "pos_rate": 0.354},
 ]
 
 REGION_LABELS = {
