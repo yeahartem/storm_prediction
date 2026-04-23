@@ -555,7 +555,7 @@ The model is trained on 6{,}045 GSOD stations worldwide over the period 2000--20
          \quad + sfcWindmax & 0.847 & 0.750 & \textcolor{brown}{TBD} & 0.321 \\
          \quad $-$ elevation & 0.847 & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} \\
          \quad $-$ precipitation & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} \\
-         \quad $-$ temperature & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} & \textcolor{brown}{TBD} \\
+         \quad $-$ temperature & 0.841 & 0.740 & \textcolor{brown}{TBD} & 0.300 \\
          \bottomrule
     \end{tabular}
     \caption{Global test-set performance (2023--2024). The proposed model (bold row) uses \texttt{pr}, \texttt{tasmax}, \texttt{tasmin}, and elevation---the variable set identified as optimal by the ablation study. The ``+\,sfcWindmax'' row shows that adding CMIP6 surface wind speed slightly degrades performance, suggesting that grid-averaged wind is noisy at station scale and that thermodynamic variables are more informative predictors of local extremes. BSS\,=\,Brier Skill Score relative to climatological frequency. \textcolor{brown}{Brown} entries await final runs.}
