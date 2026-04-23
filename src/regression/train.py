@@ -112,7 +112,7 @@ def train_regression(cfg: DictConfig) -> None:
 
     default_root_dir = run_dir
     checkpoint_loc = run_dir 
-    checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
+    checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=1, monitor="val/loss")
     early_stopping = EarlyStopping(
         monitor="val/loss",
         patience=10,       # останавливаем если val/loss не улучшается 10 эпох подряд
