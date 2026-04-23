@@ -115,7 +115,7 @@ def train_regression(cfg: DictConfig) -> None:
     checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=1, monitor="val/loss")
     early_stopping = EarlyStopping(
         monitor="val/loss",
-        patience=10,       # останавливаем если val/loss не улучшается 10 эпох подряд
+        patience=6,        # останавливаем если val/loss не улучшается 6 эпох подряд
         mode="min",
         verbose=True,
     )
@@ -207,9 +207,19 @@ def train_regression(cfg: DictConfig) -> None:
         logging.warning("Could not find best checkpoint path to copy.")
 
 
+class _TqdmHandler(logging.StreamHandler):
+    def emit(self, record):
+        try:
+            from tqdm import tqdm
+            tqdm.write(self.format(record))
+        except Exception:
+            self.handleError(record)
+
 @hydra.main(version_base=None, config_path=os.path.join(os.getcwd(),"configs"), config_name="cmip5_TestNet.yaml")
 def main(cfg: DictConfig):
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s-%(message)s')
+    handler = _TqdmHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s-%(message)s'))
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
     train_regression(cfg)
     logging.info('Train finished!')
 
