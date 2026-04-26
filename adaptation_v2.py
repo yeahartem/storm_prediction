@@ -42,7 +42,7 @@ SURROGATE_TEST  = 'surrogate_test.parquet'
 
 # ── hyper-params ─────────────────────────────────────────────────────────────
 DEVICE      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-BATCH_SIZE  = 512         # larger batch for surrogate (no grad, faster)
+BATCH_SIZE  = 64          # conservative: other jobs occupy ~10GB on each GPU
 K_CLUSTERS  = 3
 CLUSTER_NAMES = ['flat (<200m)', 'hills (200-1000m)', 'mountain (>=1000m)']
 
