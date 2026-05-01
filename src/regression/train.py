@@ -111,28 +111,46 @@ def train_regression(cfg: DictConfig) -> None:
         logging.info("PyTorch version is smaller than 2.0, compilation is not supported")
 
     default_root_dir = run_dir
-    checkpoint_loc = run_dir 
+    checkpoint_loc = run_dir
     checkpoint_callback = ModelCheckpoint(dirpath=checkpoint_loc, save_top_k=2, monitor="val/loss")
     early_stopping = EarlyStopping(
         monitor="val/loss",
-        patience=10,       # останавливаем если val/loss не улучшается 10 эпох подряд
+        patience=int(cfg.train.get('early_stopping_patience', 10)),
         mode="min",
         verbose=True,
     )
-
     lr_monitor = LearningRateMonitor(logging_interval='step', log_momentum=False)
+    callbacks = [lr_monitor, checkpoint_callback, early_stopping]
+
+    # Stochastic Weight Averaging — averages weights over the tail of training,
+    # usually +0.001-0.005 AUROC at zero extra training cost. Disable with
+    # train.use_swa: false in the config.
+    if bool(cfg.train.get('use_swa', True)):
+        swa_lrs = float(cfg.train.get('swa_lrs', cfg.train.learning_rate * 0.1))
+        swa_start = float(cfg.train.get('swa_epoch_start', 0.7))
+        callbacks.append(StochasticWeightAveraging(swa_lrs=swa_lrs, swa_epoch_start=swa_start))
+        logging.info(f"SWA enabled: swa_lrs={swa_lrs}, swa_epoch_start={swa_start}")
+
+    grad_clip = float(cfg.train.get('gradient_clip_val', 1.0))
+    val_check_interval = cfg.train.get('val_check_interval', 1.0)  # 1.0 = once per epoch; 0.5 = twice
+    val_check_kwargs = {}
+    if isinstance(val_check_interval, float) and 0.0 < val_check_interval < 1.0:
+        val_check_kwargs['val_check_interval'] = val_check_interval
+    else:
+        val_check_kwargs['check_val_every_n_epoch'] = int(cfg.train.get('check_val_every_n_epoch', 1))
 
     trainer = pl.Trainer(max_epochs=cfg.train.max_epoch,
                             profiler=None,
                             default_root_dir=default_root_dir,
-                            callbacks=[lr_monitor, checkpoint_callback, early_stopping],
+                            callbacks=callbacks,
                             #performance
                             accelerator="gpu",
-                            precision="16-mixed", # fp16 mixed precision: ~1.5-2x speedup on Ampere (A5000)
+                            precision="16-mixed", # fp16 mixed precision: ~1.5-2x speedup on Ampere
                             benchmark=True,
+                            gradient_clip_val=grad_clip,
                             #validation
-                            check_val_every_n_epoch=1,
-                            num_sanity_val_steps=0, # Было 0 !!!
+                            num_sanity_val_steps=0,
+                            **val_check_kwargs,
                             #distributed
                             devices=cfg.train.gpu_num,
                             num_nodes=cfg.train.num_nodes if cfg.train.distributed else 1,
@@ -141,10 +159,7 @@ def train_regression(cfg: DictConfig) -> None:
                             log_every_n_steps=cfg.train.log_every_n_steps,
                             limit_train_batches=cfg.train.get('limit_train_batches', 1.0),
                             limit_val_batches=cfg.train.get('limit_val_batches', 1.0),
-                            # gradient_clip_val=1, # Чтобы не было ошибки inf в mlflow 
-                            logger=mlflow_logger, # wandb_logger
-                            #misc
-                            # profiler='simple',
+                            logger=mlflow_logger,
                             )
     log_config(cfg)
 

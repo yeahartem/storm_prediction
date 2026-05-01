@@ -12,6 +12,7 @@ target_data_file: target.parquet  # target data file in data_dir for training
 
 start_time: '2000-01-01'
 end_time: '2018-12-31'
+start_of_val: '2016-01-01'   # train < this < val < start_of_test
 start_of_test: '2017-01-01'
 
 variables:                                      #CMIP variable names to use

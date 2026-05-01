@@ -2,6 +2,7 @@ import sys,os
 sys.path.append(os.getcwd())
 from typing import List, Any
 import logging
+import math
 import torch
 import pytorch_lightning as pl
 from collections import OrderedDict
@@ -35,7 +36,19 @@ class WindNetPL(pl.LightningModule):
             self.net = BaselineQW()
         elif cfg.model_name=="GhostWindNet27":
             in_chans = cfg.train.get('in_chans', 4)
-            self.net = GhostWindNet27(in_chans=in_chans)
+            # Default False: pos is no longer concatenated with the backbone, so the
+            # model can no longer cheat via per-(station, month) climatology lookup.
+            # Set use_pos_in_head=True only to reproduce pre-fix (leaky) behaviour.
+            use_pos_in_head = bool(cfg.train.get('use_pos_in_head', False))
+            drop_path_rate = float(cfg.train.get('drop_path_rate', 0.0))
+            self.net = GhostWindNet27(
+                in_chans=in_chans,
+                use_pos_in_head=use_pos_in_head,
+                drop_path_rate=drop_path_rate,
+            )
+            logging.info(
+                f"GhostWindNet27 use_pos_in_head={use_pos_in_head} drop_path_rate={drop_path_rate}"
+            )
         else:
             raise NotImplementedError(f'Model {cfg.model_name} not found')     
         logging.info(f'Using {cfg.model_name} model')
@@ -756,6 +769,11 @@ class WindNetPL(pl.LightningModule):
                     }
                 }
             elif self.scheduler_name == "CosineAnnealingLR":
+                # NOTE: previously cosine_t_max defaulted to 20 while max_epoch=100,
+                # so LR hit eta_min by epoch 20 and stayed there for the rest of
+                # training. We now default to max_epoch so the cosine actually
+                # spans the whole run. Set cosine_t_max explicitly only if you
+                # want CosineAnnealingWarmRestarts-like behaviour.
                 t_max = int(self.cfg.train.get('cosine_t_max', self.cfg.train.max_epoch))
                 eta_min = self.cfg.train.learning_rate / 100.0
                 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -766,6 +784,36 @@ class WindNetPL(pl.LightningModule):
                         'name': 'train/lr',
                         'scheduler': scheduler,
                         'interval': 'epoch',
+                        'frequency': 1,
+                    }
+                }
+            elif self.scheduler_name == "WarmupCosineLR":
+                # Linear warmup for `warmup_pct` of total steps, then cosine decay
+                # to eta_min for the rest. Steps every batch (more granular than
+                # plain CosineAnnealingLR which only steps per epoch).
+                total_steps = int(self.trainer.estimated_stepping_batches)
+                warmup_pct = float(self.cfg.train.get('warmup_pct', 0.05))
+                warmup_steps = max(1, int(total_steps * warmup_pct))
+                eta_min_factor = float(self.cfg.train.get('eta_min_factor', 0.01))
+
+                def lr_lambda(step):
+                    if step < warmup_steps:
+                        return float(step) / float(warmup_steps)
+                    progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+                    cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+                    return eta_min_factor + (1.0 - eta_min_factor) * cosine
+
+                scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+                logging.info(
+                    f"WarmupCosineLR: total_steps={total_steps}, warmup_steps={warmup_steps} "
+                    f"({warmup_pct*100:.1f}%), eta_min_factor={eta_min_factor}"
+                )
+                return {
+                    'optimizer': optimizer,
+                    'lr_scheduler': {
+                        'name': 'train/lr',
+                        'scheduler': scheduler,
+                        'interval': 'step',
                         'frequency': 1,
                     }
                 }
@@ -792,48 +840,34 @@ def analyze_performance_by_bins(y_pred: np.ndarray, y_true: np.ndarray, n_bins: 
     bin_labels = ["0-5", "5-10", "10-15", "15-20", "20-25", "25-30", "> 30"]
     df['bin'] = pd.cut(df['y_true'], bins=bin_edges, labels=bin_labels, right=False)
     # right=False означает, что интервал включает левую границу: [8, 15), [15, 20)
-    
-    # 3. Считаем, сколько примеров попало в каждый бин, чтобы определить их "редкость"
+
+    # 3. Считаем, сколько примеров попало в каждый бин
     bin_counts = df.groupby('bin').size()
-    
-    # 4. Ранжируем бины: Rank 1 - самый редкий, Rank 5 - самый частый
+
+    # 4. Ранжируем бины: Rank 1 - самый редкий
     bin_ranks = bin_counts.rank(method='first').astype(int)
-
-    # <<< НАЧАЛО БЛОКА ДЛЯ ПЕЧАТИ РЕДКИХ СЛУЧАЕВ >>>
-
-    # Находим имя самого редкого бина (где ранг равен 1)
-    # .idxmax() на инвертированных рангах найдет индекс минимального значения
-    rarest_bin_name = bin_ranks.idxmin() 
-    
-    # Фильтруем DataFrame, чтобы получить только строки, относящиеся к этому бину
-    rarest_samples_df = df[df['bin'] == rarest_bin_name]
-
-    # <<< КОНЕЦ БЛОКА ДЛЯ ПЕЧАТИ РЕДКИХ СЛУЧАЕВ >>>
 
     # 5. Считаем метрики для каждого бина
     def calculate_rmse(group):
-        # Если группа (бин) пустая, возвращаем NaN, иначе считаем метрику
         if group.empty:
             return np.nan
         return np.sqrt(mean_squared_error(group['y_true'], group['y_pred']))
-    
+
     def calculate_mae(group):
         if group.empty:
             return np.nan
-        return mean_absolute_error(group['y_true'], group['y_pred'])      
-    
+        return mean_absolute_error(group['y_true'], group['y_pred'])
+
     bin_metrics = df.groupby('bin', observed=False).apply(lambda x: pd.Series({
         'RMSE': calculate_rmse(x),
         'MAE': calculate_mae(x)
     }))
 
-    # 6. Собираем всё в красивую итоговую таблицу
+    # 6. Собираем итоговую таблицу
     results_df = pd.DataFrame({
         'Bin Rank': bin_ranks,
         'Sample Count': bin_counts,
     }).join(bin_metrics).reset_index()
 
-    # Сортируем по рангу для наглядности
     results_df = results_df.sort_values(by='Bin Rank').set_index('Bin Rank')
-    
     return results_df

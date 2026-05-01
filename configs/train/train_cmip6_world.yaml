@@ -13,7 +13,8 @@ target_data_file: target.parquet
 
 start_time: '2000-01-01'
 end_time: '2024-12-31'
-start_of_test: '2023-01-01'   # train 2000-2020, val 2021-2022, test 2023-2024
+start_of_val: '2021-01-01'   # train < this < val < start_of_test
+start_of_test: '2023-01-01'  # train 2000-2020, val 2021-2022, test 2023-2024
 
 variables:
 - sfcWindmax
@@ -33,8 +34,14 @@ weight_decay: 0.0001
 max_epoch: 100
 
 optimizer_name: 'AdamW'
-scheduler_name: 'LinearLR'
+scheduler_name: 'WarmupCosineLR'   # 5% linear warmup + cosine decay; steps each batch
+warmup_pct: 0.05
+eta_min_factor: 0.01               # final LR = lr * eta_min_factor
 loss_name: 'BCELoss'
+
+# Model regularisation
+drop_path_rate: 0.1                # stochastic depth in GhostNetV2 backbone
+use_pos_in_head: false             # MUST stay false to avoid the climatology-leakage bug
 
 num_workers: 0
 gpu_num: 1
@@ -42,8 +49,24 @@ distributed: false
 num_nodes: 1
 strategy: 'ddp'
 
-limit_train_batches: 5000   # ~56 min/epoch, 8-9 epochs overnight
-limit_val_batches: 1000     # ~11 min validation
+limit_train_batches: 5000          # ~56 min/epoch, 8-9 epochs overnight
+
+# Validation: deterministic fixed subset removes the noise that random per-epoch
+# subsampling used to add to val/loss (which made early-stopping random).
+val_subset_size: 32000             # ~1000 batches at batch_size=32; comparable cost
+val_subset_seed: 42
+val_samples_per_station: 6   # stratified val: K random samples per station (more reliable than uniform)
+val_check_interval: 1.0           # one val per epoch — deterministic subset already gives clean signal
+
+# Training stability
+gradient_clip_val: 1.0
+
+# SWA: averages weights over last ~30% of epochs, +0.001-0.005 AUROC for free.
+use_swa: true
+swa_lrs: 0.00001                   # ~lr/10
+swa_epoch_start: 0.7               # start averaging from 70% of training
+
+early_stopping_patience: 8
 
 log_every_n_steps: 10
 

@@ -297,11 +297,36 @@ class DataPreLoader:
 
 
     def target_df_to_array(self):
-        """Функция берёт агрегированные станционные наблюдения, преобразует их в массив “индексированных” обучающих примеров,
-        корректирует индексы под кроп/сдвиг, затем делит на train/test по времени."""
-        start_time = time.process_time()   
-        split_date = datetime.strptime(self.cfg.train.start_of_test, '%Y-%m-%d').date()
-        split_index = self.time_coords.searchsorted(split_date)
+        """Берёт агрегированные станционные наблюдения, переводит в массив "индексированных"
+        обучающих примеров, корректирует индексы под кроп/сдвиг и делит по времени:
+
+            train: time <  start_of_val
+            val:   start_of_val <= time < start_of_test
+            test:  time >= start_of_test
+
+        Если start_of_val не задан, val=test (старое поведение для обратной совместимости —
+        НЕ рекомендуется, утечка).
+        """
+        start_time = time.process_time()
+        test_split_date = datetime.strptime(self.cfg.train.start_of_test, '%Y-%m-%d').date()
+        test_split_index = int(self.time_coords.searchsorted(test_split_date))
+        val_split_str = self.cfg.train.get('start_of_val', None)
+        if val_split_str is not None:
+            val_split_date = datetime.strptime(val_split_str, '%Y-%m-%d').date()
+            val_split_index = int(self.time_coords.searchsorted(val_split_date))
+            if val_split_index >= test_split_index:
+                raise ValueError(
+                    f"start_of_val ({val_split_str}) must be strictly before start_of_test "
+                    f"({self.cfg.train.start_of_test})."
+                )
+        else:
+            val_split_index = None
+            logging.warning(
+                "start_of_val not set — validation will reuse the test set. "
+                "This causes early-stopping to peek at test data; set start_of_val "
+                "(e.g. '2021-01-01') to fix."
+            )
+
         targets_list = []
         drop_dict = {}
         total = 0
@@ -335,9 +360,34 @@ class DataPreLoader:
         else:
             target_array[0, :] += self.shift[0] #lat
             target_array[1, :] += self.shift[1] #lon
-        train_array = target_array[:, target_array[2, :] < split_index]
-        self.test_data_idxs = target_array[:, target_array[2, :] > split_index]
-        self.test_data_idxs = self.test_data_idxs[:, self.test_data_idxs[2, :] < len(self.time_coords)]
+
+        # Time-based splits. Use >= / < boundaries so each timestamp lands in exactly
+        # one split (previous code used `>` and lost one row sitting on the boundary).
+        time_idx = target_array[2, :]
+        n_time = len(self.time_coords)
+        if val_split_index is not None:
+            train_mask = time_idx < val_split_index
+            val_mask = (time_idx >= val_split_index) & (time_idx < test_split_index)
+            test_mask = (time_idx >= test_split_index) & (time_idx < n_time)
+            train_array = target_array[:, train_mask]
+            self.val_data_idxs = target_array[:, val_mask]
+            self.test_data_idxs = target_array[:, test_mask]
+        else:
+            # Backward-compatible fallback (val == test).
+            train_array = target_array[:, time_idx < test_split_index]
+            self.test_data_idxs = target_array[:, (time_idx >= test_split_index) & (time_idx < n_time)]
+            self.val_data_idxs = self.test_data_idxs
+
+        # Sanity: assert there's no overlap on (lat, lon, time) between splits.
+        def _keys(arr):
+            return arr[0].astype(np.int64) * (n_time * 1_000_000) + arr[1].astype(np.int64) * n_time + arr[2].astype(np.int64)
+        train_keys = set(_keys(train_array).tolist())
+        val_keys   = set(_keys(self.val_data_idxs).tolist())
+        test_keys  = set(_keys(self.test_data_idxs).tolist())
+        if val_split_index is not None:
+            assert not (train_keys & val_keys),  "train and val overlap on (lat,lon,time)"
+            assert not (train_keys & test_keys), "train and test overlap on (lat,lon,time)"
+            assert not (val_keys & test_keys),   "val and test overlap on (lat,lon,time)"
 
         # Store full train array for per-epoch resampling
         self.neg_ratio = float(self.cfg.train.get('neg_subsample_ratio', None) or 0.0)
@@ -351,8 +401,9 @@ class DataPreLoader:
         else:
             self.train_data_idxs = train_array
         logging.info(f'Records prepared train {self.train_data_idxs.shape[1]}')
-        logging.info(f'Records prepared test {self.test_data_idxs.shape[1]}')
-        
+        logging.info(f'Records prepared val   {self.val_data_idxs.shape[1]}')
+        logging.info(f'Records prepared test  {self.test_data_idxs.shape[1]}')
+
         print(f"Форма таргетов: {self.train_data_idxs[7, :].shape}. Примеры сырых таргетов: {self.train_data_idxs[7, :][:10].round(2)}")
         gc.collect()
 
@@ -464,10 +515,19 @@ class DataPreLoader:
         self.test_data_idxs = np.load(f'tmp_Q_test_{self.config_hash}.npz')['arr_0']
 
     def log_data(self):
-        logging.info(f"Train size: {self.train_data_idxs.shape[1]}, test size: {self.test_data_idxs.shape[1]}")
+        val_size = self.val_data_idxs.shape[1] if hasattr(self, 'val_data_idxs') else 0
+        logging.info(f"Train size: {self.train_data_idxs.shape[1]}, "
+                     f"val size: {val_size}, "
+                     f"test size: {self.test_data_idxs.shape[1]}")
         logging.info(f"Target min: {self.train_data_idxs[7, :].min()}, target max: {self.train_data_idxs[7, :].max()}")
         logging.info(f"Target mean: {self.train_data_idxs[7, :].mean()}, target std: {self.train_data_idxs[7, :].std()}")
-        logging.info(f"Balance train: {self.get_class_balance(self.train_data_idxs[7, :])}, balance test:{self.get_class_balance(self.test_data_idxs[7, :])}")
+        balance_msg = (f"Balance train: {self.get_class_balance(self.train_data_idxs[7, :])}, "
+                       f"balance test: {self.get_class_balance(self.test_data_idxs[7, :])}")
+        if hasattr(self, 'val_data_idxs') and self.val_data_idxs is not self.test_data_idxs:
+            balance_msg = (f"Balance train: {self.get_class_balance(self.train_data_idxs[7, :])}, "
+                           f"balance val: {self.get_class_balance(self.val_data_idxs[7, :])}, "
+                           f"balance test: {self.get_class_balance(self.test_data_idxs[7, :])}")
+        logging.info(balance_msg)
         for i, var in enumerate(self.cfg.train.variables):
             logging.info(f"{var} mean: {self.dataset_torch[i].mean()}, std: {self.dataset_torch[i].std()}")
 

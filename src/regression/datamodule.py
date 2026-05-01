@@ -33,11 +33,16 @@ class WindDataModule(pl.LightningDataModule):
             logging.info("Not using elevation data")
             DatasetClass = XarrayDataset
 
+        # split='train' → DPL.train_data_idxs (time < start_of_val)
+        # split='val'   → DPL.val_data_idxs   (start_of_val <= time < start_of_test)
+        # split='test'  → DPL.test_data_idxs  (time >= start_of_test)
+        # If start_of_val is not set in the config, val_data_idxs == test_data_idxs
+        # (legacy leaky behaviour). data_load.py emits a warning in that case.
         if stage == "fit" or stage is None:
-            self.dataset_train = DatasetClass(DPL=self.DPL, test=False)
-            self.dataset_val = DatasetClass(DPL=self.DPL, test=True)
+            self.dataset_train = DatasetClass(DPL=self.DPL, split='train')
+            self.dataset_val   = DatasetClass(DPL=self.DPL, split='val')
         if stage == "test":
-            self.dataset_test = DatasetClass(DPL=self.DPL, test=True)
+            self.dataset_test  = DatasetClass(DPL=self.DPL, split='test')
 
 
     def train_dataloader(self):
@@ -49,11 +54,15 @@ class WindDataModule(pl.LightningDataModule):
                           drop_last=True)   # Чтобы не было ошибки ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 70])
 
     def val_dataloader(self):
+        # shuffle=False: the dataset already holds a deterministic subset selected
+        # via val_subset_size/val_subset_seed (see XarrayDataset.__init__). This
+        # gives a stable, reproducible val/loss every epoch — clean signal for
+        # early stopping.
         return DataLoader(dataset=self.dataset_val,
                           batch_size=self.cfg.train.batch_size,
                           num_workers=self.cfg.train.num_workers,
                           pin_memory=True,
-                          shuffle=True,  # needed with limit_val_batches to sample globally
+                          shuffle=False,
                           drop_last=True)
 
     def test_dataloader(self):
@@ -69,15 +78,91 @@ class WindDataModule(pl.LightningDataModule):
 
 
 class XarrayDataset(Dataset):
-    def __init__(self, DPL, test=False, dtype=torch.float32):
+    def __init__(self, DPL, split='train', test=None, dtype=torch.float32):
+        """
+        split: 'train' | 'val' | 'test'
+        test:  legacy boolean kept for backward compatibility. If supplied, it
+               overrides `split` (test=True -> 'test', test=False -> 'train').
+        """
+        if test is not None:
+            split = 'test' if test else 'train'
+        if split not in ('train', 'val', 'test'):
+            raise ValueError(f"split must be 'train' | 'val' | 'test', got {split!r}")
+
         self.cfg = DPL.cfg
         self.dataset_torch = DPL.dataset_torch
-        if test:
+        self.split = split
+
+        if split == 'test':
             self.data_idxs = DPL.test_data_idxs
-            self.dense_weighter = None # Для тестового набора нам это не нужно
+            self.dense_weighter = None
             self._DPL = None
-            logging.info("Test dataloader init")
-        else:
+            logging.info(f"Test dataloader init: {self.data_idxs.shape[1]} samples")
+        elif split == 'val':
+            # val_data_idxs is created by DataPreLoader.target_df_to_array().
+            # Falls back to test_data_idxs if start_of_val was not configured.
+            raw = getattr(DPL, 'val_data_idxs', DPL.test_data_idxs)
+            # ---- Deterministic stratified val subset ----
+            # Two motivations:
+            #   1. Determinism. shuffle=True + limit_val_batches sampled fresh
+            #      32K random rows every epoch, so val/loss was noisy and
+            #      early-stop selected almost-randomly. Picking a fixed subset
+            #      once removes that noise.
+            #   2. Geographic balance. Uniform sampling over rows is biased
+            #      toward stations that have more observations (dense network
+            #      regions dominate). Stratifying by (lat_idx, lon_idx) gives
+            #      every station the same vote and matches the geography of
+            #      the test set more faithfully.
+            #
+            # Default: per-station random K samples — every val station
+            # contributes, K is chosen so total ≈ desired size.
+            # Fallback (val_samples_per_station <= 0): old uniform sampling
+            # by val_subset_size.
+            val_samples_per_station = int(self.cfg.train.get('val_samples_per_station', 6) or 0)
+            val_subset_size = int(self.cfg.train.get('val_subset_size', 0) or 0)
+            val_subset_seed = int(self.cfg.train.get('val_subset_seed', 42))
+            n_total = raw.shape[1]
+
+            if val_samples_per_station > 0:
+                # Stratify by station key. Sort once, walk groups, pick K per group.
+                keys = raw[0].astype(np.int64) * 1_000_000 + raw[1].astype(np.int64)
+                order = np.argsort(keys, kind='stable')
+                sorted_keys = keys[order]
+                change = np.flatnonzero(np.diff(sorted_keys)) + 1
+                edges = np.concatenate(([0], change, [n_total]))
+                rng = np.random.default_rng(val_subset_seed)
+                picks = []
+                K = val_samples_per_station
+                for i in range(len(edges) - 1):
+                    s, e = edges[i], edges[i + 1]
+                    n = e - s
+                    if n <= K:
+                        picks.append(order[s:e])
+                    else:
+                        sel = rng.choice(n, size=K, replace=False)
+                        picks.append(order[s:e][sel])
+                final_idx = np.sort(np.concatenate(picks))
+                self.data_idxs = raw[:, final_idx]
+                n_stations = len(edges) - 1
+                logging.info(
+                    f"Val dataloader init: stratified subset — "
+                    f"{self.data_idxs.shape[1]} samples from {n_stations} stations "
+                    f"(K={K}/station, seed={val_subset_seed}, full val={n_total})"
+                )
+            elif val_subset_size > 0 and n_total > val_subset_size:
+                rng = np.random.default_rng(val_subset_seed)
+                perm = rng.permutation(n_total)[:val_subset_size]
+                self.data_idxs = raw[:, np.sort(perm)]
+                logging.info(
+                    f"Val dataloader init: uniform random subset {self.data_idxs.shape[1]} of {n_total} "
+                    f"(seed={val_subset_seed})"
+                )
+            else:
+                self.data_idxs = raw
+                logging.info(f"Val dataloader init: full {self.data_idxs.shape[1]} samples")
+            self.dense_weighter = None
+            self._DPL = None
+        else:  # train
             self._DPL = DPL  # keep reference for per-epoch resampling
             self.data_idxs = DPL.train_data_idxs
             # np.save("data_idxs_for_debug.npy", self.data_idxs)
@@ -89,8 +174,7 @@ class XarrayDataset(Dataset):
                 self.dense_weighter = dw
             else:
                 self.dense_weighter = None
-            
-            logging.info("Train dataloader init")
+            logging.info(f"Train dataloader init: {self.data_idxs.shape[1]} samples")
         self.dtype = dtype
 
         logging.info(f"Sample shape is {self.get_sample_shape(10)}")
@@ -161,8 +245,8 @@ class XarrayDatasetElev(XarrayDataset):
     DPL.elevation_torch shape: (lat_padded, lon_padded) – no time dim.
     Output X shape: (5, time_window, patch_h, patch_w)
     """
-    def __init__(self, DPL, test=False, dtype=torch.float32):
-        super().__init__(DPL, test=test, dtype=dtype)
+    def __init__(self, DPL, split='train', test=None, dtype=torch.float32):
+        super().__init__(DPL, split=split, test=test, dtype=dtype)
         self.elevation_torch = DPL.elevation_torch  # (lat_padded, lon_padded)
 
     def __getitem__(self, idx):
@@ -183,7 +267,7 @@ class XarrayDatasetElev(XarrayDataset):
                                slice(lat_index - self.cfg.half_side_size, lat_index + self.cfg.half_side_size + 1),
                                slice(lon_index - self.cfg.half_side_size, lon_index + self.cfg.half_side_size + 1),
                                ]  # (patch_h, patch_w)
-        # broadcast elevation across time window → (1, time_window, patch_h, patch_w)
+        # broadcast elevation across time window -> (1, time_window, patch_h, patch_w)
         X_elev = X_elev.unsqueeze(0).unsqueeze(0).expand(1, X.shape[1], -1, -1)
         X = torch.cat([X, X_elev], dim=0)  # (5, time_window, patch_h, patch_w)
 
@@ -192,6 +276,7 @@ class XarrayDatasetElev(XarrayDataset):
         y = torch.tensor(y, dtype=self.dtype)
         weights_tensor = torch.tensor([1.0], dtype=self.dtype)
         return [X, pos], y, weights_tensor, torch.tensor(station_threshold, dtype=self.dtype)
-    
+
+
 if __name__ == '__main__':
     pass

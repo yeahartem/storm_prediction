@@ -17,6 +17,7 @@ target_data_file: target.parquet   # station locations/times only; y values are 
 
 start_time: '2000-01-01'
 end_time: '2024-12-31'
+start_of_val: '2021-01-01'   # train < this < val < start_of_test
 start_of_test: '2023-01-01'
 
 variables:
@@ -36,7 +37,7 @@ weight_decay: 0.01
 max_epoch: 100
 
 optimizer_name: 'AdamW'
-scheduler_name: 'CosineAnnealingLR'
+scheduler_name: 'WarmupCosineLR'
 cosine_t_max: 20
 loss_name: 'BCELoss'
 label_smoothing: 0.05
@@ -61,3 +62,24 @@ cache:
   use_cached_padding: false
   pad_crop_data_path: "data/cache/cmip6_pad_crop_data.npy"
   shift_data_path: "data/cache/cmip6_shift_data.pkl"
+
+# --- Improvements added 2026-05-01 ---
+# Validation: deterministic 32K subset, no shuffle, twice per epoch.
+val_subset_size: 32000
+val_subset_seed: 42
+val_samples_per_station: 6   # stratified val: K random samples per station (more reliable than uniform)
+val_check_interval: 1.0           # one val per epoch — deterministic subset already gives clean signal
+# LR schedule: 5% linear warmup + cosine decay over the entire run.
+warmup_pct: 0.05
+eta_min_factor: 0.01
+# Stochastic depth in the backbone (light regularisation).
+drop_path_rate: 0.1
+# pos must NOT be concatenated with backbone features (climatology leakage).
+use_pos_in_head: false
+# Training stability + Stochastic Weight Averaging.
+gradient_clip_val: 1.0
+use_swa: true
+swa_lrs: 0.00001
+swa_epoch_start: 0.7
+early_stopping_patience: 8
+# --- end improvements ---
