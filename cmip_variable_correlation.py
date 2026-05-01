@@ -1,17 +1,12 @@
 """
-EDA: correlation between CMIP6 variables at storm vs non-storm station-days.
+EDA: pairwise correlations between all CMIP6 variables + elevation
+at station locations (train period).
 
-Loads the normalized CMIP6 .npy files and the station targets,
-then for each station-day extracts the center-pixel value of each variable
-and computes:
-  1. Pearson correlation matrix across all variables (center pixel)
-  2. Mean value of each variable conditioned on storm / no-storm label
-  3. Violin / distribution plots
+Variables: pr, tasmax, tasmin, sfcWindmax, elevation
+Outputs:   eda_output/cmip_correlation/  (PNG + CSV)
 
-Usage:
+Run locally:
     python cmip_variable_correlation.py
-
-Output: eda_output/cmip_correlation/  (PNG figures + CSV)
 """
 import logging
 import os
@@ -20,163 +15,267 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from scipy import stats
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
-DATA_DIR   = "data/cmip6_world"
-PARQUET    = "data/weatherstation_data/world_stations_2000_2025_25_days_6_months_fixed.parquet"
-OUT_DIR    = "eda_output/cmip_correlation"
-PRECISION  = "float16"
-VARIABLES  = ["pr", "tasmax", "tasmin"]   # sfcWindmax excluded (not in best model)
-TRAIN_END  = "2022-12-31"
-TEST_START = "2023-01-01"
-THRESHOLD  = 15.0
-MAX_SAMPLES = 200_000   # subsample to keep memory manageable
+DATA_DIR  = "data/cmip6_world"
+OUT_DIR   = "eda_output/cmip_correlation"
+HALF_SIDE = 47          # padding offset — indices in train_data_idxs are into padded arrays
+MAX_ROWS  = 300_000     # subsample for speed; set to None to use all ~2M
+
+# Variable display names for plots
+VAR_LABELS = {
+    "pr":         "Precip (pr)",
+    "tasmax":     "Max Temp (tasmax)",
+    "tasmin":     "Min Temp (tasmin)",
+    "sfcWindmax": "Wind (sfcWindmax)",
+    "elevation":  "Elevation",
+}
+VARIABLES = list(VAR_LABELS.keys())
 
 os.makedirs(OUT_DIR, exist_ok=True)
 
-def load_variable(var):
-    path = os.path.join(DATA_DIR, f"{var}_{PRECISION}.npy")
-    logging.info(f"Loading {path} ...")
-    arr = np.load(path).astype(np.float32)   # (time, lat, lon)
-    return arr
 
-def main():
-    # Load time/lat/lon coords
-    time_coords = np.load(os.path.join(DATA_DIR, "time.npy")).astype("datetime64[D]")
-    lat_coords  = np.load(os.path.join(DATA_DIR, "lat.npy"))
-    lon_coords  = np.load(os.path.join(DATA_DIR, "lon.npy"))
+def load_center_pixels():
+    """Extract center-pixel values for all variables at every station-time sample."""
+    logging.info("Loading train_data_idxs ...")
+    idxs = np.load(os.path.join(DATA_DIR, "train_data_idxs.npy"))
+    # rows: lat_idx(pad), lon_idx(pad), time_idx, time_pos, time_pos_m, lat_pos, lon_pos, target, threshold
+    lat_pad  = idxs[0].astype(int)
+    lon_pad  = idxs[1].astype(int)
+    time_idx = idxs[2].astype(int)
+    target   = idxs[7].astype(np.float32)
+    threshold = idxs[8].astype(np.float32)
+    lat_raw  = lat_pad - HALF_SIDE   # unpadded CMIP6 grid index
+    lon_raw  = lon_pad - HALF_SIDE
 
-    # Load all variables: shape (n_vars, time, lat, lon)
-    var_data = np.stack([load_variable(v) for v in VARIABLES], axis=0)
-
-    # Load station targets
-    logging.info("Loading station targets...")
-    df = pd.read_parquet(PARQUET, columns=["station_id", "date", "MXWDSP", "lat", "lon"])
-    df["date"] = pd.to_datetime(df["date"])
-
-    # Use train+val period only for correlation analysis (no test leakage)
-    df = df[df["date"] <= TRAIN_END].copy()
-    logging.info(f"Train+val rows: {len(df):,}")
-
-    # Per-station threshold
-    def sthresh(s):
-        return max(s.quantile(0.95), THRESHOLD)
-    thresholds = df.groupby("station_id")["MXWDSP"].apply(sthresh)
-    df = df.join(thresholds.rename("threshold"), on="station_id")
-    df["positive"] = (df["MXWDSP"] >= df["threshold"]).astype(int)
-
-    # Map station lat/lon to nearest CMIP6 pixel
-    def nearest_idx(coords, val):
-        return int(np.argmin(np.abs(coords - val)))
-
-    logging.info("Mapping stations to CMIP6 grid pixels...")
-    station_info = df.groupby("station_id")[["lat", "lon"]].first().reset_index()
-    station_info["lat_idx"] = station_info["lat"].apply(lambda x: nearest_idx(lat_coords, x))
-    station_info["lon_idx"] = station_info["lon"].apply(lambda x: nearest_idx(lon_coords, x))
-    df = df.merge(station_info[["station_id", "lat_idx", "lon_idx"]], on="station_id")
-
-    # Map dates to time indices
-    logging.info("Mapping dates to time indices...")
-    time_dt64 = time_coords
-    date_np = df["date"].values.astype("datetime64[D]")
-    time_idx_map = {t: i for i, t in enumerate(time_dt64)}
-    df["time_idx"] = [time_idx_map.get(d, -1) for d in date_np]
-    df = df[df["time_idx"] >= 0]
+    N = len(target)
+    logging.info(f"Total train samples: {N:,}")
 
     # Subsample for speed
-    if len(df) > MAX_SAMPLES:
-        df = df.sample(n=MAX_SAMPLES, random_state=42)
-    logging.info(f"Extracting {len(df):,} center-pixel values...")
+    rng = np.random.default_rng(42)
+    if MAX_ROWS and N > MAX_ROWS:
+        sel = rng.choice(N, size=MAX_ROWS, replace=False)
+        sel.sort()
+    else:
+        sel = np.arange(N)
 
-    # Extract center-pixel CMIP6 values for each sample
-    t_idx = df["time_idx"].values.astype(int)
-    la_idx = df["lat_idx"].values.astype(int)
-    lo_idx = df["lon_idx"].values.astype(int)
+    lat_s  = lat_raw[sel]
+    lon_s  = lon_raw[sel]
+    t_s    = time_idx[sel]
+    tgt_s  = target[sel]
+    thr_s  = threshold[sel]
+    positive = (tgt_s >= thr_s).astype(int)
 
-    extracted = {}
-    for i, var in enumerate(VARIABLES):
-        extracted[var] = var_data[i, t_idx, la_idx, lo_idx]
+    logging.info(f"Using {len(sel):,} samples  (positive rate: {positive.mean():.3f})")
 
-    feat_df = pd.DataFrame(extracted)
-    feat_df["positive"] = df["positive"].values
-    feat_df["lat"] = df["lat"].values
+    # Load CMIP6 time-varying variables one at a time (center pixel only)
+    data = {}
+    for var in ["pr", "tasmax", "tasmin", "sfcWindmax"]:
+        path = os.path.join(DATA_DIR, f"{var}_16.npy")
+        logging.info(f"Loading {var} from {path} ...")
+        arr = np.load(path)                    # float16, shape (time, lat, lon)
+        data[var] = arr[t_s, lat_s, lon_s].astype(np.float32)
+        del arr
 
-    # 1. Overall Pearson correlation matrix
-    corr = feat_df[VARIABLES].corr()
-    logging.info(f"\nPearson correlation matrix (center pixel, train+val):\n{corr.round(3)}")
-    corr.to_csv(os.path.join(OUT_DIR, "variable_pearson_corr.csv"))
+    # Elevation: no time dimension, shape (lat, lon)
+    elev_path = os.path.join(DATA_DIR, "elev_16.npy")
+    logging.info(f"Loading elevation from {elev_path} ...")
+    elev_arr = np.load(elev_path)
+    if elev_arr.ndim == 3:
+        elev_arr = elev_arr[0]                 # drop dummy time dim if present
 
-    fig, ax = plt.subplots(figsize=(5, 4))
-    im = ax.imshow(corr.values, vmin=-1, vmax=1, cmap="RdBu_r")
-    plt.colorbar(im, ax=ax)
-    ax.set_xticks(range(len(VARIABLES)))
-    ax.set_yticks(range(len(VARIABLES)))
-    ax.set_xticklabels(VARIABLES, rotation=45, ha="right")
-    ax.set_yticklabels(VARIABLES)
-    for i in range(len(VARIABLES)):
-        for j in range(len(VARIABLES)):
-            ax.text(j, i, f"{corr.values[i,j]:.2f}", ha="center", va="center", fontsize=9)
-    ax.set_title("CMIP6 variable correlation (center pixel, train+val)")
+    # elev_16 might be on a different grid (elev_lat/elev_lon vs lat/lon)
+    # Use the closest lat/lon mapping
+    try:
+        data["elevation"] = elev_arr[lat_s, lon_s].astype(np.float32)
+    except IndexError:
+        logging.warning("Elevation index out of bounds — using lat/lon clipped indices")
+        ls = np.clip(lat_s, 0, elev_arr.shape[0]-1)
+        lo = np.clip(lon_s, 0, elev_arr.shape[1]-1)
+        data["elevation"] = elev_arr[ls, lo].astype(np.float32)
+
+    df = pd.DataFrame(data)
+    df["positive"] = positive
+    df["target_mps"] = tgt_s
+    return df
+
+
+def plot_correlation_heatmap(df, out_dir):
+    """Pearson + Spearman correlation heatmaps side by side."""
+    feat = df[VARIABLES]
+    pearson  = feat.corr(method="pearson")
+    spearman = feat.corr(method="spearman")
+
+    labels = [VAR_LABELS[v] for v in VARIABLES]
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    for ax, corr_mat, title in zip(axes,
+                                    [pearson, spearman],
+                                    ["Pearson correlation", "Spearman correlation"]):
+        im = ax.imshow(corr_mat.values, vmin=-1, vmax=1, cmap="RdBu_r")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        ax.set_xticks(range(len(VARIABLES)))
+        ax.set_yticks(range(len(VARIABLES)))
+        ax.set_xticklabels(labels, rotation=40, ha="right", fontsize=9)
+        ax.set_yticklabels(labels, fontsize=9)
+        for i in range(len(VARIABLES)):
+            for j in range(len(VARIABLES)):
+                val = corr_mat.values[i, j]
+                color = "white" if abs(val) > 0.6 else "black"
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center",
+                        fontsize=8, color=color, fontweight="bold")
+        ax.set_title(title, fontsize=12)
+
+    fig.suptitle("CMIP6 variable pairwise correlations at station locations (train set)",
+                 fontsize=11)
     fig.tight_layout()
-    fig.savefig(os.path.join(OUT_DIR, "variable_corr_heatmap.png"), dpi=150)
+    path = os.path.join(out_dir, "01_correlation_heatmap.png")
+    fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    logging.info("Saved variable_corr_heatmap.png")
+    logging.info(f"Saved {path}")
 
-    # 2. Correlation conditioned on storm / no-storm
-    storm    = feat_df[feat_df["positive"] == 1][VARIABLES]
-    no_storm = feat_df[feat_df["positive"] == 0][VARIABLES]
-    corr_storm    = storm.corr()
-    corr_nostorm  = no_storm.corr()
-    logging.info(f"\nCorrelation | storm=1:\n{corr_storm.round(3)}")
-    logging.info(f"\nCorrelation | storm=0:\n{corr_nostorm.round(3)}")
+    pearson.to_csv(os.path.join(out_dir, "pearson_correlation.csv"))
+    spearman.to_csv(os.path.join(out_dir, "spearman_correlation.csv"))
+    return pearson
 
-    # 3. Mean value per variable, storm vs no-storm
-    means = feat_df.groupby("positive")[VARIABLES].mean()
-    logging.info(f"\nMean variable values by label:\n{means.round(3)}")
-    means.to_csv(os.path.join(OUT_DIR, "variable_means_by_label.csv"))
 
-    fig, axes = plt.subplots(1, len(VARIABLES), figsize=(4*len(VARIABLES), 4), sharey=False)
+def plot_storm_vs_nostorm(df, out_dir):
+    """Mean and distribution of each variable split by storm label."""
+    storm    = df[df["positive"] == 1]
+    no_storm = df[df["positive"] == 0]
+
+    fig, axes = plt.subplots(1, len(VARIABLES), figsize=(3.5 * len(VARIABLES), 5), sharey=False)
     for ax, var in zip(axes, VARIABLES):
         s_vals = storm[var].values
         n_vals = no_storm[var].values
-        ax.violinplot([n_vals[::10], s_vals[::10]], positions=[0, 1],
-                      showmedians=True, showextrema=False)
+        # downsample for violin speed
+        step = max(1, len(n_vals) // 20000)
+        parts = ax.violinplot(
+            [n_vals[::step], s_vals[::step]],
+            positions=[0, 1],
+            showmedians=True,
+            showextrema=True,
+        )
+        parts["bodies"][0].set_facecolor("steelblue")
+        parts["bodies"][0].set_alpha(0.7)
+        parts["bodies"][1].set_facecolor("tomato")
+        parts["bodies"][1].set_alpha(0.7)
         ax.set_xticks([0, 1])
-        ax.set_xticklabels(["No storm", "Storm"])
-        ax.set_title(var)
-        ax.set_ylabel("Normalized value")
-    fig.suptitle("CMIP6 variable distribution: storm vs no-storm (center pixel)")
-    fig.tight_layout()
-    fig.savefig(os.path.join(OUT_DIR, "variable_violin_by_label.png"), dpi=150)
-    plt.close(fig)
-    logging.info("Saved variable_violin_by_label.png")
+        ax.set_xticklabels(["No storm", "Storm"], fontsize=9)
+        ax.set_title(VAR_LABELS[var], fontsize=10)
+        ax.set_ylabel("Normalized value", fontsize=8)
 
-    # 4. Pairwise scatter (storm colored)
-    if len(VARIABLES) >= 2:
-        fig, axes = plt.subplots(len(VARIABLES), len(VARIABLES),
-                                  figsize=(3*len(VARIABLES), 3*len(VARIABLES)))
-        subsample = feat_df.sample(n=min(5000, len(feat_df)), random_state=1)
-        colors = ["steelblue" if p == 0 else "tomato" for p in subsample["positive"]]
-        for i, v1 in enumerate(VARIABLES):
-            for j, v2 in enumerate(VARIABLES):
-                ax = axes[i][j]
-                if i == j:
-                    ax.hist(feat_df[v1], bins=40, color="gray", alpha=0.7)
-                    ax.set_xlabel(v1)
-                else:
-                    ax.scatter(subsample[v2], subsample[v1], c=colors, alpha=0.3, s=3)
-                if j == 0:
-                    ax.set_ylabel(v1)
-                if i == len(VARIABLES)-1:
-                    ax.set_xlabel(v2)
-        fig.suptitle("Pairwise CMIP6 scatter (red=storm, blue=no-storm)")
-        fig.tight_layout()
-        fig.savefig(os.path.join(OUT_DIR, "variable_pairplot.png"), dpi=120)
-        plt.close(fig)
-        logging.info("Saved variable_pairplot.png")
+        # annotate means
+        ax.axhline(np.median(n_vals), color="steelblue", linestyle="--", linewidth=0.8, alpha=0.8)
+        ax.axhline(np.median(s_vals), color="tomato",    linestyle="--", linewidth=0.8, alpha=0.8)
+
+        # t-test p-value
+        _, pval = stats.ttest_ind(s_vals, n_vals, equal_var=False)
+        sig = "***" if pval < 0.001 else ("**" if pval < 0.01 else ("*" if pval < 0.05 else "ns"))
+        ax.set_xlabel(f"p={pval:.1e} {sig}", fontsize=8)
+
+    fig.suptitle("Variable distributions: storm (red) vs no-storm (blue) — train set",
+                 fontsize=11)
+    fig.tight_layout()
+    path = os.path.join(out_dir, "02_storm_vs_nostorm_violin.png")
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logging.info(f"Saved {path}")
+
+    # Summary table
+    means = df.groupby("positive")[VARIABLES].agg(["mean", "median", "std"])
+    means.to_csv(os.path.join(out_dir, "storm_vs_nostorm_stats.csv"))
+    logging.info("Storm vs no-storm means:\n" +
+                 df.groupby("positive")[VARIABLES].mean().round(3).to_string())
+
+
+def plot_scatter_matrix(df, out_dir):
+    """Pairwise scatter plots, coloured by storm label."""
+    n = len(VARIABLES)
+    subsample = df.sample(n=min(8000, len(df)), random_state=1)
+    colors = ["steelblue" if p == 0 else "tomato" for p in subsample["positive"]]
+
+    fig, axes = plt.subplots(n, n, figsize=(3 * n, 3 * n))
+    for i, v1 in enumerate(VARIABLES):
+        for j, v2 in enumerate(VARIABLES):
+            ax = axes[i][j]
+            if i == j:
+                # Diagonal: histogram
+                ax.hist(df[v1][::10], bins=40, color="slategray", alpha=0.7, density=True)
+                ax.set_title(VAR_LABELS[v1], fontsize=8, pad=2)
+            else:
+                ax.scatter(subsample[v2], subsample[v1],
+                           c=colors, alpha=0.25, s=3, linewidths=0)
+                r, p = stats.pearsonr(df[v1], df[v2])
+                ax.set_title(f"r={r:.2f}", fontsize=7, color="darkred" if abs(r) > 0.5 else "black")
+            if j == 0:
+                ax.set_ylabel(VAR_LABELS[v1], fontsize=7)
+            if i == n - 1:
+                ax.set_xlabel(VAR_LABELS[v2], fontsize=7)
+            ax.tick_params(labelsize=6)
+
+    fig.suptitle("Pairwise scatter: red = storm event, blue = no storm (train set)", fontsize=10)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    path = os.path.join(out_dir, "03_scatter_matrix.png")
+    fig.savefig(path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    logging.info(f"Saved {path}")
+
+
+def plot_pointbiserial(df, out_dir):
+    """Point-biserial correlation of each variable with the binary storm label.
+    This directly answers: 'how well does each variable alone predict storms?'
+    """
+    results = []
+    for var in VARIABLES:
+        r, p = stats.pointbiserialr(df["positive"], df[var])
+        results.append({"variable": VAR_LABELS[var], "r_pb": r, "p_value": p, "abs_r": abs(r)})
+    res_df = pd.DataFrame(results).sort_values("abs_r", ascending=False)
+    logging.info(f"\nPoint-biserial correlation with storm label:\n{res_df.to_string(index=False)}")
+    res_df.to_csv(os.path.join(out_dir, "pointbiserial_with_storm.csv"), index=False)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    colors = ["tomato" if r > 0 else "steelblue" for r in res_df["r_pb"]]
+    bars = ax.barh(res_df["variable"], res_df["r_pb"], color=colors, edgecolor="black", linewidth=0.5)
+    ax.axvline(0, color="black", linewidth=0.8)
+    ax.set_xlabel("Point-biserial correlation with storm label", fontsize=10)
+    ax.set_title("How strongly each variable correlates with storm occurrence\n(train set, center pixel)",
+                 fontsize=10)
+    for bar, val in zip(bars, res_df["r_pb"]):
+        x = bar.get_width()
+        ax.text(x + 0.003 * np.sign(x), bar.get_y() + bar.get_height()/2,
+                f"{val:+.3f}", va="center", fontsize=9)
+    fig.tight_layout()
+    path = os.path.join(out_dir, "04_pointbiserial_storm.png")
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logging.info(f"Saved {path}")
+    return res_df
+
+
+def main():
+    df = load_center_pixels()
+
+    logging.info("Plotting correlation heatmap ...")
+    plot_correlation_heatmap(df, OUT_DIR)
+
+    logging.info("Plotting storm vs no-storm distributions ...")
+    plot_storm_vs_nostorm(df, OUT_DIR)
+
+    logging.info("Plotting scatter matrix ...")
+    plot_scatter_matrix(df, OUT_DIR)
+
+    logging.info("Plotting point-biserial correlations with storm label ...")
+    plot_pointbiserial(df, OUT_DIR)
 
     logging.info(f"\nAll outputs saved to {OUT_DIR}/")
+    logging.info("Files:")
+    for f in sorted(os.listdir(OUT_DIR)):
+        logging.info(f"  {f}")
+
 
 if __name__ == "__main__":
     main()
