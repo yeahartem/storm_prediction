@@ -56,6 +56,7 @@ limit_train_batches: 5000          # ~56 min/epoch, 8-9 epochs overnight
 val_subset_size: 32000             # ~1000 batches at batch_size=32; comparable cost
 val_subset_seed: 42
 val_samples_per_station: 6   # stratified val: K random samples per station (more reliable than uniform)
+val_target_pos_rate: 0.36       # global rebalance: drop excess class until val pos rate = train pos rate
 val_check_interval: 1.0           # one val per epoch — deterministic subset already gives clean signal
 
 # Training stability

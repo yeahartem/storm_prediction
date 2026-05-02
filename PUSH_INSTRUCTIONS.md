@@ -59,9 +59,14 @@ Code:
   val_check_interval=1.0, warmup_pct, eta_min_factor,
   drop_path_rate, use_pos_in_head=false, gradient_clip_val,
   use_swa, swa_lrs, swa_epoch_start, early_stopping_patience.
-- Val sampling is now stratified by station (K=6 random samples
-  per station). Every val station gets equal voice, no
-  geographic bias from observation density.
+- Val sampling is now double-stratified: per-station (K=6 random
+  samples per station — every station gets equal voice, no
+  geographic bias from observation density) plus a global class
+  rebalance to val_target_pos_rate=0.36 so val pos rate exactly
+  matches train pos rate (drops ~1.2% of samples).
+- models.py: drop_path_rate is wrapped in try/except so older
+  versions of timm (which don't accept that kwarg in GhostNetV2)
+  fall back to the default and just emit a warning.
 - AUDIT_REPORT_OPUS.md: full investigation + reproduction script."
 
 # Запушить ветку на origin

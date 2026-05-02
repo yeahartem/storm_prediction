@@ -121,6 +121,11 @@ class XarrayDataset(Dataset):
             val_samples_per_station = int(self.cfg.train.get('val_samples_per_station', 6) or 0)
             val_subset_size = int(self.cfg.train.get('val_subset_size', 0) or 0)
             val_subset_seed = int(self.cfg.train.get('val_subset_seed', 42))
+            # If val_target_pos_rate is set, val is double-stratified by station AND class:
+            # each station contributes ~K*p positive and ~K*(1-p) negative samples (or fewer
+            # if the station doesn't have enough of one class). This fixes the residual class
+            # imbalance that station-only stratification leaves behind.
+            target_pos_rate = self.cfg.train.get('val_target_pos_rate', None)
             n_total = raw.shape[1]
 
             if val_samples_per_station > 0:
@@ -131,8 +136,11 @@ class XarrayDataset(Dataset):
                 change = np.flatnonzero(np.diff(sorted_keys)) + 1
                 edges = np.concatenate(([0], change, [n_total]))
                 rng = np.random.default_rng(val_subset_seed)
-                picks = []
                 K = val_samples_per_station
+                picks = []
+
+                # Step 1: per-station stratification — K random samples per station.
+                # This guarantees geographic balance (every station gets equal voice).
                 for i in range(len(edges) - 1):
                     s, e = edges[i], edges[i + 1]
                     n = e - s
@@ -142,12 +150,55 @@ class XarrayDataset(Dataset):
                         sel = rng.choice(n, size=K, replace=False)
                         picks.append(order[s:e][sel])
                 final_idx = np.sort(np.concatenate(picks))
+                mode = f"station-stratified (K={K}/station)"
+
+                # Step 2 (optional): global class rebalance.
+                # Per-station random sampling preserves each station's own class
+                # balance, but station-uniform weighting can shift the global pos
+                # rate (e.g. 0.355 vs 0.360 train). If val_target_pos_rate is set,
+                # we drop a small random subset of the over-represented class until
+                # the global rate matches. Negatives/positives dropped uniformly
+                # at random — geographic bias from this drop is negligible (~1% of
+                # samples removed).
+                if target_pos_rate is not None:
+                    p = float(target_pos_rate)
+                    is_pos = (raw[7][final_idx] >= raw[8][final_idx])
+                    n_pos = int(is_pos.sum())
+                    n_neg = len(is_pos) - n_pos
+                    if n_pos == 0 or n_neg == 0:
+                        pass  # degenerate, skip
+                    else:
+                        current_rate = n_pos / (n_pos + n_neg)
+                        if current_rate < p:
+                            # Too few positives → drop excess negatives.
+                            target_n_neg = int(round(n_pos * (1.0 - p) / p))
+                            n_drop = max(0, n_neg - target_n_neg)
+                            if n_drop > 0:
+                                neg_pos_in_sub = np.where(~is_pos)[0]
+                                drop = rng.choice(len(neg_pos_in_sub), size=n_drop, replace=False)
+                                keep = np.ones(len(final_idx), dtype=bool)
+                                keep[neg_pos_in_sub[drop]] = False
+                                final_idx = final_idx[keep]
+                        elif current_rate > p:
+                            # Too many positives → drop excess positives.
+                            target_n_pos = int(round(n_neg * p / (1.0 - p)))
+                            n_drop = max(0, n_pos - target_n_pos)
+                            if n_drop > 0:
+                                pos_pos_in_sub = np.where(is_pos)[0]
+                                drop = rng.choice(len(pos_pos_in_sub), size=n_drop, replace=False)
+                                keep = np.ones(len(final_idx), dtype=bool)
+                                keep[pos_pos_in_sub[drop]] = False
+                                final_idx = final_idx[keep]
+                    mode += f" + global rebalance to pos_rate={p:.3f}"
+
                 self.data_idxs = raw[:, final_idx]
                 n_stations = len(edges) - 1
+                actual_pos_rate = float((self.data_idxs[7] >= self.data_idxs[8]).mean())
                 logging.info(
-                    f"Val dataloader init: stratified subset — "
-                    f"{self.data_idxs.shape[1]} samples from {n_stations} stations "
-                    f"(K={K}/station, seed={val_subset_seed}, full val={n_total})"
+                    f"Val dataloader init: {mode} — "
+                    f"{self.data_idxs.shape[1]} samples from {n_stations} stations, "
+                    f"actual_pos_rate={actual_pos_rate:.4f} "
+                    f"(seed={val_subset_seed}, full val={n_total})"
                 )
             elif val_subset_size > 0 and n_total > val_subset_size:
                 rng = np.random.default_rng(val_subset_seed)

@@ -49,14 +49,26 @@ class GhostWindNet27(nn.Module):
         self.time_window = 27
         self.use_pos_in_head = bool(use_pos_in_head)
         # Stochastic depth (drop_path) regularises deep backbones with virtually
-        # no compute overhead. 0.0 reproduces previous behaviour.
-        self.ghostnetv2 = timm.create_model(
-            'ghostnetv2_160',
+        # no compute overhead. Older versions of timm's GhostNetV2 don't accept
+        # this kwarg — gracefully fall back to default.
+        backbone_kwargs = dict(
             num_classes=self.embed,
             pretrained=False,
             in_chans=in_chans,
-            drop_path_rate=float(drop_path_rate),
         )
+        if float(drop_path_rate) > 0.0:
+            try:
+                self.ghostnetv2 = timm.create_model(
+                    'ghostnetv2_160', drop_path_rate=float(drop_path_rate), **backbone_kwargs
+                )
+            except TypeError as e:
+                logging.warning(
+                    f"timm.create_model('ghostnetv2_160', drop_path_rate=...) failed: {e}. "
+                    f"Falling back to default (no stochastic depth). Upgrade timm to enable it."
+                )
+                self.ghostnetv2 = timm.create_model('ghostnetv2_160', **backbone_kwargs)
+        else:
+            self.ghostnetv2 = timm.create_model('ghostnetv2_160', **backbone_kwargs)
 
         # --- Мы разбираем head1 на отдельные слои для отладки ---
         self.head_dropout = nn.Dropout(0.4)
@@ -125,29 +137,28 @@ class BaselineQT(nn.Module):
         
         X = X[:, 1, :, 1, 1]
         X = (X * 20.841803) +  280.37646 - 271.15 + self.dummy(torch.tensor([1.1])) * 0.0
-        Q = torch.stack([torch.quantile(X, q=0.96, interpolation='linear', axis=1),  
-                          torch.quantile(X, q=0.85, interpolation='linear', axis=1),  
-                          torch.quantile(X, q=0.70, interpolation='linear', axis=1),  
-                          torch.quantile(X, q=0.50, interpolation='linear', axis=1),  
-                          torch.quantile(X, q=0.25, interpolation='linear', axis=1),  
-                          torch.quantile(X, q=0.15, interpolation='linear', axis=1),  
-                          torch.quantile(X, q=0.05, interpolation='linear', axis=1)], axis=1)      
-        return Q 
-    
+        Q = torch.stack([torch.quantile(X, q=0.96, interpolation='linear', axis=1),
+                          torch.quantile(X, q=0.85, interpolation='linear', axis=1),
+                          torch.quantile(X, q=0.70, interpolation='linear', axis=1),
+                          torch.quantile(X, q=0.50, interpolation='linear', axis=1),
+                          torch.quantile(X, q=0.25, interpolation='linear', axis=1),
+                          torch.quantile(X, q=0.15, interpolation='linear', axis=1),
+                          torch.quantile(X, q=0.05, interpolation='linear', axis=1)], axis=1)
+        return Q
+
 
 class BaselineLinear(nn.Module):
-    def __init__(self) -> None:        
+    def __init__(self) -> None:
         super(BaselineLinear, self).__init__()
         self.Lin = nn.Sequential(
-            nn.Linear(27, 27), 
+            nn.Linear(27, 27),
             nn.BatchNorm1d(27),
             nn.Linear(27, 7),
         )
 
     def forward(self, X) -> torch.Tensor:
         X, pos = X
-        
+
         X = X[:, 0, :, 1, 1]
         X = self.Lin(X)
         return X
-    
