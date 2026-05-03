@@ -178,9 +178,9 @@ def train_regression(cfg: DictConfig) -> None:
 
     # ---- NEW: test-only mode ----
     if getattr(cfg.train, "test_only", False):
-        ckpt = getattr(cfg.train, "ckpt_path", None)
+        ckpt = getattr(cfg.train, "ckpt_path", None) or os.environ.get("CKPT_PATH")
         if not ckpt:
-            raise ValueError("cfg.train.test_only=True but cfg.train.ckpt_path is not set")
+            raise ValueError("cfg.train.test_only=True but neither cfg.train.ckpt_path nor CKPT_PATH env var is set")
         logging.info(f"TEST-ONLY mode. Using checkpoint: {ckpt}")
         test_results = trainer.test(model=model, datamodule=dm, ckpt_path=ckpt)
         logging.info(f"Test results: {test_results}")
