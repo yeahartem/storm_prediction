@@ -189,6 +189,9 @@ def train_regression(cfg: DictConfig) -> None:
     logging.info(f"Time to start train {time.process_time() - start_time} seconds")
     trainer.fit(model, dm)
 
+    best_ckpt = trainer.checkpoint_callback.best_model_path
+    logging.info(f"Best checkpoint: {best_ckpt}  score={trainer.checkpoint_callback.best_model_score}")
+
     # ---- NEW: run TEST on best checkpoint ----
     logging.info("Running test on best checkpoint...")
     test_results = trainer.test(model=model, datamodule=dm, ckpt_path="best")
