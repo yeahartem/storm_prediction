@@ -84,7 +84,7 @@ with torch.no_grad():
     for i in range(0, all_X_shuffled.shape[0], bs):
         X_shuf = all_X_shuffled[i:i+bs].cuda()
         # pos doesn't matter (not in head), use zeros as placeholder
-        pos_dummy = torch.zeros(X_shuf.shape[0], cfg.train.time_window, 4, device='cuda')
+        pos_dummy = torch.zeros(X_shuf.shape[0], model.net.time_window, 4, device='cuda')
         scores_shuf.append(torch.sigmoid(model.net([X_shuf, pos_dummy]).squeeze()).cpu())
 
 auroc_shuf = roc_auc_score(y, torch.cat(scores_shuf).numpy())
