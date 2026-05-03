@@ -361,22 +361,51 @@ class DataPreLoader:
             target_array[0, :] += self.shift[0] #lat
             target_array[1, :] += self.shift[1] #lon
 
-        # Time-based splits. Use >= / < boundaries so each timestamp lands in exactly
-        # one split (previous code used `>` and lost one row sitting on the boundary).
+        # Build splits — either standard temporal or geo-OOD (station hold-out).
         time_idx = target_array[2, :]
         n_time = len(self.time_coords)
-        if val_split_index is not None:
+
+        geo_ood = self.cfg.train.get('geo_ood_split', False)
+        if geo_ood:
+            # Geo-OOD: hold out a random fraction of stations entirely for test.
+            # Station identity = (padded lat_idx, padded lon_idx) — unique per CMIP6 cell.
+            geo_seed  = int(self.cfg.train.get('geo_ood_seed', 42))
+            geo_ratio = float(self.cfg.train.get('geo_ood_test_ratio', 0.2))
+            st_keys   = target_array[0].astype(np.int64) * 1000 + target_array[1].astype(np.int64)
+            unique_st = np.unique(st_keys)
+            n_test_st = max(1, int(len(unique_st) * geo_ratio))
+            rng       = np.random.default_rng(geo_seed)
+            test_st   = set(rng.choice(unique_st, size=n_test_st, replace=False).tolist())
+            is_test_st = np.isin(st_keys, list(test_st))
+
+            if val_split_index is not None:
+                train_mask = (~is_test_st) & (time_idx < val_split_index)
+                val_mask   = (~is_test_st) & (time_idx >= val_split_index) & (time_idx < test_split_index)
+            else:
+                train_mask = (~is_test_st) & (time_idx < test_split_index)
+                val_mask   = (~is_test_st) & (time_idx >= test_split_index) & (time_idx < n_time)
+            test_mask = is_test_st  # all time steps for held-out stations
+
+            train_array            = target_array[:, train_mask]
+            self.val_data_idxs     = target_array[:, val_mask]
+            self.test_data_idxs    = target_array[:, test_mask]
+            logging.info(
+                f"Geo-OOD split: {n_test_st}/{len(unique_st)} stations held out for test "
+                f"(seed={geo_seed}, ratio={geo_ratio:.0%})"
+            )
+        elif val_split_index is not None:
+            # Standard temporal split with separate val period.
             train_mask = time_idx < val_split_index
-            val_mask = (time_idx >= val_split_index) & (time_idx < test_split_index)
-            test_mask = (time_idx >= test_split_index) & (time_idx < n_time)
-            train_array = target_array[:, train_mask]
-            self.val_data_idxs = target_array[:, val_mask]
-            self.test_data_idxs = target_array[:, test_mask]
+            val_mask   = (time_idx >= val_split_index) & (time_idx < test_split_index)
+            test_mask  = (time_idx >= test_split_index) & (time_idx < n_time)
+            train_array            = target_array[:, train_mask]
+            self.val_data_idxs     = target_array[:, val_mask]
+            self.test_data_idxs    = target_array[:, test_mask]
         else:
             # Backward-compatible fallback (val == test).
             train_array = target_array[:, time_idx < test_split_index]
             self.test_data_idxs = target_array[:, (time_idx >= test_split_index) & (time_idx < n_time)]
-            self.val_data_idxs = self.test_data_idxs
+            self.val_data_idxs  = self.test_data_idxs
 
         # Sanity: assert there's no overlap on (lat, lon, time) between splits.
         def _keys(arr):
@@ -384,10 +413,10 @@ class DataPreLoader:
         train_keys = set(_keys(train_array).tolist())
         val_keys   = set(_keys(self.val_data_idxs).tolist())
         test_keys  = set(_keys(self.test_data_idxs).tolist())
-        if val_split_index is not None:
-            assert not (train_keys & val_keys),  "train and val overlap on (lat,lon,time)"
-            assert not (train_keys & test_keys), "train and test overlap on (lat,lon,time)"
-            assert not (val_keys & test_keys),   "val and test overlap on (lat,lon,time)"
+        # Geo-OOD: train/val share no stations with test; time may overlap → only check (lat,lon,time).
+        assert not (train_keys & val_keys),  "train and val overlap on (lat,lon,time)"
+        assert not (train_keys & test_keys), "train and test overlap on (lat,lon,time)"
+        assert not (val_keys   & test_keys), "val and test overlap on (lat,lon,time)"
 
         # Store full train array for per-epoch resampling
         self.neg_ratio = float(self.cfg.train.get('neg_subsample_ratio', None) or 0.0)
