@@ -200,8 +200,6 @@ class WindNetPL(pl.LightningModule):
     def on_train_start(self):
         self.logger.log_hyperparams(self.hparams)
         self.val_MAE_best.reset()
-        if self.cfg.model_name=="GhostWindNet27":
-            self.net.trainer = self.trainer
         if self.cfg.train.loss_name == 'BCELoss':
             train_idxs = self.trainer.datamodule.DPL.train_data_idxs
             targets = train_idxs[7, :]
@@ -510,12 +508,12 @@ class WindNetPL(pl.LightningModule):
 
         output = OrderedDict(
             {
-                "loss": loss,
-                "binary_preds": binary_preds,
-                "score_preds": score_preds,
-                "float_preds": predictions,
-                "float_target": target,
-                "binary_target": binary_target,
+                "loss": loss.detach(),
+                "binary_preds": binary_preds.detach(),
+                "score_preds": score_preds.detach(),
+                "float_preds": predictions.detach(),
+                "float_target": target.detach(),
+                "binary_target": binary_target.detach(),
                 "lat": lat,
                 "lon": lon,
                 "month": month,
@@ -562,6 +560,58 @@ class WindNetPL(pl.LightningModule):
         self.log("test/BS", float(bs))
         self.log("test/BSS", float(bss))
         logging.info(f"Brier Score: {bs:.4f}  BSS: {bss:.4f}  (clim_rate={p_clim:.3f})")
+
+        # Reliability diagram (calibration plot) + ECE
+        try:
+            from sklearn.calibration import calibration_curve
+            prob_true_cal, prob_pred_cal = calibration_curve(
+                y_true_np, y_prob_np, n_bins=10, strategy='uniform'
+            )
+            # ECE: weighted-average |fraction_positive - mean_predicted| across bins
+            n_bins_ece = 10
+            bin_edges_ece = np.linspace(0.0, 1.0, n_bins_ece + 1)
+            ece_val = 0.0
+            n_total = len(y_true_np)
+            for _i in range(n_bins_ece):
+                lo, hi = bin_edges_ece[_i], bin_edges_ece[_i + 1]
+                in_bin = (y_prob_np >= lo) & (y_prob_np < hi)
+                if _i == n_bins_ece - 1:
+                    in_bin = (y_prob_np >= lo) & (y_prob_np <= hi)
+                cnt = int(in_bin.sum())
+                if cnt > 0:
+                    acc = float(y_true_np[in_bin].mean())
+                    conf = float(y_prob_np[in_bin].mean())
+                    ece_val += cnt * abs(acc - conf) / n_total
+            self.log("test/ECE", float(ece_val))
+            logging.info(f"ECE: {ece_val:.4f}")
+
+            fig_cal, (ax_cal, ax_hist) = plt.subplots(
+                2, 1, figsize=(6, 8), gridspec_kw={'height_ratios': [3, 1]}
+            )
+            ax_cal.plot([0, 1], [0, 1], 'k--', lw=1.5, label='Perfect calibration')
+            ax_cal.plot(
+                prob_pred_cal, prob_true_cal, 'ro-', lw=2,
+                label=f'Model (ECE={ece_val:.4f})'
+            )
+            ax_cal.set_xlim(0, 1)
+            ax_cal.set_ylim(0, 1)
+            ax_cal.set_ylabel('Fraction of positives')
+            ax_cal.set_title('Reliability Diagram (test set)')
+            ax_cal.legend(loc='upper left')
+            ax_cal.grid(True, alpha=0.3)
+
+            ax_hist.hist(y_prob_np, bins=20, range=(0, 1), color='steelblue', edgecolor='none')
+            ax_hist.set_xlabel('Mean predicted probability')
+            ax_hist.set_ylabel('Count')
+            ax_hist.grid(True, alpha=0.3)
+
+            fig_cal.tight_layout()
+            cal_path = os.path.join(self.run_dir, 'reliability_diagram.png')
+            fig_cal.savefig(cal_path, dpi=150, bbox_inches='tight')
+            self.logger.experiment.log_artifact(run_id=self.logger.run_id, local_path=cal_path)
+            plt.close(fig_cal)
+        except Exception as e:
+            logging.info(f"Calibration plot skipped: {e}")
 
         try:
             binned_results_df = analyze_performance_by_bins(
