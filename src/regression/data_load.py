@@ -37,6 +37,12 @@ class DataPreLoader:
         self.dataset_torch = self.load_climate_data() # понять зачем в float32 переводят? Если в обучении будет падать из-за памяти, перевести в 16
         self.dataset_torch = self.time_crop(self.dataset_torch)
 
+        # Anomaly normalization: subtract per-(grid cell, day-of-year) climatology
+        # computed on TRAIN period only. Removes the static geographic baseline so
+        # backbone can't learn "lat=60 cold patch -> high storm rate" — must use anomalies.
+        if self.cfg.train.get('use_anomaly', False):
+            self.subtract_climatology()
+
         if self.cfg.train.use_elevation:
             self.load_elevation_data()
 
@@ -157,6 +163,52 @@ class DataPreLoader:
                                     self.lon_min_idx - half_side: self.lon_max_idx + half_side + 1
                                     ]
         return var_data
+
+    def subtract_climatology(self):
+        """For each (var, lat, lon, day-of-year) compute climatological mean from
+        TRAIN period only (no leakage), then subtract from the full timeseries.
+        After this, dataset_torch contains anomalies (deviations from local norm).
+        """
+        from datetime import datetime
+        logging.info("=== Anomaly normalization: computing per-cell climatology ===")
+        val_str = self.cfg.train.get('start_of_val', None)
+        cutoff_str = val_str if val_str else self.cfg.train.start_of_test
+        cutoff = datetime.strptime(cutoff_str, '%Y-%m-%d').date()
+        cutoff_idx = int(self.time_coords.searchsorted(cutoff))
+        logging.info(f"  Climatology computed from time[0:{cutoff_idx}] (< {cutoff})")
+
+        doy = np.array([d.astype(object).timetuple().tm_yday for d in self.time_coords])
+        doy_train = doy[:cutoff_idx]
+        n_vars, n_time, n_lat, n_lon = self.dataset_torch.shape
+        # Group train indices by DOY
+        by_doy = [[] for _ in range(367)]
+        for i, d in enumerate(doy_train):
+            by_doy[int(d)].append(i)
+        # 31-day window climatology per DOY
+        win = 15
+        clim = np.zeros((n_vars, 366, n_lat, n_lon), dtype=np.float32)
+        data_train_np = self.dataset_torch[:, :cutoff_idx].numpy()
+        for d in range(1, 367):
+            idxs = []
+            for offset in range(-win, win + 1):
+                dd = ((d - 1 + offset) % 366) + 1
+                idxs.extend(by_doy[dd])
+            if idxs:
+                clim[:, d - 1] = data_train_np[:, idxs].mean(axis=1)
+        del data_train_np
+        logging.info(f"  Daily climatology built (window=31 days)")
+        # Subtract in chunks to limit memory
+        chunk = 500
+        out = np.zeros_like(self.dataset_torch.numpy())
+        for i in range(0, n_time, chunk):
+            j = min(i + chunk, n_time)
+            doy_chunk = doy[i:j]
+            clim_chunk = clim[:, doy_chunk - 1]
+            out[:, i:j] = self.dataset_torch[:, i:j].numpy() - clim_chunk
+        del clim
+        self.dataset_torch = torch.from_numpy(out).type(torch.float32)
+        logging.info(f"  Anomaly stats: mean={out.mean():.4f}, std={out.std():.4f}")
+        logging.info("  Anomaly normalization done.")
 
     def time_crop(self, var_data):
         logging.info(f"Shape before time limits in time_crop() in data_load.py: {var_data.shape}")

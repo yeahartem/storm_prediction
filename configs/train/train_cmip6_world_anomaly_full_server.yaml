@@ -1,0 +1,86 @@
+# ANOMALY NORMALIZATION experiment.
+# Subtracts per-(grid cell, day-of-year) climatology computed on train period only.
+# Backbone receives only deviations from local norm — cannot learn "this is tropical".
+# Compare AUROC drop vs standard temporal split to quantify what the model
+# was previously learning from static geographic baseline.
+
+defaults: &cfg_defaults
+
+make_tmp_target_file: False
+
+use_elevation: false
+normalize: false
+
+time_agg_window: 28
+time_freq: 14
+target_threshold: 15.0
+abs_wind_threshold: 15.0
+
+data_dir: data/cmip6_world/
+target_data_file: target.parquet
+
+start_time: '2000-01-01'
+end_time: '2024-12-31'
+start_of_val: '2021-01-01'
+start_of_test: '2023-01-01'
+
+variables:
+- sfcWindmax
+- pr
+- tasmax
+- tasmin
+
+# === KEY FLAG: anomaly normalization ===
+use_anomaly: true
+
+spatial_crop: false
+lat_min: 30
+lat_max: 50
+lon_min: -30
+lon_max: 40
+
+batch_size: 32
+learning_rate: 0.0001
+weight_decay: 0.01
+max_epoch: 100
+
+optimizer_name: 'AdamW'
+scheduler_name: 'WarmupCosineLR'
+cosine_t_max: 20
+loss_name: 'BCELoss'
+label_smoothing: 0.05
+neg_subsample_ratio: 1.0
+use_pos_weight: false
+
+num_workers: 8
+gpu_num: 1
+distributed: false
+num_nodes: 1
+strategy: 'ddp'
+
+limit_train_batches: 5000
+limit_val_batches: 1000
+log_every_n_steps: 50
+
+test_only: false
+ckpt_path: null
+
+cache:
+  use_cached_padding: false
+  pad_crop_data_path: "data/cache/cmip6_pad_crop_data.npy"
+  shift_data_path: "data/cache/cmip6_shift_data.pkl"
+
+val_subset_size: 32000
+val_subset_seed: 42
+val_samples_per_station: 6
+val_target_pos_rate: 0.36
+val_check_interval: 1.0
+warmup_pct: 0.05
+eta_min_factor: 0.01
+drop_path_rate: 0.1
+use_pos_in_head: false
+gradient_clip_val: 1.0
+use_swa: true
+swa_lrs: 0.00001
+swa_epoch_start: 0.7
+early_stopping_patience: 8
