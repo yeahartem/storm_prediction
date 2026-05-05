@@ -94,7 +94,15 @@ def train_regression(cfg: DictConfig) -> None:
     # mlflow.log_artifact(os.path.join(os.getcwd(),"configs/cmip5_TestNet.yaml"), "config.yaml")
     try:
         repo = git.Repo(search_parent_directories=True)
-        mlflow.log_param('git_commit_hash', repo.head.object.hexsha)
+        try:
+            mlflow.log_param('git_commit_hash', repo.head.object.hexsha)
+        except mlflow.exceptions.MlflowException as e:
+            # Param may already be logged if MLflow run was reused. Use tag instead.
+            logging.info(f"git_commit_hash log_param skipped (already set): {e}")
+            try:
+                mlflow.set_tag('git_commit_hash_run', repo.head.object.hexsha)
+            except Exception:
+                pass
     except git.InvalidGitRepositoryError:
         logging.warning("Not a git repository. Cannot log commit hash.")
 
@@ -163,12 +171,7 @@ def train_regression(cfg: DictConfig) -> None:
                             )
     log_config(cfg)
 
-    # Сохраняем Git-хеш для воспроизводимости
-    try:
-        repo = git.Repo(search_parent_directories=True)
-        mlflow.log_param('git_commit_hash', repo.head.object.hexsha)
-    except git.InvalidGitRepositoryError:
-        logging.warning("Not a git repository. Cannot log commit hash.")
+    # NOTE: removed duplicate mlflow.log_param('git_commit_hash', ...) — was logged above.
 
     # Сохраняем финальный конфиг как артефакт
     # Hydra сохраняет его в папке .hydra в директории запуска
