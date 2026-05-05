@@ -1,10 +1,6 @@
 # ANOMALY NORMALIZATION experiment.
 # Subtracts per-(grid cell, day-of-year) climatology computed on train period only.
 # Backbone receives only deviations from local norm — cannot learn "this is tropical".
-# Compare AUROC drop vs standard temporal split to quantify what the model
-# was previously learning from static geographic baseline.
-
-defaults: &cfg_defaults
 
 make_tmp_target_file: False
 
